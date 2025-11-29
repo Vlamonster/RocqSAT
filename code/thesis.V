@@ -214,6 +214,15 @@ Qed.
 
 End TransExamples.
 
+Definition next_state (s: State): option State.
+Admitted.
+
+Lemma next_state_trans_refl: forall (s s': State), next_state s = Some s' <-> s ==> s'.
+Admitted.
+
+Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
+Admitted.
+
 Theorem final_exists: forall (f: CNF),
   (state [] f ==>* fail /\ Final fail) \/
   (exists (m: PA Ann), state [] f ==>* state m f /\ Final (state m f)).
