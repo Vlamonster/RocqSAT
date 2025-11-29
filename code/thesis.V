@@ -207,10 +207,41 @@ Qed.
 
 End TransExamples.
 
+Equations last_decision (m: PA Ann): option Lit :=
+last_decision [] := None;
+last_decision (_ ++d l) := Some l;
+last_decision (m ++p _) := last_decision m.
+
+Equations find_conflict (m: PA Ann) (f: CNF): option Clause :=
+find_conflict m [] := None;
+find_conflict m (c :: f) with c_eval m c :=
+  | Some false => Some c
+  | _ => find_conflict m f.
+
+Definition find_unit (m: PA Ann) (f: CNF): option (Clause * Lit).
+Admitted.
+
+Definition find_decision (m: PA Ann) (f: CNF): option Lit.
+Admitted.
+
 Equations next_state (s: State): option State :=
 next_state fail := None;
-(* TODO *)
-next_state (state m f) := None. 
+next_state (state m f) :=
+  (* t_fail *)
+  match find_conflict m f, last_decision m with
+  | Some c, None => Some fail
+  | _     , _ =>
+  (* t_unit *)
+  match find_unit m f with
+  | Some (c, l) => Some (state (m ++p l) f)
+  | None =>
+  (* t_decide *)
+  match find_decision m f with
+  | Some l => Some (state (m ++d l) f)
+  | None =>
+  (* TODO *)
+  None
+  end end end.
 
 Lemma next_state_trans_refl: forall (s s': State), next_state s = Some s' <-> s ==> s'.
 Admitted.
