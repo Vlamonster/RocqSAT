@@ -17,6 +17,8 @@ eqb_lit (Pos p1) (Pos p2) := eqb_atom p1 p2;
 eqb_lit (Neg p1) (Neg p2) := eqb_atom p1 p2;
 eqb_lit _ _ => false.
 
+Notation "l1 =? l2" := (eqb_lit l1 l2) (at level 70).
+
 (* A clause is a disjunction of literals. *)
 Definition Clause: Type := list Lit.
 
@@ -35,21 +37,21 @@ Definition PA (A: Type): Type := list (Lit * A).
 (* The first instance of `l` or `neg l` determines the value. *)
 Equations l_eval {A: Type} (m: PA A) (l: Lit): option bool :=
 l_eval [] _ := None;
-l_eval ((l', _) :: m) l with eqb_lit l l', eqb_lit l (neg l') :=
+l_eval ((l', _) :: m) l with l =? l',  l =? neg l' :=
   | true, _    := Some true
   | _   , true := Some false
   | _   , _    := l_eval m l.
 
 Equations l_ann {A: Type} (m: PA A) (l: Lit): option A :=
 l_ann [] _ := None;
-l_ann ((l', a) :: m) l with eqb_lit l l', eqb_lit l (neg l') :=
+l_ann ((l', a) :: m) l with l =? l', l =? neg l' :=
   | true, _    := Some a
   | _   , true := Some a
   | _   , _    := l_ann m l.
 
 Equations l_remove (l: Lit) (c: Clause): Clause :=
 l_remove l [] := [];
-l_remove l (l' :: c) with eqb_lit l l' :=
+l_remove l (l' :: c) with l =? l' :=
   | true := c
   | false := l' :: l_remove l c.
 
@@ -159,17 +161,8 @@ Proof.
   apply (t_fail _ _ [Neg 1]).
   - unfold In. right. left. reflexivity.
   - unfold Conflicting. autorewrite with c_eval. reflexivity.
-  - unfold NoDecisions. unfold not. intros. destruct H. destruct x.
-    + destruct p.
-      * simp l_ann in H. discriminate.
-      * destruct p.
-        -- simp l_ann in H. discriminate.
-        -- simp l_ann in H. discriminate. 
-    + destruct p.
-      * simp l_ann in H. discriminate.
-      * destruct p.
-        -- simp l_ann in H. discriminate.
-        -- simp l_ann in H. discriminate.
+  - unfold NoDecisions. unfold not. intros. destruct H. autorewrite with neg l_ann in H.
+    destruct (x =? Pos 1), (x =? Neg 1); simpl in H; discriminate.
 Qed.
 
 Example unit_prop: 
@@ -214,8 +207,10 @@ Qed.
 
 End TransExamples.
 
-Definition next_state (s: State): option State.
-Admitted.
+Equations next_state (s: State): option State :=
+next_state fail := None;
+(* TODO *)
+next_state (state m f) := None. 
 
 Lemma next_state_trans_refl: forall (s s': State), next_state s = Some s' <-> s ==> s'.
 Admitted.
