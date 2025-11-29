@@ -37,7 +37,7 @@ Definition PA (A: Type): Type := list (Lit * A).
 (* The first instance of `l` or `neg l` determines the value. *)
 Equations l_eval {A: Type} (m: PA A) (l: Lit): option bool :=
 l_eval [] _ := None;
-l_eval ((l', _) :: m) l with l =? l',  l =? neg l' :=
+l_eval ((l', _) :: m) l with l =? l', l =? neg l' :=
   | true, _    := Some true
   | _   , true := Some false
   | _   , _    := l_eval m l.
@@ -139,7 +139,7 @@ Inductive Trans: relation State :=
 | t_backtrack (m n: PA Ann) (f: CNF) (c: Clause) (l: Lit):
   In c f ->
   Conflicting (m ++d l ++a n) c ->
-  (forall (l': Lit), Undef n l') ->
+  NoDecisions n ->
   Trans (state (m ++d l ++a n) f) (state (m ++p neg l) f).
 
 Infix "==>" := Trans (at level 70).
@@ -199,15 +199,24 @@ Proof.
   apply (t_backtrack [] [] _ [Neg 1] (Pos 1)).
   - unfold In. right. left. reflexivity.
   - unfold Conflicting. simp c_eval. reflexivity.
-  - unfold Undef. intros. simp  l_eval. reflexivity.
+  - unfold NoDecisions. unfold not. intros. destruct H. simp l_ann in H. discriminate.
 Qed.
 
 End TransExamples.
 
+(* Splits formula into m ++d l ++a n. Propagations are stored in reverse order until return. *)
+Equations split_last_decision_aux (m n: PA Ann): option (PA Ann * Lit * PA Ann) :=
+split_last_decision_aux []        _ := None;
+split_last_decision_aux (m ++d l) n := Some (m, l, rev n);
+split_last_decision_aux (m ++p l) n := split_last_decision_aux m (n ++p l).
+
+Equations split_last_decision (m: PA Ann): option (PA Ann * Lit * PA Ann) :=
+split_last_decision m := split_last_decision_aux m [].
+
 Equations last_decision (m: PA Ann): option Lit :=
-last_decision [] := None;
-last_decision (_ ++d l) := Some l;
-last_decision (m ++p _) := last_decision m.
+last_decision m with split_last_decision m :=
+  | Some (_, l, _) := Some l
+  | _              := None.
 
 Equations option_bind {A B: Type} (f: A -> option B) (o: option A): option B :=
 option_bind _ None     := None;
@@ -255,18 +264,26 @@ next_state (state m f) :=
   (* t_fail *)
   match find_conflict m f, last_decision m with
   | Some c, None => Some fail
-  | _     , _ =>
+  | _     , _    =>
   (* t_unit *)
   match find_unit m f with
   | Some (c, l) => Some (state (m ++p l) f)
-  | None =>
+  | None        =>
   (* t_decide *)
   match find_decision m f with
   | Some l => Some (state (m ++d l) f)
-  | None =>
-  (* TODO *)
-  None
-  end end end.
+  | None   =>
+  (* t_backtrack *)
+  match find_conflict m f, split_last_decision m with
+  | Some c, Some (m', l, n) => Some (state (m' ++p neg l) f)
+  | _     , _               => None
+  end end end end.
+
+Compute (next_state (state [] [[Pos 1];[Neg 1]])).
+Compute (option_bind next_state (next_state (state [] [[Pos 1];[Neg 1]]))).
+
+Compute (next_state (state ([] ++d Pos 1) [[Pos 1];[Neg 1]])).
+Compute (option_bind next_state (next_state (state ([] ++d Pos 1) [[Pos 1];[Neg 1]]))).
 
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
 Admitted.
