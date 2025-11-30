@@ -12,12 +12,59 @@ Inductive Lit: Type :=
 | Pos (p: Atom)
 | Neg (p: Atom).
 
+Lemma eqb_atom_refl: forall (p: Atom), eqb_atom p p = true.
+Proof. apply PeanoNat.Nat.eqb_refl. Qed.
+
+Lemma eqb_atom_sym: forall (p1 p2: Atom), eqb_atom p1 p2 = eqb_atom p2 p1.
+Proof. apply PeanoNat.Nat.eqb_sym. Qed.
+
+Lemma eqb_atom_eq: forall (p1 p2: Atom), eqb_atom p1 p2 = true <-> p1 = p2.
+Proof. apply PeanoNat.Nat.eqb_eq. Qed.
+
 Equations eqb_lit (l1 l2: Lit): bool :=
 eqb_lit (Pos p1) (Pos p2) := eqb_atom p1 p2;
 eqb_lit (Neg p1) (Neg p2) := eqb_atom p1 p2;
 eqb_lit _ _ => false.
 
 Notation "l1 =? l2" := (eqb_lit l1 l2) (at level 70).
+
+Lemma eqb_lit_refl: forall (l: Lit), l =? l = true.
+Proof. intros. destruct l; simp eqb_lit; apply eqb_atom_refl. Qed.
+
+Lemma eqb_lit_sym: forall (l1 l2: Lit), (l1 =? l2) = (l2 =? l1).
+Proof. 
+  intros. destruct l1, l2; simp eqb_lit.
+  - apply eqb_atom_sym.
+  - reflexivity.
+  - reflexivity.
+  - apply eqb_atom_sym.
+Qed.
+
+Lemma eqb_lit_eq: forall (l1 l2: Lit), l1 =? l2 = true <-> l1 = l2.
+Proof.
+  destruct l1, l2.
+  - split.
+    + intros. simp eqb_lit in H. apply eqb_atom_eq in H. subst. reflexivity.
+    + intros. rewrite H. apply eqb_lit_refl.
+  - split.
+    + intros. simp eqb_lit in H. discriminate.
+    + intros. discriminate.
+  - split.
+    + intros. simp eqb_lit in H. discriminate.
+    + intros. discriminate.
+  - split.
+    + intros. simp eqb_lit in H. apply eqb_atom_eq in H. subst. reflexivity.
+    + intros. injection H as H. subst. apply eqb_lit_refl.
+Qed.
+
+Lemma eqb_lit_neq: forall (l1 l2: Lit), l1 =? l2 = false <-> l1 <> l2.
+Proof.
+  intros l1 l2. split.
+  - intros Hneq Heq. rewrite Heq in Hneq. rewrite eqb_lit_refl in Hneq. discriminate.
+  - intros Hneq. destruct (l1 =? l2) eqn:Heq.
+    + apply eqb_lit_eq in Heq. exfalso. apply Hneq. apply Heq.
+    + reflexivity.
+Qed.
 
 (* A clause is a disjunction of literals. *)
 Definition Clause: Type := list Lit.
@@ -28,6 +75,15 @@ Definition CNF: Type := list Clause.
 Equations neg (l: Lit): Lit :=
 neg (Pos p) := Neg p;
 neg (Neg p) := Pos p.
+
+Lemma neg_neq: forall (l: Lit), l <> neg l.
+Proof. 
+  intros. apply eqb_lit_neq. funelim (eqb_lit l (neg l)).
+  - rewrite Heqcall. simp neg eqb_lit. reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - rewrite Heqcall. simp neg eqb_lit. reflexivity.
+Qed.
 
 Definition Unit (C: Clause): Prop := exists (l: Lit), C = [l].
 
@@ -204,19 +260,10 @@ Qed.
 
 End TransExamples.
 
-(* Splits formula into m ++d l ++a n. Propagations are stored in reverse order until return. *)
-Equations split_last_decision_aux (m n: PA Ann): option (PA Ann * Lit * PA Ann) :=
-split_last_decision_aux []        _ := None;
-split_last_decision_aux (m ++d l) n := Some (m, l, rev n);
-split_last_decision_aux (m ++p l) n := split_last_decision_aux m (n ++p l).
-
-Equations split_last_decision (m: PA Ann): option (PA Ann * Lit * PA Ann) :=
-split_last_decision m := split_last_decision_aux m [].
-
-Equations last_decision (m: PA Ann): option Lit :=
-last_decision m with split_last_decision m :=
-  | Some (_, l, _) := Some l
-  | _              := None.
+Equations split_last_decision (m: PA Ann): option (PA Ann * Lit) :=
+split_last_decision [] := None;
+split_last_decision (m ++d l) := Some (m, l);
+split_last_decision (m ++p l) := split_last_decision m.
 
 Equations option_bind {A B: Type} (f: A -> option B) (o: option A): option B :=
 option_bind _ None     := None;
@@ -266,7 +313,7 @@ next_state (state m f) :=
   (* t_fail *)
   | Some c, None => Some fail
   (* t_backtrack *)
-  | Some c, Some (m', l, n) => Some (state (m' ++p neg l) f)
+  | Some c, Some (m', l) => Some (state (m' ++p neg l) f)
   | _     , _    =>
   (* t_unit *)
   match find_unit m f with
@@ -284,14 +331,14 @@ Compute (option_bind next_state (next_state (state [] [[Pos 1];[Neg 1]]))).
 Compute (next_state (state ([] ++d Pos 1) [[Pos 1];[Neg 1]])).
 Compute (option_bind next_state (next_state (state ([] ++d Pos 1) [[Pos 1];[Neg 1]]))).
 
-Lemma split_decomp: forall (m m' n': PA Ann) (l': Lit),
-  split_last_decision m = Some (m', l', n') -> m = m' ++d l' ++a n'.
+Lemma split_decomp: forall (m m': PA Ann) (l': Lit),
+  split_last_decision m = Some (m', l') -> exists (n': PA Ann), m = m' ++d l' ++a n'.
 Proof.
-  intros. simp split_last_decision in H. funelim (split_last_decision_aux m []).
+  intros. funelim (split_last_decision m).
   - discriminate.
-  - simp split_last_decision_aux in H. simpl in H. injection H as H. subst. reflexivity.
-  - admit.
-Admitted. 
+  - rewrite <- Heqcall in H. injection H as H. subst. exists []. reflexivity.
+  - rewrite <- Heqcall in H0. destruct (H m' l' H0). rewrite H1. exists (x ++p l). reflexivity.
+Qed. 
 
 Lemma fail_c_in_f: forall (m: PA Ann) (f: CNF) (c: Clause), find_conflict m f = Some c -> In c f.
 Proof. intros. simp find_conflict in H. apply find_some in H as [H _]. assumption. Qed.
@@ -304,24 +351,46 @@ Proof.
   - congruence.
 Qed.
 
+Lemma l_ann_prop_eq: forall (m: PA Ann) (l: Lit), l_ann (m ++p l) l = Some false. 
+Proof. intros. simp l_ann. rewrite eqb_lit_refl. simpl. reflexivity. Qed.
+
+Lemma l_ann_prop_eq_neg: forall (m: PA Ann) (l: Lit), l_ann (m ++p l) (neg l) = Some false. 
+Proof. 
+  intros. simp l_ann. rewrite eqb_lit_refl. pose proof (neg_neq l). apply eqb_lit_neq in H.
+  rewrite eqb_lit_sym in H. rewrite H. simpl. reflexivity.
+Qed.
+
+Lemma l_ann_prop_neq: forall (m: PA Ann) (l l': Lit), l' <> l /\ l' <> neg l -> l_ann (m ++p l) l' = l_ann m l'. 
+Proof. 
+  intros. destruct H. simp l_ann. rewrite <- eqb_lit_neq in H, H0. rewrite H, H0. simpl. reflexivity.
+Qed.
+
 Lemma no_split__no_decision: forall (m: PA Ann), split_last_decision m = None -> NoDecisions m.
-Proof.
-  unfold NoDecisions. unfold not. intros. destruct H0. autorewrite with split_last_decision in H.
-  funelim (split_last_decision_aux m []).
+Proof. 
+  unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
+  - destruct H0. discriminate.
   - discriminate.
-  - discriminate.
-  - clear Heqcall. admit. (* H0 and H1 conflict *)
-Admitted.
+  - destruct H1. apply (H m).
+    + assumption.
+    + exists x. destruct (x =? l) eqn:G1, (x =? neg l) eqn:G2.
+      * apply eqb_lit_eq in G1. subst. rewrite l_ann_prop_eq in H1. discriminate.
+      * apply eqb_lit_eq in G1. subst. rewrite l_ann_prop_eq in H1. discriminate.
+      * apply eqb_lit_eq in G2. subst. rewrite l_ann_prop_eq_neg in H1. discriminate.
+      * rewrite eqb_lit_neq in G1, G2. rewrite <- (l_ann_prop_neq m _ _ (conj G1 G2)). assumption.
+    + reflexivity.
+    + reflexivity.
+Qed.
 
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
 Proof.
   intros. funelim (next_state s); rewrite H in Heqcall; clear H; symmetry in Heqcall.
   - discriminate.
   - destruct (find_conflict m f) as [c_conflict|] eqn:find_conflict.
-    + destruct (split_last_decision m) as [((m_split, l_split), n_split)|] eqn:split_last_decision.
+    + destruct (split_last_decision m) as [(m_split, l_split)|] eqn:split_last_decision.
       (* t_backtrack *)
       * injection Heqcall as Heqcall. rewrite Heqcall. 
-        pose proof (split_decomp _ _ _ _ split_last_decision) as decomp. rewrite decomp.
+        pose proof (split_decomp _ _ _ split_last_decision) as decomp. 
+        destruct decomp as [n_split decomp]. rewrite decomp.
         apply (t_backtrack m_split n_split f c_conflict l_split).
         -- admit.
         -- admit.
