@@ -304,6 +304,15 @@ Proof.
   - congruence.
 Qed.
 
+Lemma no_split__no_decision: forall (m: PA Ann), split_last_decision m = None -> NoDecisions m.
+Proof.
+  unfold NoDecisions. unfold not. intros. destruct H0. autorewrite with split_last_decision in H.
+  funelim (split_last_decision_aux m []).
+  - discriminate.
+  - discriminate.
+  - clear Heqcall. admit. (* H0 and H1 conflict *)
+Admitted.
+
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
 Proof.
   intros. funelim (next_state s); rewrite H in Heqcall; clear H; symmetry in Heqcall.
@@ -321,7 +330,7 @@ Proof.
       * injection Heqcall as Heqcall. rewrite Heqcall. apply (t_fail m f c_conflict).
         -- apply (fail_c_in_f m f c_conflict). assumption.
         -- apply (fail_conflict m f c_conflict). assumption.
-        -- admit.
+        -- apply (no_split__no_decision m). assumption.
     + destruct (find_unit m f) as [(c_unit, l_unit)|] eqn:find_unit.
       (* t_unit *)
       * injection Heqcall as Heqcall. rewrite Heqcall. apply (t_unit m f c_unit l_unit).
