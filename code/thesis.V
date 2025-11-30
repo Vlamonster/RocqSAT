@@ -306,8 +306,6 @@ Proof.
         -- admit.
         -- admit.
         -- admit.
-      (* apply (t_backtrack m_split n_split f c_conflict l_split).*)
-        admit.
       (* t_fail *)
       * injection Heqcall as Heqcall. rewrite Heqcall. apply (t_fail m f c_conflict).
         -- admit.
