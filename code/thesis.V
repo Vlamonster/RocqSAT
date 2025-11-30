@@ -307,8 +307,13 @@ Proof.
         -- admit.
       * destruct (find_decision m f) as [l_decision|] eqn:find_decision.
         (* t_decide *)
-        -- injection Heqcall as Heqcall. rewrite Heqcall. (* apply (t_decide m f _ l_decision). *)
-           admit.
+        -- injection Heqcall as Heqcall. rewrite Heqcall. autorewrite with find_decision in find_decision.
+           destruct (find_undef_c m f) as [c_decision|] eqn:find_undef_c.
+          ++ simp option_bind in find_decision. apply (t_decide m f c_decision l_decision).
+            ** admit.
+            ** admit.
+            ** admit.
+          ++ simp option_bind in find_decision. discriminate.
         -- discriminate.
 Admitted.
 
