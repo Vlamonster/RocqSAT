@@ -381,6 +381,12 @@ Proof.
     + reflexivity.
 Qed.
 
+Lemma find_undef_l_in_c: forall (m: PA Ann) (c: Clause) (l: Lit), find_undef_l m c = Some l -> In l c.
+Proof.
+  intros. funelim (find_undef_l m c). rewrite H in Heqcall. 
+  apply find_some in Heqcall. destruct Heqcall. assumption.
+Qed.
+
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
 Proof.
   intros. funelim (next_state s); rewrite H in Heqcall; clear H; symmetry in Heqcall.
@@ -412,7 +418,7 @@ Proof.
         -- injection Heqcall as Heqcall. rewrite Heqcall. autorewrite with find_decision in find_decision.
            destruct (find_undef_c m f) as [c_decision|] eqn:find_undef_c.
           ++ simp option_bind in find_decision. apply (t_decide m f c_decision l_decision).
-            ** admit.
+            ** left. apply (find_undef_l_in_c m c_decision l_decision). assumption.
             ** admit.
             ** admit.
           ++ simp option_bind in find_decision. discriminate.
