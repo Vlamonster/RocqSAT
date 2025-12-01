@@ -106,15 +106,13 @@ l_ann ((l', a) :: m) l with l =? l', l =? neg l' :=
   | _   , _    := l_ann m l.
 
 Equations l_remove (c: Clause) (l: Lit): Clause :=
-l_remove [] _  := [];
-l_remove (l' :: c) l  with l =? l' :=
-  | true := c
-  | false := l' :: l_remove c l.
+l_remove c l := filter (fun l' => negb (l =? l')) c.
 
 Equations c_eval {A: Type} (m: PA A) (c: Clause): option bool :=
 c_eval m [] := Some false;
 c_eval m (l :: c) with l_eval m l, c_eval m c :=
   | Some true , _          := Some true
+  | _         , Some true  := Some true
   | Some false, Some false := Some false
   | _         , _          := None.
 
