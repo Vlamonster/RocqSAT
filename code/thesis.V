@@ -212,7 +212,7 @@ Example dead_end:
     fail.
 Proof.
   apply (t_fail _ _ [Neg 1]).
-  - unfold In. right. left. reflexivity.
+  - right. left. reflexivity.
   - unfold Conflicting. autorewrite with c_eval. reflexivity.
   - unfold NoDecisions. unfold not. intros. destruct H. autorewrite with neg l_ann in H.
     destruct (x =? Pos 1), (x =? Neg 1); simpl in H; discriminate.
@@ -223,8 +223,8 @@ Example unit_prop:
   (state [(Pos 1, false)] [[Pos 1];[Neg 1]]).
 Proof.
   apply (t_unit _ _ [Pos 1] _).
-  - unfold In. left. reflexivity.
-  - unfold In. left. reflexivity.
+  - left. reflexivity.
+  - left. reflexivity.
   - unfold Conflicting. autorewrite with c_eval. reflexivity.
   - unfold Undef. autorewrite with l_eval. reflexivity.
 Qed.
@@ -234,8 +234,8 @@ Example decide:
   (state [(Pos 1, true)] [[Pos 1];[Neg 1]]).
 Proof.
   apply (t_decide _ _ [Pos 1] _).
-  - unfold In. left. left. reflexivity.
-  - unfold In. left. reflexivity.
+  - left. left. reflexivity.
+  - left. reflexivity.
   - unfold Undef. autorewrite with l_eval. reflexivity.
 Qed.
 
@@ -253,7 +253,7 @@ Example backtrack:
   (state [(Neg 1, false)] [[Pos 1];[Neg 1]]).
 Proof.
   apply (t_backtrack [] [] _ [Neg 1] (Pos 1)).
-  - unfold In. right. left. reflexivity.
+  - right. left. reflexivity.
   - unfold Conflicting. simp c_eval. reflexivity.
   - unfold NoDecisions. unfold not. intros. destruct H. simp l_ann in H. discriminate.
 Qed.
