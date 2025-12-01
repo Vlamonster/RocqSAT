@@ -393,6 +393,14 @@ Proof.
   apply find_some in Heqcall. destruct Heqcall. assumption.
 Qed.
 
+Lemma find_undef_l_undef: forall (m: PA Ann) (c: Clause) (l: Lit), find_undef_l m c = Some l -> Undef m l.
+Proof. 
+  unfold Undef. intros. funelim (find_undef_l m c). rewrite H in Heqcall. 
+  apply find_some in Heqcall. destruct Heqcall. funelim (is_undefined_l m l).
+  - congruence.
+  - assumption.
+Qed.
+
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
 Proof.
   intros. funelim (next_state s); rewrite H in Heqcall; clear H; symmetry in Heqcall.
@@ -426,7 +434,7 @@ Proof.
           ++ simp option_bind in find_decision. apply (t_decide m f c_decision l_decision).
             ** left. apply (find_undef_l_in_c m c_decision l_decision). assumption.
             ** apply (find_undef_c_in_f m f c_decision). assumption.
-            ** admit.
+            ** apply (find_undef_l_undef m c_decision l_decision). assumption.
           ++ simp option_bind in find_decision. discriminate.
         -- discriminate.
 Admitted.
