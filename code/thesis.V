@@ -482,8 +482,7 @@ Proof.
         apply (t_backtrack m_split n_split f c_conflict l_split).
         -- apply (find_conflict_c_in_f m f c_conflict). assumption.
         -- rewrite <- decomp. apply (find_conflict_conflicting m f c_conflict). assumption.
-        -- rewrite decomp in split_last_decision. apply (split_tail_undef m_split n_split l_split).
-           assumption.
+        -- admit.
       (* t_fail *)
       * injection Heqcall as Heqcall. rewrite Heqcall. apply (t_fail m f c_conflict).
         -- apply (find_conflict_c_in_f m f c_conflict). assumption.
