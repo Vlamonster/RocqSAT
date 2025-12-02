@@ -566,6 +566,16 @@ Qed.
 
 (* The rhs is weaker because there could be multiple { s': State | s ==> s' }. *)
 Lemma next_state_exists: forall (s s': State), s ==> s' -> exists (s'': State), next_state s = Some s''.
+Proof.
+  intros. inversion H.
+  (* t_fail *)
+  - admit.
+  (* t_unit *)
+  - admit.
+  (* t_decide *)
+  - admit.
+  (* t_backtrack *)
+  - admit.
 Admitted.
 
 Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
