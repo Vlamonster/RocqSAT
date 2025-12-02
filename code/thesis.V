@@ -550,16 +550,22 @@ Qed.
 (* The rhs is weaker because there could be multiple { s': State | s ==> s' }. *)
 Lemma next_state_exists: forall (s s': State), s ==> s' -> exists (s'': State), next_state s = Some s''.
 Proof.
-  intros. inversion H.
+  intros. inversion H as 
+    [
+      m f c_conflict Hc_in_f Hconflict Hno_dec |
+      m f c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef |
+      m f c_decide l_decide Hx_in_c Hc_in_f Hundef |
+      m_split n_split f c_conflict l_split Hc_in_f Hconflict Hno_dec
+    ]; subst s s'.
   (* t_fail *)
   - exists fail. funelim (next_state (state m f)).
     + discriminate.
-    + injection eqargs as eqargs. symmetry in eqargs, H3. subst. 
-      destruct (find_conflict m f) eqn:G1.
-      * destruct (split_last_decision m) eqn:G2.
-        -- destruct p as [m_split l_split]. admit.
+    + injection eqargs as eqargs. symmetry in eqargs, H0. subst. 
+      destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind.
+      * destruct (split_last_decision m) as [(m_split, l_split)|] eqn:Hsplit.
+        -- admit.
         -- reflexivity.
-      * destruct (find_conflict_exists m f c H0 H1). congruence.
+      * destruct (find_conflict_exists m f c_conflict Hc_in_f Hconflict). congruence.
   (* t_unit *)
   - admit.
   (* t_decide *)
