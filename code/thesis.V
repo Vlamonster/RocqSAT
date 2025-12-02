@@ -57,13 +57,7 @@ neg (Pos p) := Neg p;
 neg (Neg p) := Pos p.
 
 Lemma neg_neq: forall (l: Lit), l <> neg l.
-Proof. 
-  intros. apply eqb_lit_neq. funelim (eqb_lit l (neg l)).
-  - rewrite Heqcall. simp neg eqb_lit. reflexivity.
-  - reflexivity.
-  - reflexivity.
-  - rewrite Heqcall. simp neg eqb_lit. reflexivity.
-Qed.
+Proof. intros. apply eqb_lit_neq. funelim (eqb_lit l (neg l)); try auto. Qed.
 
 Definition Unit (C: Clause): Prop := exists (l: Lit), C = [l].
 
