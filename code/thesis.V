@@ -57,11 +57,8 @@ neg (Pos p) := Neg p;
 neg (Neg p) := Pos p.
 
 Lemma neg_neq: forall (l: Lit), l <> neg l.
-Proof.
-  intros. apply eqb_lit_neq. destruct (l =? neg l) eqn:G.
-  - apply eqb_lit_eq in G. 
-  
-  funelim (eqb_lit l (neg l)).
+Proof. 
+  intros. apply eqb_lit_neq. funelim (eqb_lit l (neg l)).
   - rewrite Heqcall. simp neg eqb_lit. reflexivity.
   - reflexivity.
   - reflexivity.
