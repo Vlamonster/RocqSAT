@@ -725,12 +725,12 @@ Equations score_total_lt (m m': PA Ann) (f: CNF): bool :=
 score_total_lt m m' f := score_total m f <? score_total m' f.
 
 Inductive TransLt: relation State :=
-| tc_fail (s: State): 
+| tl_fail (s: State): 
   TransLt fail s
-| tc_prefix (m m': PA Ann) (f: CNF):
+| tl_prefix (m m': PA Ann) (f: CNF):
   score_lt m m' f = true -> 
   TransLt (state m f) (state m' f)
-| tc_total (m m': PA Ann) (f: CNF):
+| tl_total (m m': PA Ann) (f: CNF):
   score_total_lt m m' f = true ->
   TransLt (state m f) (state m' f).
 
@@ -758,6 +758,17 @@ Compute score_lt ([] ++p Neg 1) ([] ++d Pos 1) test_formula.
 End TransLtExamples.
 
 Lemma trans__trans_lt: forall (s s': State), s ==> s' -> s' << s.
+  intros. inversion H as 
+    [
+      m f c_conflict Hc_in_f Hconflict Hno_dec |
+      m f c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef |
+      m f c_decide l_decide Hx_in_c Hc_in_f Hundef |
+      m_split n_split f c_conflict l_split Hc_in_f Hconflict Hno_dec
+    ]; subst s s'.
+  - constructor.
+  - apply tl_prefix. admit.
+  - apply tl_total. admit.
+  - apply tl_prefix. admit.
 Admitted.
 
 Equations solve (s: State): State :=
