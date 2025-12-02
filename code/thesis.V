@@ -678,7 +678,13 @@ Proof.
 Qed.
 
 Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
-Admitted.
+Proof.
+  unfold Final. unfold not. intros. split.
+  - intros. destruct H0. apply next_state_exists in H0. destruct H0. congruence.
+  - intros. destruct (next_state s) eqn:G.
+    + apply next_state_sound in G. exfalso. apply H. exists s0. assumption.
+    + reflexivity.
+Qed.
 
 (* Temporarily has `n` for testing, until termination in proven. *)
 Equations solve (n: nat) (s: State): State :=
