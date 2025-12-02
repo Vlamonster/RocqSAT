@@ -575,14 +575,24 @@ Proof.
     simp is_conflict in contra. rewrite Hc in contra. simpl in contra. discriminate.
 Qed.
 
+Lemma find_undef_l_exists : forall (m: PA Ann) (c: Clause) (l: Lit),
+  In l c -> Undef m l -> exists (l': Lit), find_undef_l m c = Some l'.
+Proof.
+  unfold Undef. intros. destruct (find_undef_l m c) eqn:G.
+  - now exists l0.
+  - simp find_undef_l in G. apply (find_none (is_undefined_l m) c G l) in H.
+    simp is_undefined_l in H. rewrite H0 in H. discriminate.
+Qed.
+
 Lemma find_decision_exists: forall (m: PA Ann) (f: CNF) (c: Clause) (l: Lit),
   In l c -> In c f -> Undef m l -> exists (l': Lit), find_decision m f = Some l'.
 Proof. 
-  unfold Undef. intros. funelim (find_decision m f).
+  intros. funelim (find_decision m f).
   - contradiction.
   - now exists l.
-  - admit.
-Admitted.
+  - apply (Hind c0 l); auto. inversion H0; auto. subst.
+    destruct (find_undef_l_exists m c0 l H H1). congruence.
+Qed.
 
 Lemma undef__neg_undef: forall (m: PA Ann) (l: Lit), Undef m l <-> Undef m (neg l).
 Proof.
