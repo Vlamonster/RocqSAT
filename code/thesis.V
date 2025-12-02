@@ -451,9 +451,58 @@ Proof.
   - apply H. congruence.
 Qed.
 
+Lemma c_eval_none__l_eval_none: forall (m: PA Ann) (c: Clause), 
+  c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
+Proof. 
+  induction c. intros.
+  - discriminate.
+  - intros. destruct (l_eval m a) eqn:G1.
+    + destruct b.
+      * simp c_eval in H. rewrite G1 in H. simpl in H. discriminate.
+      * simp c_eval in H. rewrite G1 in H. simpl in H. destruct (c_eval m c) eqn:G2.
+        -- destruct b; discriminate.
+        -- apply IHc in H. destruct H. destruct H. exists x. split.
+          ++ right. assumption.
+          ++ assumption.
+    + exists a. split.
+      * left. reflexivity.
+      * assumption.
+Qed.
+
+Lemma c_eval_false__l_eval_false: forall (m: PA Ann) (c: Clause),
+  c_eval m c = Some false -> forall (l: Lit), In l c -> l_eval m l = Some false.
+Proof. 
+  induction c.
+  - intros. contradiction.
+  - intros. simp c_eval in H. destruct (l_eval m a) eqn:G1.
+    + destruct b.
+      * simpl in H. discriminate.
+      * simpl in H. destruct (c_eval m c) eqn:G2.
+        -- destruct b.
+          ++ discriminate.
+          ++ inversion H0.
+            ** subst. assumption.
+            ** apply (IHc H l H1).
+        -- discriminate.
+    + simpl in H. destruct (c_eval m c) eqn:G2.
+      * destruct b; discriminate.
+      * discriminate.
+Qed.
+
 Lemma undef_remove_false__undef: forall (m: PA Ann) (c: Clause) (l: Lit),
   c_eval m c = None -> c_eval m (l_remove c l) = Some false -> Undef m l.
-Proof. Admitted.
+Proof.
+  unfold Undef. intros. 
+  pose proof (c_eval_none__l_eval_none m c H).
+  pose proof (c_eval_false__l_eval_false m (l_remove c l) H0).
+  destruct H1. destruct H1. destruct (x =? l) eqn:G.
+  - apply eqb_lit_eq in G. subst. assumption.
+  - pose proof (H2 x). assert (In x (l_remove c l)).
+    + simp l_remove. rewrite filter_In. split.
+      * assumption.
+      * rewrite eqb_lit_sym. rewrite G. reflexivity.
+    + apply H4 in H5. congruence. 
+Qed.
 
 Lemma find_unit_undef: forall (m: PA Ann) (f: CNF) (c: Clause) (l: Lit),
   find_unit m f = Some (c, l) -> Undef m l.
