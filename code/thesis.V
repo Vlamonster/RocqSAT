@@ -57,7 +57,16 @@ neg (Pos p) := Neg p;
 neg (Neg p) := Pos p.
 
 Lemma neg_neq: forall (l: Lit), l <> neg l.
-Proof. intros. apply eqb_lit_neq. funelim (eqb_lit l (neg l)); try auto. Qed.
+Proof. intros. apply eqb_lit_neq. funelim (l =? neg l); try auto. Qed.
+
+Lemma neg_neqb: forall (l: Lit), l =? neg l = false.
+Proof. intros. funelim (l =? neg l); try auto. Qed.
+
+Lemma neg_involutive: forall (l: Lit), neg (neg l) = l.
+Proof. intros. funelim (neg l); try auto. Qed.
+
+Lemma eqb_lit_neg_compat: forall (l1 l2: Lit), (l1 =? l2) = (neg l1 =? neg l2).
+Proof. intros. destruct l1, l2; try auto. Qed.
 
 Definition Unit (C: Clause): Prop := exists (l: Lit), C = [l].
 
@@ -559,6 +568,29 @@ Proof.
     simp is_conflict in contra. rewrite Hc in contra. simpl in contra. discriminate.
 Qed.
 
+Lemma find_decision_exists: forall (m: PA Ann) (f: CNF) (c: Clause) (l: Lit),
+  In l c -> In c f -> Undef m l -> exists (l': Lit), find_decision m f = Some l'.
+Proof. Admitted.
+
+Lemma undef__neg_undef: forall (m: PA Ann) (l: Lit), Undef m l <-> Undef m (neg l).
+Proof.
+  unfold Undef. intros. funelim (l_eval m l).
+  - intuition.
+  - intuition.
+    + discriminate.
+    + apply eqb_lit_eq in Heq. subst. simp l_eval in H. rewrite eqb_lit_refl in H. 
+      rewrite eqb_lit_sym in H. rewrite neg_neqb in H. discriminate.
+  - intuition.
+    + discriminate.
+    + apply eqb_lit_eq in Heq. subst. simp neg in H. rewrite neg_involutive in H.
+      simp l_eval in H. rewrite eqb_lit_refl in H. rewrite neg_neqb in H. discriminate.
+  - intuition.
+    + simp l_eval. rewrite <- eqb_lit_neg_compat. rewrite Heq0.
+      assert (neg l =? l' = false). admit. rewrite H1.  simpl. assumption.
+    + autorewrite with l_eval in H. rewrite <- eqb_lit_neg_compat in H. rewrite Heq0 in H.
+      assert (neg l =? l' = false). admit. rewrite H2 in H. simpl in H. apply H1. apply H.
+Admitted.
+
 (* The rhs is weaker because there could be multiple { s': State | s ==> s' }. *)
 Lemma next_state_exists: forall (s s': State), s ==> s' -> exists (s'': State), next_state s = Some s''.
 Proof.
@@ -590,7 +622,7 @@ Proof.
         -- now exists (state (m ++p l_unit') f).
         -- destruct (find_decision m f) as [l_decide|] eqn:Hfind_dec.
           ++ now exists (state (m ++d l_decide) f).
-          ++ admit. (* Hfind_dec contradicts Hundef /\ Hl_in_c /\ Hc_in_f *)
+          ++ destruct (find_decision_exists m f c_unit l_unit Hl_in_c Hc_in_f Hundef). congruence.
   (* t_decide *)
   - funelim (next_state (state m f)).
     + discriminate.
@@ -603,7 +635,9 @@ Proof.
         -- now exists (state (m ++p l_unit') f).
         -- destruct (find_decision m f) as [l_decide'|] eqn:Hfind_dec.
           ++ now exists (state (m ++d l_decide') f).
-          ++ admit. (* Hfind_dec contradicts Hundef /\ Hx_in_c /\ Hc_in_f *)
+          ++ destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
+            ** destruct (find_decision_exists m f c_decide l_decide Hl_in_c Hc_in_f Hundef). congruence.
+            ** admit.
   (* t_backtrack *)
   - funelim (next_state (state (m_split ++d l_split ++a n_split) f)).
     + discriminate.
