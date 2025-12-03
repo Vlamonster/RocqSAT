@@ -935,7 +935,9 @@ Lemma trans__trans_lt: forall (s s': State), s ==> s' -> s >> s'.
       m_split n_split f c_conflict l_split Hc_in_f Hconflict Hno_dec
     ]; subst s s'; constructor.
   - constructor.
-  - admit.
+  - simp clean. simpl. apply s_prefix. apply prefix_lt_refl.
+    assert (In l_unit c_unit -> In c_unit f -> l_in_f l_unit f = true). admit. 
+    rewrite (H0 Hl_in_c Hc_in_f). admit.
   - admit.
   - admit.
 Admitted.
