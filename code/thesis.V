@@ -857,24 +857,18 @@ Qed.
 Equations state_lt (s s': State): bool :=
 state_lt s s' := state_lt' (clean s) (clean s').
 
+Lemma clean_same_formula: forall (m m': PA Ann) (f f': CNF),
+  clean (state m f) = state m' f' -> f = f'.
+Proof. intros. simp clean in H. simpl in H. injection H as _ <-. reflexivity. Qed.
+
 Lemma state_lt_refl: forall (m m': PA Ann) (f: CNF),
   state_lt (state m f) (state m' f) = true <-> state m' f >> state m f.
 Proof.
   intros. split.
   - intros. funelim (state_lt (state m f) (state m' f)). rewrite H in Heqcall.
-    constructor. funelim (state_lt' (clean (state m f)) (clean (state m' f))).
-    + discriminate.
-    + discriminate.
-    + rewrite <- H0. rewrite <- H1. rewrite Heqcall in Heqcall0. apply orb_true_iff in Heqcall0.
-      destruct Heqcall0.
-      * admit.
-      * admit.
-  - intros. inversion H; subst. inversion H0.
-    + rewrite <- H1 in H2. rewrite <- H3 in H2. rewrite <- H4 in H2. apply prefix_lt_refl in H2.
-      admit.
-    + rewrite <- H1 in H2. rewrite <- H3 in H2. rewrite <- H4 in H2. apply total_lt_refl in H2.
-      admit.
-Admitted.
+    constructor. simp clean in *. simpl in *. now apply state_lt'_refl.
+  - intros. inversion H; subst. simp state_lt. simp clean in *. simpl in *. now apply state_lt'_refl.
+Qed.
 
 Lemma next_state_options: forall (m: PA Ann) (f: CNF),
   next_state (state m f) = None \/
