@@ -763,10 +763,13 @@ Qed.
 Equations eqb_by_atom (la la': Lit * Ann): bool :=
 eqb_by_atom (l, _) (l', _) := (l =? l') || (l =? neg l'). 
 
+Equations is_bounded (f: CNF) (la: Lit * Ann): bool :=
+is_bounded f (l, _) := l_in_f l f.
+
 Equations clean (s: State): State :=
 clean fail        := fail;
 clean (state m f) := 
-  let bounded := filter (fun (la: Lit * Ann) => l_in_f (fst la) f) m in
+  let bounded := filter (is_bounded f) m in
   let deduped := dedupe_by eqb_by_atom bounded in
   state deduped f.
 
@@ -945,8 +948,9 @@ Lemma trans__trans_lt: forall (s s': State), s ==> s' -> s >> s'.
       m_split n_split f c_conflict l_split Hc_in_f Hconflict Hno_dec
     ]; subst s s'; constructor.
   - constructor.
-  - simp clean. simpl. apply s_prefix. apply prefix_lt_refl.
-    rewrite (l_in_c__c_in_f__l_in_f f c_unit l_unit Hl_in_c Hc_in_f). admit.
+  - simp clean. simpl. simp is_bounded. apply s_prefix. apply prefix_lt_refl.
+    rewrite (l_in_c__c_in_f__l_in_f f c_unit l_unit Hl_in_c Hc_in_f).
+    admit.
   - admit.
   - admit.
 Admitted.
