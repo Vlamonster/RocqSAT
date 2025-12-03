@@ -693,11 +693,6 @@ solve_n (S n) s with next_state s :=
   | Some s' := solve_n n s'
   | None := s.
 
-Equations score_aux (m: PA Ann) (n x: nat): list nat :=
-score_aux []        n x := [n - x];
-score_aux (m ++p l) n x := score_aux m n (S x);
-score_aux (m ++d l) n x := n - x :: score_aux m n 0.
-
 Equations max_lit_c (c: Clause): nat :=
 max_lit_c []           := 0;
 max_lit_c (Pos p :: c) := max p (max_lit_c c);
@@ -707,57 +702,64 @@ Equations max_lit_f (f: CNF): nat :=
 max_lit_f []       := 0;
 max_lit_f (c :: f) := max (max_lit_c c) (max_lit_f f).
 
+Equations score_aux (m: PA Ann) (n x: nat): list nat :=
+score_aux []        n x := [n - x];
+score_aux (m ++p l) n x := score_aux m n (S x);
+score_aux (m ++d l) n x := n - x :: score_aux m n 0.
+
 Equations score (m: PA Ann) (f: CNF): list nat :=
 score m f := rev (score_aux m (max_lit_f f) 0).
 
 Equations score_total (m: PA Ann) (f: CNF): nat :=
 score_total m f := (max_lit_f f) - length m.
 
-Equations score_lt_aux (m m': list nat): bool :=
-score_lt_aux []       _          := false;
-score_lt_aux _        []         := false;
-score_lt_aux (s :: m) (s' :: m') := (s <? s') || (score_lt_aux m m').
+Inductive PrefixLt: relation (list nat) :=
+| p_head (m m': list nat) (n n': nat):
+  n < n' ->
+  PrefixLt (n :: m) (n' :: m')
+| p_tail (m m': list nat) (n n': nat):
+  n = n' ->
+  PrefixLt m m' ->
+  PrefixLt (n :: m) (n' :: m').
 
-Equations score_lt (m m': PA Ann) (f: CNF): bool :=
-score_lt m m' f := score_lt_aux (score m f) (score m' f).
-
-Equations score_total_lt (m m': PA Ann) (f: CNF): bool :=
-score_total_lt m m' f := score_total m f <? score_total m' f.
+Inductive TotalLt: relation (list nat * nat) :=
+| t_total (l l': nat):
+  l < l' ->
+  TotalLt ([], l) ([], l')
+| t_tail (m m': list nat) (n n' l l': nat):
+  n = n' ->
+  TotalLt (m, l) (m', l') ->
+  TotalLt (n :: m, l) (n' :: m', l').
 
 Inductive TransLt: relation State :=
 | tl_fail (s: State): 
   TransLt fail s
 | tl_prefix (m m': PA Ann) (f: CNF):
-  score_lt m m' f = true -> 
+  PrefixLt (score m f) (score m' f) ->
   TransLt (state m f) (state m' f)
 | tl_total (m m': PA Ann) (f: CNF):
-  score_total_lt m m' f = true ->
+  TotalLt (score m f, score_total m f) (score m' f, score_total m f) ->
   TransLt (state m f) (state m' f).
 
-Infix "<<" := TransLt (at level 70).
+Infix ">>" := (fun (s s': State) => TransLt s' s) (at level 70).
 
 Module TransLtExamples.
 
-Compute score ([] ++d Pos 1 ++p Pos 2) [[Pos 1];[Pos 2]].
-Compute score ([] ++p Pos 1) [[Pos 1];[Pos 2]].
-Compute score ([] ++d Pos 1) [[Pos 1];[Pos 2]].
-Compute score ([]) [[Pos 1];[Pos 2]].
+Example prefix_lt_head: PrefixLt [1] [2].
+Proof. apply p_head. auto. Qed.
 
-Definition test_formula: CNF := [[Pos 1];[Neg 1]]. 
+Example prefix_lt_tail: PrefixLt [1;1] [1;2].
+Proof. apply p_tail. auto. apply p_head. auto. Qed.
 
-(* t_unit decreases by score *)
-Compute score_lt ([] ++p Pos 1) [] test_formula.
+Example total_lt_total: TotalLt ([], 1) ([], 2).
+Proof. apply t_total. auto. Qed.
 
-(* t_decide decreases by score_total *)
-Compute score_lt ([] ++d Pos 1) [] test_formula.
-Compute score_total_lt ([] ++d Pos 1) [] test_formula.
-
-(* t_backtrack decreases by score *)
-Compute score_lt ([] ++p Neg 1) ([] ++d Pos 1) test_formula.
+Example total_lt_tail: TotalLt ([1], 1) ([1], 2).
+Proof. apply t_tail. auto. apply t_total. auto. Qed.
 
 End TransLtExamples.
 
-Lemma trans__trans_lt: forall (s s': State), s ==> s' -> s' << s.
+Lemma trans__trans_lt: forall (s s': State), s ==> s' -> s >> s'.
   intros. inversion H as 
     [
       m f c_conflict Hc_in_f Hconflict Hno_dec |
@@ -770,11 +772,6 @@ Lemma trans__trans_lt: forall (s s': State), s ==> s' -> s' << s.
   - apply tl_total. admit.
   - apply tl_prefix. admit.
 Admitted.
-
-Equations solve (s: State): State :=
-solve s with next_state s :=
-  | Some s' := solve s'
-  | _       := s.
 
 Theorem fail_final: Final fail.
 Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
