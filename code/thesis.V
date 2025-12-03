@@ -735,16 +735,25 @@ Inductive TotalLt: relation (list nat * nat) :=
   TotalLt (m, l) (m', l') ->
   TotalLt (n :: m, l) (n' :: m', l').
 
-Inductive TransLt: relation State :=
+Inductive TransLt': relation State :=
 | tl_fail (s: State): 
-  TransLt fail s
+  TransLt' fail s
 | tl_prefix (m m': PA Ann) (f: CNF):
   PrefixLt (score m f) (score m' f) ->
-  TransLt (state m f) (state m' f)
+  TransLt' (state m f) (state m' f)
 | tl_total (m m': PA Ann) (f: CNF):
   TotalLt (score m f, score_total m f) (score m' f, score_total m f) ->
-  TransLt (state m f) (state m' f).
+  TransLt' (state m f) (state m' f).
 
+(* Placeholder *)
+Definition clean: State -> State := id.
+
+Inductive TransLt: relation State :=
+| tl_clean (s s': State):
+  TransLt' (clean s) (clean s') ->
+  TransLt s s'.
+
+Infix ">>*" := (fun (s s': State) => TransLt' s' s) (at level 70).
 Infix ">>" := (fun (s s': State) => TransLt s' s) (at level 70).
 
 Equations prefix_lt (m m': list nat): bool :=
