@@ -745,8 +745,15 @@ Inductive StateLt': relation State :=
   TotalLt (score m f, score_total m f) (score m' f, score_total m' f) ->
   StateLt' (state m f) (state m' f).
 
-(* Placeholder *)
-Definition clean: State -> State := id.
+Equations l_in_c (l: Lit) (f: Clause): bool :=
+l_in_c l c := existsb (eqb_lit l) c || existsb (eqb_lit (neg l)) c.
+
+Equations l_in_f (l: Lit) (f: CNF): bool :=
+l_in_f l f := existsb (l_in_c l) f.
+
+Equations clean (s: State): State :=
+clean fail        := fail;
+clean (state m f) := state (filter (fun (la: Lit * Ann) => l_in_f (fst la) f) m) f.
 
 Inductive StateLt: relation State :=
 | s_clean (s s': State):
@@ -887,9 +894,9 @@ Lemma trans__trans_lt: forall (s s': State), s ==> s' -> s >> s'.
       m_split n_split f c_conflict l_split Hc_in_f Hconflict Hno_dec
     ]; subst s s'; constructor.
   - constructor.
-  - apply s_prefix. admit.
-  - apply s_total. admit.
-  - apply s_prefix. admit.
+  - admit.
+  - admit.
+  - admit.
 Admitted.
 
 Theorem fail_final: Final fail.
