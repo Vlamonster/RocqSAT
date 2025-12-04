@@ -961,12 +961,77 @@ Proof.
       * simp l_eval in H. rewrite G1, G2 in H. simpl in H. assumption.
 Qed.
 
-Lemma dedupe_prop: forall (m: PA Ann) (f: CNF) (l: Lit), 
+Lemma dedupe_prop: forall (m: PA Ann) (l: Lit), 
   Undef m l -> dedupe_by eqb_by_atom (m ++p l) = dedupe_by eqb_by_atom m ++p l.
 Proof.
   intros. funelim (dedupe_by eqb_by_atom m).
   - reflexivity.
   - simp dedupe_by. apply undef__no_dupes in H0. apply forallb_filter_id in H0. rewrite H0. now simp dedupe_by.
+Qed.
+
+Lemma l_eval_some_in: forall (m: PA Ann) (l: Lit) (b: bool), 
+  l_eval m l = Some b -> exists (b': bool), In (l, b') m \/ In (neg l, b') m.
+Proof. 
+  intros. funelim (l_eval m l).
+  - congruence.
+  - rewrite eqb_lit_eq in Heq. subst l'. exists a. left. now left.
+  - rewrite eqb_lit_eq in Heq. subst. exists a. right. rewrite neg_involutive. now left.
+  - rewrite H0 in Heqcall. apply H in Heqcall; auto. destruct Heqcall. destruct H1.
+    + exists x. left. now right.
+    + exists x. right. now right.
+Qed.
+
+Lemma in_l_eval_some: forall (m: PA Ann) (l: Lit) (b: bool), 
+  In (l, b) m -> exists (b': bool), l_eval m l = Some b'.
+Proof.
+  intros. funelim (l_eval m l).
+  - contradiction.
+  - now exists true.
+  - now exists false.
+  - apply (H b). inversion H0.
+    + injection H1 as <- <-. rewrite eqb_lit_refl in Heq0. discriminate.
+    + assumption. 
+Qed.
+
+Lemma l_eval_some_neg: forall (m: PA Ann) (l: Lit) (b: bool),
+  l_eval m l = Some b <-> l_eval m (neg l) = Some (negb b).
+Proof.
+  intros. funelim (l_eval m l).
+  - split.
+    + intros. discriminate.
+    + intros. discriminate.
+  - split.
+    + intros. injection H as <-. rewrite eqb_lit_eq in Heq. subst l'.
+      simp l_eval. rewrite eqb_lit_refl. rewrite eqb_lit_sym. rewrite neg_neqb. simpl. reflexivity.
+    + intros. rewrite eqb_lit_eq in Heq. subst l'. simp l_eval in H.
+      rewrite eqb_lit_refl in H. rewrite eqb_lit_sym in H. rewrite neg_neqb in H. simpl in H.
+      injection H as H. destruct b; easy.
+  - split.
+    + intros. rewrite eqb_lit_eq in Heq. subst. rewrite neg_involutive.
+      simp l_eval. rewrite eqb_lit_refl. rewrite neg_neqb. simpl. f_equal.
+      injection H as <-. reflexivity.
+    + intros. f_equal. rewrite eqb_lit_eq in Heq. subst. rewrite neg_involutive in H.
+      simp l_eval in H. rewrite neg_neqb in H. rewrite eqb_lit_refl in H. simpl in H.
+      injection H as H. destruct b; auto.
+  - split.
+    + intros. simp l_eval. rewrite <- eqb_lit_neg_compat. rewrite Heq0. 
+      rewrite eqb_lit_neg_compat. rewrite neg_involutive. rewrite Heq. simpl.
+      apply H. assumption.
+    + intros. simp l_eval in H0. rewrite <- eqb_lit_neg_compat in H0. rewrite Heq0 in H0.
+      rewrite eqb_lit_neg_compat in H0. rewrite neg_involutive in H0. rewrite Heq in H0.
+      simpl in H0. apply H. assumption.
+Qed.
+
+Lemma undef__bound_undef: forall (m: PA Ann) (l: Lit) (test: Lit * Ann -> bool),
+  Undef m l -> Undef (filter test m) l.
+Proof.
+  unfold Undef. intros. pose proof (incl_filter test m). unfold incl in H0.
+  destruct (l_eval (filter test m) l) eqn:G.
+  - apply l_eval_some_in in G. destruct G as [b' [G|G]].
+    + apply H0 in G. apply in_l_eval_some in G. destruct G. congruence.
+    + apply H0 in G. apply in_l_eval_some in G. destruct G. apply l_eval_some_neg in H1.
+      rewrite neg_involutive in H1. congruence.
+  - reflexivity.
 Qed.
 
 Lemma trans__state_lt: forall (s s': State), s ==> s' -> s >> s'.
@@ -980,6 +1045,8 @@ Lemma trans__state_lt: forall (s s': State), s ==> s' -> s >> s'.
   - constructor.
   - simp clean. simpl. simp is_bounded. apply s_prefix. apply prefix_lt_refl.
     rewrite (l_in_c__c_in_f__l_in_f f c_unit l_unit Hl_in_c Hc_in_f).
+    pose proof (dedupe_prop (filter (is_bounded f) m) l_unit (undef__bound_undef m l_unit (is_bounded f) Hundef)).
+    simp dedupe_by in *. rewrite H0. clear H0.
     admit.
   - admit.
   - admit.
