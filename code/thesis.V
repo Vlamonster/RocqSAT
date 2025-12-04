@@ -61,19 +61,19 @@ neg (Pos p) := Neg p;
 neg (Neg p) := Pos p.
 
 Lemma neg_neq: forall (l: Lit), l <> neg l.
-Proof. intros. apply eqb_lit_neq. funelim (l =? neg l); try auto. Qed.
+Proof. intros. apply eqb_lit_neq. now funelim (l =? neg l). Qed.
 
 Lemma neg_neqb: forall (l: Lit), l =? neg l = false.
-Proof. intros. funelim (l =? neg l); try auto. Qed.
+Proof. intros. now funelim (l =? neg l). Qed.
 
 Lemma neg_involutive: forall (l: Lit), neg (neg l) = l.
-Proof. intros. funelim (neg l); try auto. Qed.
+Proof. intros. now funelim (neg l). Qed.
 
 Lemma eqb_lit_neg_compat: forall (l1 l2: Lit), (l1 =? l2) = (neg l1 =? neg l2).
-Proof. intros. destruct l1, l2; try auto. Qed.
+Proof. intros. now destruct l1, l2. Qed.
 
 Lemma eq_lit_neg_compat: forall (l1 l2: Lit), l1 = l2 <-> neg l1 = neg l2.
-Proof. intros. repeat rewrite <- eqb_lit_eq. destruct l1, l2; try intuition. Qed.
+Proof. intros. repeat rewrite <- eqb_lit_eq. now rewrite eqb_lit_neg_compat. Qed.
 
 Definition Unit (C: Clause): Prop := exists (l: Lit), C = [l].
 
