@@ -70,7 +70,7 @@ Lemma neg_involutive: forall (l: Lit), neg (neg l) = l.
 Proof. intros. now funelim (neg l). Qed.
 
 Lemma eqb_lit_neg_compat: forall (l1 l2: Lit), (l1 =? l2) = (neg l1 =? neg l2).
-Proof. intros. now destruct l1, l2. Qed.
+Proof. now destruct l1, l2. Qed.
 
 Lemma eq_lit_neg_compat: forall (l1 l2: Lit), l1 = l2 <-> neg l1 = neg l2.
 Proof. intros. repeat rewrite <- eqb_lit_eq. now rewrite eqb_lit_neg_compat. Qed.
