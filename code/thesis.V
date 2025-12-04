@@ -739,8 +739,8 @@ Inductive TotalLt: relation (list nat * nat) :=
   TotalLt (n :: m, l) (n' :: m', l').
 
 Inductive StateLt': relation State :=
-| s_fail (s: State): 
-  StateLt' fail s
+| s_fail (m: PA Ann) (f: CNF): 
+  StateLt' fail (state m f)
 | s_prefix (m m': PA Ann) (f: CNF):
   PrefixLt (score m f) (score m' f) ->
   StateLt' (state m f) (state m' f)
@@ -1055,7 +1055,7 @@ Lemma trans__state_lt: forall (s s': State), s ==> s' -> s >> s'.
       m f c_decide l_decide Hx_in_c Hc_in_f Hundef |
       m_split n_split f c_conflict l_split Hc_in_f Hconflict Hno_dec
     ]; subst s s'; constructor.
-  - constructor.
+  - admit.
   - simp clean. simpl. simp is_bounded. apply s_prefix. apply prefix_lt_refl.
     rewrite (l_in_c__c_in_f__l_in_f f c_unit l_unit Hl_in_c Hc_in_f).
     pose proof (dedupe_prop (filter (is_bounded f) m) l_unit (undef__filter_undef m l_unit (is_bounded f) Hundef)).
@@ -1067,6 +1067,9 @@ Admitted.
 
 Lemma next_state__state_lt: forall (s s': State), next_state s = Some s' -> s >> s'.
 Proof. intros. apply trans__state_lt. apply next_state_sound. assumption. Qed.
+
+Lemma wf_state_lt: well_founded StateLt.
+Proof. unfold well_founded. Admitted.
 
 Theorem fail_final: Final fail.
 Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
