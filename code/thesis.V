@@ -740,12 +740,11 @@ Inductive PrefixLt (x: nat): relation (list nat) :=
   length (n' :: m') <= x ->
   n < n' ->
   PrefixLt x (n :: m) (n' :: m')
-| p_tail (m m': list nat) (n n': nat):
+| p_tail (m m': list nat) (n: nat):
   length (n :: m) <= x ->
-  length (n' :: m') <= x ->
-  n = n' ->
+  length (n :: m') <= x ->
   PrefixLt x m m' ->
-  PrefixLt x (n :: m) (n' :: m').
+  PrefixLt x (n :: m) (n :: m').
 
 Inductive TotalLt: relation (list nat * nat) :=
 | t_total (l l': nat):
@@ -828,7 +827,6 @@ Proof.
     + apply p_tail.
       * now apply le_S in H1.
       * now apply le_S in H2.
-      * assumption.
       * apply IHPrefixLt.
         -- apply le_S in H1. now apply le_S_n.
         -- apply le_S in H2. now apply le_S_n.
@@ -838,7 +836,6 @@ Proof.
       * assumption.
       * assumption.
     + apply p_tail.
-      * assumption.
       * assumption.
       * assumption.
       * apply IHPrefixLt.
@@ -874,7 +871,6 @@ Proof.
         rewrite Nat.eqb_eq in H2. subst n'. apply p_tail.
         -- simpl. apply le_n_S. now apply Nat.leb_le.
         -- simpl. apply le_n_S. now apply Nat.leb_le.
-        -- reflexivity.
         -- apply H in H4. rewrite <- prefix_step.
           ++ assumption.
           ++ now apply Nat.leb_le.
@@ -884,9 +880,9 @@ Proof.
         simpl in H5, H6. apply le_S_n in H5, H6.
         apply Nat.leb_le in H5, H6. now rewrite H5, H6.
       * simpl in H5, H6. apply le_S_n in H5, H6.
-        apply (prefix_step x m m' H5 H6) in H8.
+        apply (prefix_step x m m' H5 H6) in H7.
         apply Nat.leb_le in H5, H6. rewrite H5, H6.
-        simpl. rewrite <- H in H8. rewrite H8.
+        simpl. rewrite <- H in H7. rewrite H7.
         rewrite Nat.eqb_refl. simpl. apply orb_true_r.
 Qed.
 
@@ -917,17 +913,17 @@ Proof.
     + intros. inversion H0; subst. apply H in H8. rewrite H8. now rewrite Nat.eqb_refl.
 Qed.
 
-Equations state_lt' (s s': State): bool :=
+(* Equations state_lt' (s s': State): bool :=
 state_lt' fail        _             := true;
 state_lt' _           fail          := false;
 state_lt' (state m f) (state m' f') :=
   prefix_lt (score m f) (score m' f') ||
-  total_lt (score m f) (score m' f') (score_total m f) (score_total m' f').
+  total_lt (score m f) (score m' f') (score_total m f) (score_total m' f'). *)
 
-Lemma state_lt'_refl: forall (m m': PA Ann) (f: CNF), 
+(* Lemma state_lt'_refl: forall (m m': PA Ann) (f: CNF), 
   state_lt' (state m f) (state m' f) = true <-> state m' f >>* state m f.
 Admitted.
-  (* Proof.
+  Proof.
   intros. split.
   - intros. funelim (state_lt' (state m f) (state m' f)).
     + discriminate.
@@ -941,17 +937,17 @@ Admitted.
     + apply total_lt_refl in H1. simp state_lt'. rewrite H1. apply orb_true_r.
 Qed. *)
 
-Equations state_lt (s s': State): bool :=
-state_lt s s' := state_lt' (clean s) (clean s').
+(* Equations state_lt (s s': State): bool :=
+state_lt s s' := state_lt' (clean s) (clean s'). *)
 
 Lemma clean_same_formula: forall (m m': PA Ann) (f f': CNF),
   clean (state m f) = state m' f' -> f = f'.
 Proof. intros. simp clean in H. simpl in H. injection H as _ <-. reflexivity. Qed.
 
-Lemma state_lt_refl: forall (m m': PA Ann) (f: CNF),
+(* Lemma state_lt_refl: forall (m m': PA Ann) (f: CNF),
   state_lt (state m f) (state m' f) = true <-> state m' f >> state m f.
 Admitted.
-  (* Proof.
+  Proof.
   intros. split.
   - intros. funelim (state_lt (state m f) (state m' f)). rewrite H in Heqcall.
     constructor. simp clean in *. simpl in *. now apply state_lt'_refl.
@@ -978,17 +974,11 @@ Qed.
 
 Module TransLtExamples.
 
-(* Example prefix_lt_head: PrefixLt [1] [2].
-Proof. apply p_head. auto. Qed.
-
-Example prefix_lt_head_refl: PrefixLt [1] [2].
+Example prefix_lt_head_refl: PrefixLt 2 [1] [2].
 Proof. now apply prefix_lt_refl. Qed.
 
-Example prefix_lt_tail: PrefixLt [1;1] [1;2].
-Proof. apply p_tail. auto. apply p_head. auto. Qed.
-
-Example prefix_lt_tail_refl: PrefixLt [1;1] [1;2].
-Proof. now apply prefix_lt_refl. Qed. *)
+Example prefix_lt_tail_refl: PrefixLt 2 [1;1] [1;2].
+Proof. now apply prefix_lt_refl. Qed. 
 
 Example total_lt_total: TotalLt ([], 1) ([], 2).
 Proof. apply t_total. auto. Qed.
