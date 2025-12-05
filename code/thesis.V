@@ -734,14 +734,18 @@ Definition Bounded (m: PA Ann) (f: CNF): Prop :=
 Definition Clean (m: PA Ann) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.
 
-Inductive PrefixLt: relation (list nat) :=
+Inductive PrefixLt (l: nat): relation (list nat) :=
 | p_head (m m': list nat) (n n': nat):
+  length (n :: m) <= l ->
+  length (n' :: m') <= l ->
   n < n' ->
-  PrefixLt (n :: m) (n' :: m')
+  PrefixLt l (n :: m) (n' :: m')
 | p_tail (m m': list nat) (n n': nat):
+  length (n :: m) <= l ->
+  length (n' :: m') <= l ->
   n = n' ->
-  PrefixLt m m' ->
-  PrefixLt (n :: m) (n' :: m').
+  PrefixLt l m m' ->
+  PrefixLt l (n :: m) (n' :: m').
 
 Inductive TotalLt: relation (list nat * nat) :=
 | t_total (l l': nat):
@@ -758,7 +762,7 @@ Inductive StateLt': relation State :=
 | s_prefix (m m': PA Ann) (f: CNF):
   Clean m f ->
   Clean m' f ->
-  PrefixLt (score m f) (score m' f) ->
+  PrefixLt (max_lit_f f) (score m f) (score m' f) ->
   StateLt' (state m f) (state m' f)
 | s_total (m m': PA Ann) (f: CNF):
   Clean m f ->
