@@ -734,18 +734,18 @@ Definition Bounded (m: PA Ann) (f: CNF): Prop :=
 Definition Clean (m: PA Ann) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.
 
-Inductive PrefixLt (l: nat): relation (list nat) :=
+Inductive PrefixLt (x: nat): relation (list nat) :=
 | p_head (m m': list nat) (n n': nat):
-  length (n :: m) <= l ->
-  length (n' :: m') <= l ->
+  length (n :: m) <= x ->
+  length (n' :: m') <= x ->
   n < n' ->
-  PrefixLt l (n :: m) (n' :: m')
+  PrefixLt x (n :: m) (n' :: m')
 | p_tail (m m': list nat) (n n': nat):
-  length (n :: m) <= l ->
-  length (n' :: m') <= l ->
+  length (n :: m) <= x ->
+  length (n' :: m') <= x ->
   n = n' ->
-  PrefixLt l m m' ->
-  PrefixLt l (n :: m) (n' :: m').
+  PrefixLt x m m' ->
+  PrefixLt x (n :: m) (n' :: m').
 
 Inductive TotalLt: relation (list nat * nat) :=
 | t_total (l l': nat):
@@ -807,14 +807,49 @@ Definition StateLt: relation State := MR StateLt' clean.
 Infix ">>*" := (fun (s s': State) => StateLt' s' s) (at level 70).
 Infix ">>" := (fun (s s': State) => StateLt s' s) (at level 70).
 
-Equations prefix_lt (m m': list nat): bool :=
-prefix_lt []       _          := false;
-prefix_lt _        []         := false;
-prefix_lt (n :: m) (n' :: m') := (n <? n') || (n =? n')%nat && (prefix_lt m m').
+Equations prefix_lt (x: nat) (m m': list nat): bool :=
+prefix_lt _     []       _            := false;
+prefix_lt _     _        []           := false;
+prefix_lt 0     _        _            := false;
+prefix_lt (S x) (n :: m) (n' :: m') :=
+  (length m <=? x) && 
+  (length m' <=? x) &&
+  ((n <? n') || (n =? n')%nat && (prefix_lt x m m')).
 
-(* Lemma prefix_lt_refl: forall (m m': list nat), prefix_lt m m' = true <-> PrefixLt m m'.
+Lemma prefix_step: forall (x: nat) (m m': list nat),
+  length m <= x -> length m' <= x -> PrefixLt x m m' <-> PrefixLt (S x) m m'.
+Proof. 
+  intros. split.
+  - intros. induction H1.
+    + apply p_head.
+      * now apply le_S in H1.
+      * now apply le_S in H2.
+      * assumption.
+    + apply p_tail.
+      * now apply le_S in H1.
+      * now apply le_S in H2.
+      * assumption.
+      * apply IHPrefixLt.
+        -- apply le_S in H1. now apply le_S_n.
+        -- apply le_S in H2. now apply le_S_n.
+  - intros. induction H1.
+    + apply p_head.
+      * assumption.
+      * assumption.
+      * assumption.
+    + apply p_tail.
+      * assumption.
+      * assumption.
+      * assumption.
+      * apply IHPrefixLt.
+        -- now apply le_S_n.
+        -- now apply le_S_n. 
+Qed.
+
+Lemma prefix_lt_refl: forall (x: nat) (m m': list nat), 
+  prefix_lt x m m' = true <-> PrefixLt x m m'.
 Proof.
-  intros. funelim (prefix_lt m m').
+  intros. funelim (prefix_lt x m m').
   - split.
     + intros. discriminate.
     + intros. inversion H.
@@ -822,16 +857,38 @@ Proof.
     + intros. discriminate.
     + intros. inversion H.
   - split.
-    + intros. destruct (n <? n') eqn:G.
-      * apply p_head. apply Nat.ltb_lt. assumption.
-      * simpl in H0. rewrite Bool.andb_true_iff in H0. destruct H0.
-        rewrite Nat.eqb_eq in H0. subst n'. apply p_tail.
+    + intros. discriminate.
+    + intros. inversion H; subst.
+      * simpl in H4. inversion H4.
+      * simpl in H4. inversion H4.
+  - split.
+    + intros. rewrite Heqcall in H0. simp prefix_lt in H0. destruct (n <? n') eqn:G.
+      * apply p_head.
+        -- apply andb_true_iff in H0 as [H1 H2]. apply andb_true_iff in H1 as [H1 H3].
+           simpl. apply le_n_S. now apply Nat.leb_le.
+        -- apply andb_true_iff in H0 as [H1 H2]. apply andb_true_iff in H1 as [H1 H3].
+           simpl. apply le_n_S. now apply Nat.leb_le.
+        -- now apply Nat.ltb_lt.
+      * simpl in H0. apply andb_true_iff in H0 as [H1 H2].
+        apply andb_true_iff in H1 as [H1 H3]. apply andb_true_iff in H2 as [H2 H4].
+        rewrite Nat.eqb_eq in H2. subst n'. apply p_tail.
+        -- simpl. apply le_n_S. now apply Nat.leb_le.
+        -- simpl. apply le_n_S. now apply Nat.leb_le.
         -- reflexivity.
-        -- now apply H.
+        -- apply H in H4. rewrite <- prefix_step.
+          ++ assumption.
+          ++ now apply Nat.leb_le.
+          ++ now apply Nat.leb_le.
     + intros. inversion H0; subst.
-      * apply Nat.ltb_lt in H2. now rewrite H2.
-      * apply H in H6. rewrite H6. rewrite Nat.eqb_refl. apply orb_true_r.
-Qed. *)
+      * apply Nat.ltb_lt in H7. rewrite H7. simpl.
+        simpl in H5, H6. apply le_S_n in H5, H6.
+        apply Nat.leb_le in H5, H6. now rewrite H5, H6.
+      * simpl in H5, H6. apply le_S_n in H5, H6.
+        apply (prefix_step x m m' H5 H6) in H8.
+        apply Nat.leb_le in H5, H6. rewrite H5, H6.
+        simpl. rewrite <- H in H8. rewrite H8.
+        rewrite Nat.eqb_refl. simpl. apply orb_true_r.
+Qed.
 
 Equations total_lt (m m': list nat) (l l': nat): bool :=
 total_lt []       []         l l' := l <? l';
