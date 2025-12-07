@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
-From Stdlib Require Import List Relations Wellfounded.
+From Stdlib Require Import Arith List Relations Wellfounded Lia.
 Import ListNotations.
 
 Open Scope bool_scope.
@@ -780,7 +780,7 @@ Proof.
   constructor. intros m' Hlt. inversion Hlt.
 Qed.
 
-Inductive PrefixLt (x: nat): relation (list nat) :=
+(* Inductive PrefixLt (x: nat): relation (list nat) :=
 | p_head (m m': list nat) (n n': nat):
   length (n :: m) <= x ->
   length (n' :: m') <= x ->
@@ -790,10 +790,54 @@ Inductive PrefixLt (x: nat): relation (list nat) :=
   length (n :: m) <= x ->
   length (n :: m') <= x ->
   PrefixLt x m m' ->
-  PrefixLt x (n :: m) (n :: m').
+  PrefixLt x (n :: m) (n :: m'). *)
 
-Lemma wf_prefix_lt: forall (x: nat), well_founded (PrefixLt x).
-Admitted.
+Inductive cll: list nat -> list nat -> Prop :=
+| hd_less (x x': nat) (l l': list nat):
+  x < x' ->
+  cll (x :: l) (x' :: l')
+| tl_less (x: nat) (l l': list nat):
+  cll l l' ->
+  cll (x :: l) (x :: l').
+
+Definition PrefixLt (n: nat) (l1 l2: list nat): Prop :=
+  length l1 <= n /\ length l2 <= n /\ cll l1 l2.
+
+Definition list_to_sum (n: nat) (l: list nat): nat * list nat + unit :=
+  if List.length l <=? n then
+  match l with
+  | nil => inr tt
+  | h :: t => inl (h, t)
+  end else inr tt.
+
+Definition PrefixLt' (n: nat) (l1 l2: list nat): Prop :=
+  le_AsB _ _ (slexprod _ _ lt (PrefixLt n)) (fun _ _ => False) (list_to_sum (S n) l1) (list_to_sum (S n) l2).
+
+Lemma cll_incl {n} (l1 l2: list nat): PrefixLt (S n) l1 l2 -> PrefixLt' n l1 l2.
+Proof.
+  intros [Hl1 [Hl2 H]]. unfold PrefixLt'. unfold list_to_sum.
+  rewrite 2 leb_correct; auto.
+  destruct H; constructor.
+  + constructor 1. auto.
+  + constructor 2. simpl in *; split; [| split]; auto; lia.
+Qed.
+
+Theorem wf_prefix_lt: forall (x: nat), well_founded (PrefixLt x).
+Proof.
+  induction x.
+  - intros l. constructor. intros [] [H1 [H2 H3]].
+    + inversion H3.
+    + simpl in H1; lia.
+  - apply (wf_incl _ _ (fun l1 l2 => PrefixLt' x l1 l2)).
+    + red. apply cll_incl.
+    + unfold PrefixLt'.
+      apply wf_inverse_image.
+      apply wf_disjoint_sum.
+      * apply wf_slexprod.
+        -- apply lt_wf.
+        -- apply IHx.
+      * constructor; intros ? [].
+Qed.
 
 Definition TotalLt: relation nat := lt.
 
