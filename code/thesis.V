@@ -780,7 +780,7 @@ Proof.
   constructor. intros m' Hlt. inversion Hlt.
 Qed.
 
-(* Inductive PrefixLt (x: nat): relation (list nat) :=
+Inductive PrefixLt (x: nat): relation (list nat) :=
 | p_head (m m': list nat) (n n': nat):
   length (n :: m) <= x ->
   length (n' :: m') <= x ->
@@ -790,7 +790,7 @@ Qed.
   length (n :: m) <= x ->
   length (n :: m') <= x ->
   PrefixLt x m m' ->
-  PrefixLt x (n :: m) (n :: m'). *)
+  PrefixLt x (n :: m) (n :: m').
 
 Inductive cll: relation (list nat) :=
 | hd_less (n n': nat) (m m': list nat):
@@ -800,8 +800,42 @@ Inductive cll: relation (list nat) :=
   cll m m' ->
   cll (n :: m) (n :: m').
 
-Definition PrefixLt (n: nat) (m m': list nat): Prop :=
+Definition bcll (n: nat) (m m': list nat): Prop :=
   length m <= n /\ length m' <= n /\ cll m m'.
+
+Lemma bcll__prefix_lt: forall (x: nat) (m m': list nat),
+  bcll x m m' <-> PrefixLt x m m'.
+Proof.
+  intros. split.
+  - intros. inversion H as [H1 [H2 H3]]. induction H3.
+    + apply p_head.
+      * assumption.
+      * assumption.
+      * assumption.
+    + apply p_tail.
+      * assumption.
+      * assumption.
+      * apply IHcll.
+        -- unfold bcll. split.
+          ++ simpl in H1. apply le_S in H1. now apply le_S_n.
+          ++ split. 
+            ** simpl in H2. apply le_S in H2. now apply le_S_n.
+            ** assumption.
+        -- simpl in H1. apply le_S in H1. now apply le_S_n.
+        -- simpl in H2. apply le_S in H2. now apply le_S_n.
+  - intros. 
+    + induction H.
+      * unfold bcll. split.
+        -- assumption.
+        -- split.
+          ++ assumption.
+          ++ apply hd_less. assumption.
+      * unfold bcll. split.
+        -- assumption.
+        -- split.
+          ++ assumption.
+          ++ apply tl_less. destruct IHPrefixLt as [_ [_ H2]]. assumption.
+Qed.
 
 Definition list_to_sum (n: nat) (m: list nat): nat * list nat + unit :=
   if List.length m <=? n then
@@ -810,33 +844,53 @@ Definition list_to_sum (n: nat) (m: list nat): nat * list nat + unit :=
   | h :: t => inl (h, t)
   end else inr tt.
 
-Definition PrefixLt' (n: nat) (m m': list nat): Prop :=
-  le_AsB _ _ (slexprod _ _ lt (PrefixLt n)) (fun _ _ => False) (list_to_sum (S n) m) (list_to_sum (S n) m').
+Definition bcll' (n: nat) (m m': list nat): Prop :=
+  le_AsB _ _ (slexprod _ _ lt (bcll n)) (fun _ _ => False) (list_to_sum (S n) m) (list_to_sum (S n) m').
 
-Lemma cll_incl {n} (m m': list nat): PrefixLt (S n) m m' -> PrefixLt' n m m'.
+Lemma cll_incl {n} (m m': list nat): bcll (S n) m m' -> bcll' n m m'.
 Proof.
-  intros [Hl1 [Hl2 H]]. unfold PrefixLt'. unfold list_to_sum.
+  intros [Hl1 [Hl2 H]]. unfold bcll'. unfold list_to_sum.
   rewrite 2 leb_correct; auto.
   destruct H; constructor.
   + constructor 1. auto.
   + constructor 2. simpl in *; split; [| split]; auto; lia.
 Qed.
 
-Theorem wf_prefix_lt: forall (x: nat), well_founded (PrefixLt x).
+Lemma wf_bcll: forall (x: nat), well_founded (bcll x).
 Proof.
   induction x.
   - intros l. constructor. intros [] [H1 [H2 H3]].
     + inversion H3.
     + simpl in H1; lia.
-  - apply (wf_incl _ _ (fun l1 l2 => PrefixLt' x l1 l2)).
+  - apply (wf_incl _ _ (fun l1 l2 => bcll' x l1 l2)).
     + red. apply cll_incl.
-    + unfold PrefixLt'.
+    + unfold bcll'.
       apply wf_inverse_image.
       apply wf_disjoint_sum.
       * apply wf_slexprod.
         -- apply lt_wf.
         -- apply IHx.
       * constructor; intros ? [].
+Qed.
+
+Lemma wf_equiv: forall (A : Type) (R S: A -> A -> Prop),
+  (forall a b, R a b <-> S a b) ->
+  well_founded R ->
+  well_founded S.
+Proof.
+  intros A R S HRS Hwf x.
+  generalize (Hwf x).
+  induction 1 as [x Hrec IH].
+  constructor. intros y Hy.
+  rewrite <- (HRS y x) in Hy.
+  apply IH. assumption.
+Qed.
+
+Lemma wf_prefix_lt: forall x, well_founded (PrefixLt x).
+Proof.
+  intro x. apply (wf_equiv _ (bcll x)).
+  - apply bcll__prefix_lt.
+  - apply wf_bcll.
 Qed.
 
 Definition TotalLt: relation nat := lt.
