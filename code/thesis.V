@@ -792,28 +792,28 @@ Qed.
   PrefixLt x m m' ->
   PrefixLt x (n :: m) (n :: m'). *)
 
-Inductive cll: list nat -> list nat -> Prop :=
-| hd_less (x x': nat) (l l': list nat):
-  x < x' ->
-  cll (x :: l) (x' :: l')
-| tl_less (x: nat) (l l': list nat):
-  cll l l' ->
-  cll (x :: l) (x :: l').
+Inductive cll: relation (list nat) :=
+| hd_less (n n': nat) (m m': list nat):
+  n < n' ->
+  cll (n :: m) (n' :: m')
+| tl_less (n: nat) (m m': list nat):
+  cll m m' ->
+  cll (n :: m) (n :: m').
 
-Definition PrefixLt (n: nat) (l1 l2: list nat): Prop :=
-  length l1 <= n /\ length l2 <= n /\ cll l1 l2.
+Definition PrefixLt (n: nat) (m m': list nat): Prop :=
+  length m <= n /\ length m' <= n /\ cll m m'.
 
-Definition list_to_sum (n: nat) (l: list nat): nat * list nat + unit :=
-  if List.length l <=? n then
-  match l with
+Definition list_to_sum (n: nat) (m: list nat): nat * list nat + unit :=
+  if List.length m <=? n then
+  match m with
   | nil => inr tt
   | h :: t => inl (h, t)
   end else inr tt.
 
-Definition PrefixLt' (n: nat) (l1 l2: list nat): Prop :=
-  le_AsB _ _ (slexprod _ _ lt (PrefixLt n)) (fun _ _ => False) (list_to_sum (S n) l1) (list_to_sum (S n) l2).
+Definition PrefixLt' (n: nat) (m m': list nat): Prop :=
+  le_AsB _ _ (slexprod _ _ lt (PrefixLt n)) (fun _ _ => False) (list_to_sum (S n) m) (list_to_sum (S n) m').
 
-Lemma cll_incl {n} (l1 l2: list nat): PrefixLt (S n) l1 l2 -> PrefixLt' n l1 l2.
+Lemma cll_incl {n} (m m': list nat): PrefixLt (S n) m m' -> PrefixLt' n m m'.
 Proof.
   intros [Hl1 [Hl2 H]]. unfold PrefixLt'. unfold list_to_sum.
   rewrite 2 leb_correct; auto.
