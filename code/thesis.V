@@ -874,10 +874,10 @@ Definition TotalLt: relation nat := lt.
 Lemma wf_total_lt: well_founded TotalLt.
 Proof. apply lt_wf. Qed.
 
-Definition StateLexLt (x: nat): relation (list nat * nat) :=
-  slexprod _ _ (PrefixLt x) TotalLt.
+Definition StateLexLt (f: CNF): relation (list nat * nat) :=
+  slexprod _ _ (PrefixLt (max_lit_f f)) TotalLt.
 
-Lemma wf_state_lex_lt: forall (x: nat), well_founded (StateLexLt x).
+Lemma wf_state_lex_lt: forall (f: CNF), well_founded (StateLexLt f).
 Proof.
   intros. apply wf_slexprod.
   - apply wf_prefix_lt.
@@ -888,9 +888,9 @@ Equations state_measure (s: State): list nat * nat :=
 state_measure fail        := ([]       , 0              );
 state_measure (state m f) := (score m f, score_total m f).
 
-Definition StateLtUnion (x: nat): relation State := union _ FailLt (MR (StateLexLt x) state_measure).
+Definition StateLtUnion (f: CNF): relation State := union _ FailLt (MR (StateLexLt f) state_measure).
 
-Lemma wf_state_lt_union: forall (x: nat), well_founded (StateLtUnion x).
+Lemma wf_state_lt_union: forall (f: CNF), well_founded (StateLtUnion f).
 Proof.
   intros. apply wf_union.
   - unfold commut.
@@ -905,16 +905,16 @@ Proof.
   - apply wf_MR. apply wf_state_lex_lt.
 Qed.
 
-Inductive StateLt' (x: nat): relation State :=
+Inductive StateLt' (f: CNF): relation State :=
 | s_fail (s s': State):
   FailLt s s' ->
-  StateLt' x s s'
+  StateLt' f s s'
 | s_lex (s s': State):
-  StateLexLt x (state_measure s) (state_measure s') ->
-  StateLt' x s s'.
+  StateLexLt f (state_measure s) (state_measure s') ->
+  StateLt' f s s'.
 
-Lemma state_lt_union_state_lt': forall (x: nat) (s s': State),
-  StateLtUnion x s s' <-> StateLt' x s s'.
+Lemma state_lt_union_state_lt': forall (f: CNF) (s s': State),
+  StateLtUnion f s s' <-> StateLt' f s s'.
 Proof.
   intros. split.
   - intros. inversion H.
@@ -925,13 +925,13 @@ Proof.
     + unfold StateLtUnion. unfold union. right. unfold MR. assumption.
 Qed.
 
-Definition StateLt (s: State): relation State := 
-  MR (StateLtUnion (max_lit s)) clean.
+Definition StateLt (f: CNF): relation State := 
+  MR (StateLtUnion f) clean.
 
-Lemma wf_state_lt: forall (s: State), well_founded (StateLt s).
+Lemma wf_state_lt: forall (f: CNF), well_founded (StateLt f).
 Proof. intros. apply measure_wf. apply wf_state_lt_union. Qed.
-
-Infix ">>" := (fun (s s': State) => StateLt s s' s) (at level 70).
+  
+Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40).
 
 Equations prefix_lt (x: nat) (m m': list nat): bool :=
 prefix_lt _     []       _            := false;
@@ -1146,7 +1146,7 @@ Proof.
   - reflexivity.
 Qed.
 
-Lemma trans__state_lt: forall (s s': State), s ==> s' -> s >> s'.
+Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State), state m f ==> s' -> state m f >>[f] s'.
 Proof.
   intros. inversion H.
   (* t_fail *)
@@ -1163,7 +1163,8 @@ Proof.
     unfold MR. simp clean. simpl. simp state_measure. apply left_slex. admit.
 Admitted.
 
-Lemma next_state__state_lt: forall (s s': State), next_state s = Some s' -> s >> s'.
+Lemma next_state__state_lt: forall (m: PA) (f: CNF) (s': State), 
+  next_state (state m f) = Some s' -> (state m f) >>[f] s'.
 Proof. intros. apply trans__state_lt. apply next_state_sound. assumption. Qed.
 
 Theorem fail_final: Final fail.
