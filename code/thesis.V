@@ -382,18 +382,6 @@ Proof.
     + reflexivity.
 Qed.
 
-Lemma no_decision__no_split: forall (m: PA Ann), NoDecisions m -> split_last_decision m = None.
-Proof. 
-  unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
-  - reflexivity.
-  - exfalso. apply H. exists l. simp l_ann. rewrite eqb_lit_refl. reflexivity.
-  - apply H. intros. destruct H1. destruct (x =? l) eqn:G1, (x =? neg l) eqn:G2.
-    + admit.
-    + admit.
-    + admit.
-    + apply H0. exists x. simp l_ann. rewrite G1, G2. simpl. assumption.
-Admitted.
-
 Lemma find_undef_l_in_c: forall (m: PA Ann) (c: Clause) (l: Lit), find_undef_l m c = Some l -> In l c.
 Proof.
   intros. funelim (find_undef_l m c). rewrite H in Heqcall. 
