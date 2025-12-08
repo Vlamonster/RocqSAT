@@ -729,18 +729,22 @@ l_in_c l c := existsb (eqb_lit l) c || existsb (eqb_lit (neg l)) c.
 Equations l_in_f (l: Lit) (f: CNF): bool :=
 l_in_f l f := existsb (l_in_c l) f.
 
-Equations neqb_of (eq: Lit * bool -> Lit * bool -> bool) (l l': Lit * bool): bool :=
-neqb_of eq a b := negb (eq a b).
+(* The following has to be wrapped in a section due to a bug in Equations. *)
+Section dedupe_by.
+  Context {A: Type} (eq: A -> A -> bool).
 
-Equations dedupe_by (eq: Lit * bool -> Lit * bool -> bool) (m: list (Lit * bool)): 
-  list (Lit * bool) by wf (length m) lt :=
-dedupe_by eq []       := [];
-dedupe_by eq (l :: m) := l :: dedupe_by eq (filter (neqb_of eq l) m).
-Next Obligation.
-  eapply Nat.le_lt_trans.
-  - apply filter_length_le.
-  - auto with arith.
-Qed.
+  Equations neqb_of (l l': A): bool :=
+  neqb_of a b := negb (eq a b).
+
+  Equations dedupe_by (m: list A): list A by wf (length m) lt :=
+  dedupe_by []       := [];
+  dedupe_by (l :: m) := l :: dedupe_by (filter (neqb_of l) m).
+  Next Obligation.
+    eapply Nat.le_lt_trans.
+    - apply filter_length_le.
+    - auto with arith.
+  Qed.
+End dedupe_by.
 
 Equations eqb_by_atom (la la': Lit * bool): bool :=
 eqb_by_atom (l, _) (l', _) := (l =? l') || (l =? neg l'). 
