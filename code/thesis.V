@@ -931,7 +931,7 @@ Definition StateLt (f: CNF): relation State :=
 Lemma wf_state_lt: forall (f: CNF), well_founded (StateLt f).
 Proof. intros. apply measure_wf. apply wf_state_lt_union. Qed.
   
-Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40).
+Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40, format "s '/ ' '[' >>[ ']' f ] '/ ' s'").
 
 Equations prefix_lt (x: nat) (m m': list nat): bool :=
 prefix_lt _     []       _            := false;
