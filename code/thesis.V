@@ -1167,6 +1167,46 @@ Lemma next_state__state_lt: forall (m: PA) (f: CNF) (s': State),
   next_state (state m f) = Some s' -> (state m f) >>[f] s'.
 Proof. intros. apply trans__state_lt. apply next_state_sound. assumption. Qed.
 
+Section solve.
+  Context (f: CNF). 
+  
+  Instance wf_state_lt_f : WellFounded (StateLt f) := wf_state_lt f.
+
+  Definition inspect {A} (a: A) : {b | a = b} := exist _ a eq_refl.
+  Notation "x 'eqn' ':' p" := (exist _ x p) (only parsing, at level 20).
+
+  Lemma trans_same_formula: forall (m: PA) (f': CNF), state [] f ==>* state m f' -> f = f'.
+  Proof. 
+    intros. inversion H.
+    - inversion H0; easy.
+    - reflexivity.
+    - admit.
+  Admitted.
+
+  Lemma initial_refl: state [] f ==>* state [] f.
+  Proof. apply rt_refl. Qed.
+
+  Equations solve_aux (s: State) (H: state [] f ==>* s): State by wf s (StateLt f) :=
+  solve_aux s H with inspect (next_state s) :=
+    | Some s' eqn:ns := solve_aux s' ((rt_trans _ _ _ s s' H (rt_step _ _ s s' (next_state_sound s s' ns))))
+    | None    eqn:ns := s.
+  Next Obligation.
+    destruct s.
+    - inversion ns.
+    - destruct (next_state_options m f0) as [G|[G|G]].
+      + congruence.
+      + rewrite ns in G. injection G as G. subst. constructor. simp clean. simpl. constructor.
+      + rewrite ns in G. destruct G. injection H0 as H0. subst s'.
+        apply next_state_sound in ns. assert (state [] f ==>* state x f0).
+        * apply (rt_trans _ _ _ (state m f0)).
+          -- assumption.
+          -- now apply rt_step.
+        * apply trans_same_formula in H0. subst f0. now apply trans__state_lt.
+  Qed.
+
+  Definition solve: State := solve_aux (state [] f) initial_refl.
+End solve.
+
 Theorem fail_final: Final fail.
 Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
 
