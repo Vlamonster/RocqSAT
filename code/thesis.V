@@ -1167,24 +1167,24 @@ Lemma next_state__state_lt: forall (m: PA) (f: CNF) (s': State),
   next_state (state m f) = Some s' -> (state m f) >>[f] s'.
 Proof. intros. apply trans__state_lt. apply next_state_sound. assumption. Qed.
 
+Lemma trans_same_formula: forall (m: PA) (f f': CNF), state [] f ==>* state m f' -> f = f'.
+Proof. 
+  intros. inversion H.
+  - inversion H0; easy.
+  - reflexivity.
+  - admit.
+Admitted.
+
+Lemma initial_refl: forall (f: CNF), state [] f ==>* state [] f.
+Proof. intros. apply rt_refl. Qed.
+
 Section solve.
   Context (f: CNF). 
   
-  Instance wf_state_lt_f : WellFounded (StateLt f) := wf_state_lt f.
+  Instance wf_state_lt_f: WellFounded (StateLt f) := wf_state_lt f.
 
   Definition inspect {A} (a: A) : {b | a = b} := exist _ a eq_refl.
   Notation "x 'eqn' ':' p" := (exist _ x p) (only parsing, at level 20).
-
-  Lemma trans_same_formula: forall (m: PA) (f': CNF), state [] f ==>* state m f' -> f = f'.
-  Proof. 
-    intros. inversion H.
-    - inversion H0; easy.
-    - reflexivity.
-    - admit.
-  Admitted.
-
-  Lemma initial_refl: state [] f ==>* state [] f.
-  Proof. apply rt_refl. Qed.
 
   Equations solve_aux (s: State) (H: state [] f ==>* s): State by wf s (StateLt f) :=
   solve_aux s H with inspect (next_state s) :=
@@ -1204,7 +1204,7 @@ Section solve.
         * apply trans_same_formula in H0. subst f0. now apply trans__state_lt.
   Qed.
 
-  Definition solve: State := solve_aux (state [] f) initial_refl.
+  Definition solve: State := solve_aux (state [] f) (initial_refl f).
 End solve.
 
 Theorem fail_final: Final fail.
