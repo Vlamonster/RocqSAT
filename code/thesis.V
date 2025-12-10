@@ -1221,13 +1221,13 @@ Proof.
   - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. left.
     simp clean. simpl. constructor.
   (* t_unit *)
-  - unfold StateLt.  unfold MR. unfold StateLtUnion. unfold union. right.
+  - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
     unfold MR. simp clean. simpl. simp state_measure. apply left_slex. admit.
   (* t_decide *)
-  - unfold StateLt.  unfold MR. unfold StateLtUnion. unfold union. right.
+  - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
     unfold MR. simp clean. simpl. simp state_measure. admit.
   (* t_backtrack *)
-  - unfold StateLt.  unfold MR. unfold StateLtUnion. unfold union. right.
+  - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
     unfold MR. simp clean. simpl. simp state_measure. apply left_slex. admit.
 Admitted.
 
