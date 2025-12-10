@@ -759,6 +759,55 @@ clean (state m f) :=
   let deduped := dedupe_by eqb_by_atom bounded in
   state deduped f.
 
+Lemma in_dedupe_by {A: Type} (eq: A -> A -> bool) (l: list A) (a: A):
+  In a (dedupe_by eq l) -> In a l.
+Proof.
+  funelim (dedupe_by eq l); simp dedupe_by; cbn.
+  intros [Heq | H0].
+  - rewrite Heq. left; reflexivity.
+  - specialize (H _ H0). apply filter_In in H as [Inal eqa].
+    right; assumption.
+Qed.
+
+Lemma dedupe_by__nodup: forall (m: PA),
+  NoDup (map l_extract (map fst (dedupe_by eqb_by_atom m))).
+Proof.
+  intros. funelim (dedupe_by eqb_by_atom m).
+  - simpl. constructor.
+  - simpl. constructor.
+    + unfold not. intros. destruct l. apply in_map_iff in H0 as [x [Heq Hin]].
+      apply in_map_iff in Hin as [x' [Heq' Hin']]. simpl in Heq.
+      simp eqb_atom in Hin'. apply in_dedupe_by in Hin'. apply filter_In in Hin' as [_ G].
+      destruct x'. simp neqb_of in G. simpl in Heq'. subst x. simp eqb_by_atom in G.
+      destruct l, l0.
+      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
+      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
+      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
+      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
+    + assumption.
+Qed.
+
+Lemma clean__no_duplicates: forall (m m': PA) (f f': CNF), 
+  clean (state m f) = state m' f' -> NoDuplicates m'.
+Proof.
+  unfold NoDuplicates. intros. funelim (clean (state m f)).
+  - discriminate.
+  - injection eqargs as eqargs. subst m0 f0. rewrite H in Heqcall.
+    destruct (filter (is_bounded f) m) eqn:G.
+    + simp dedupe_by in Heqcall. injection Heqcall as Heqcall. subst m' f'. simpl. constructor.
+    + simp dedupe_by in Heqcall. injection Heqcall as Heqcall. subst m' f'. simpl. constructor.
+      * unfold not. intros. apply in_map_iff in H0 as [x [Heq Hin]].
+        apply in_map_iff in Hin as [x' [Heq' Hin']]. apply in_dedupe_by in Hin'.
+        apply filter_In in Hin' as [_ G1].
+        -- destruct p. simpl in Heq. destruct x'. simpl in Heq'. subst.
+           simp neqb_of in G1. simp eqb_by_atom in G1. destruct x, l0.
+          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
+          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
+          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
+          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
+      * apply dedupe_by__nodup.
+Qed.
+
 Inductive FailLt: relation State :=
 | f_fail (m: PA) (f: CNF):
   FailLt fail (state m f).
