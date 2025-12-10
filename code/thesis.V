@@ -718,7 +718,7 @@ Definition NoDuplicates (m: PA): Prop :=
 
 Definition Bounded (m: PA) (f: CNF): Prop := 
   forall (l: Lit), In l (map fst m) -> 
-  exists (c: Clause), In c f -> In l c \/ In (neg l) c.
+  exists (c: Clause), In c f /\ (In l c \/ In (neg l) c).
 
 Definition Clean (m: PA) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.
@@ -806,6 +806,25 @@ Proof.
           ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
           ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
       * apply dedupe_by__nodup.
+Qed.
+
+Lemma clean__bounded: forall (m m': PA) (f f': CNF),
+  clean (state m f) = state m' f' -> Bounded m' f'.
+Proof.
+  unfold Bounded. intros. funelim (clean (state m f)).
+  - discriminate.
+  - injection eqargs as eqargs. subst m0 f0. rewrite H in Heqcall. injection Heqcall as Heqcall.
+    subst f' m'. apply in_map_iff in H0 as [x [Heq Hin]]. apply in_dedupe_by in Hin.
+    apply filter_In in Hin as [Hin Hbnd]. funelim (is_bounded f x). funelim (l_in_f l f).
+    rewrite Hbnd in Heqcall. rewrite Heqcall in Heqcall0. 
+    apply existsb_exists in Heqcall0 as [c [Hcinf Hlinc]]. exists c.
+    funelim (l_in_c l c). rewrite Hlinc in Heqcall0. apply orb_true_iff in Heqcall0 as [G|G].
+    + split.
+      * assumption.
+      * left. apply existsb_exists in G as [x [G1 G2]]. simpl. rewrite eqb_lit_eq in G2. now subst.
+    + split.
+      * assumption.
+      * right. apply existsb_exists in G as [x [G1 G2]]. simpl. rewrite eqb_lit_eq in G2. now subst.
 Qed.
 
 Inductive FailLt: relation State :=
