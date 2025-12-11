@@ -1205,7 +1205,7 @@ Lemma undef__filter_undef: forall (m: PA) (l: Lit) (test: Lit * bool -> bool),
 Proof.
   unfold Undef. intros. pose proof (incl_filter test m). unfold incl in H0.
   destruct (l_eval (filter test m) l) eqn:G.
-  - apply l_eval_some_in in G. destruct G as [b' [G|G]].
+  - apply l_eval_some_in in G as [b' [G|G]].
     + apply H0 in G. apply in_l_eval_some in G. destruct G. congruence.
     + apply H0 in G. apply in_l_eval_some in G. destruct G. apply l_eval_some_neg in H1.
       rewrite neg_involutive in H1. congruence.
@@ -1214,7 +1214,15 @@ Qed.
 
 Lemma undef__dedupe_undef: forall (m: PA) (l: Lit) (eq: Lit * bool -> Lit * bool -> bool),
   Undef m l -> Undef (dedupe_by eq m) l.
-Proof. Admitted.
+Proof.
+  unfold Undef. intros. pose proof (in_dedupe_by eq m).
+  destruct (l_eval (dedupe_by eq m) l) eqn:G.
+  - apply l_eval_some_in in G as [b' [G|G]].
+    + apply H0 in G. apply in_l_eval_some in G. destruct G. congruence.
+    + apply H0 in G. apply in_l_eval_some in G. destruct G. apply l_eval_some_neg in H1.
+      rewrite neg_involutive in H1. congruence.
+  - reflexivity.
+Qed.
 
 Lemma undef__clean_undef: forall (m m': PA) (f f': CNF) (l: Lit),
   Undef m l -> clean (state m f) = state m' f' -> Undef m' l.
