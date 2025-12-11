@@ -1214,24 +1214,32 @@ Qed.
 
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State), state m f ==> s' -> state m f >>[f] s'.
 Proof.
-  intros. inversion H.
+  intros. inversion H as 
+    [
+      m' f' c_conflict Hc_in_f Hconflict Hno_dec |
+      m' f' c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef |
+      m' f' c_decide l_decide Hx_in_c Hc_in_f Hundef |
+      m_split n_split f' c_conflict l_split Hc_in_f Hconflict Hno_dec
+    ]; subst s'; try subst m'; try subst f'.
   (* t_fail *)
   - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. left.
     simp clean. simpl. constructor.
   (* t_unit *)
-  - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
-    unfold MR. remember (clean (state m f)) as x' eqn:Hx. rewrite Hx. simp clean. simpl. simp state_measure. apply left_slex.
-    destruct (is_bounded f (l, false)) eqn:G.
+  - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. unfold MR. right.
+    remember (clean (state m f)) as sc eqn:Hsc. 
+    rewrite Hsc. simp clean. simpl. simp state_measure. apply left_slex.
+    destruct (is_bounded f (l_unit, false)) eqn:Hl_bounded.
     + rewrite dedupe_prop.
-      * destruct x'.
+      * destruct sc as [|m' f'].
         -- discriminate.
-        -- symmetry in Hx. 
-           pose proof (clean__bounded m m1 f f1 Hx).
-           pose proof (clean__no_duplicates m m1 f f1 Hx).
-           simp clean in Hx. simpl in Hx. injection Hx as Hx. rewrite Hx. rewrite H9.
+        -- symmetry in Hsc. 
+           pose proof (clean__bounded m m' f f' Hsc) as Hm_bounded.
+           pose proof (clean__no_duplicates m m' f f' Hsc) as Hno_dup.
+           simp clean in Hsc. simpl in Hsc. injection Hsc as -> ->.
            admit.
       * now apply undef__filter_undef.
-    + simp is_bounded in G. pose proof (l_in_c__c_in_f__l_in_f f c l H2 H3). congruence.
+    + simp is_bounded in Hl_bounded. 
+      now rewrite (l_in_c__c_in_f__l_in_f f c_unit l_unit Hl_in_c Hc_in_f) in Hl_bounded.
   (* t_decide *)
   - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
     unfold MR. simp clean. simpl. simp state_measure. admit.
