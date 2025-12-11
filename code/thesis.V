@@ -196,58 +196,56 @@ Infix "==>*" := TransRTC (at level 70).
 Definition Final (s: State): Prop := ~ exists (s': State), s ==> s'.
 
 Module TransExamples.
+  Example dead_end:
+      state [(Pos 1, false)] [[Pos 1];[Neg 1]] ==>
+      fail.
+  Proof.
+    apply (t_fail _ _ [Neg 1]).
+    - right. now left.
+    - reflexivity.
+    - unfold NoDecisions, not. intros [l H]. simp neg l_ann in H.
+      now destruct (l =? Pos 1), (l =? Neg 1).
+  Qed.
 
-Example dead_end:
-    state [(Pos 1, false)] [[Pos 1];[Neg 1]] ==>
+  Example unit_prop: 
+    (state [] [[Pos 1];[Neg 1]]) ==>
+    (state [(Pos 1, false)] [[Pos 1];[Neg 1]]).
+  Proof.
+    apply (t_unit _ _ [Pos 1] _).
+    - now left.
+    - now left.
+    - reflexivity.
+    - reflexivity.
+  Qed.
+
+  Example decide:
+    (state [] [[Pos 1];[Neg 1]]) ==>
+    (state [(Pos 1, true)] [[Pos 1];[Neg 1]]).
+  Proof.
+    apply (t_decide _ _ [Pos 1] _).
+    - left. now left.
+    - now left.
+    - reflexivity.
+  Qed.
+
+  Example unit_prop__dead_end:
+    (state [] [[Pos 1];[Neg 1]]) ==>*
     fail.
-Proof.
-  apply (t_fail _ _ [Neg 1]).
-  - right. left. reflexivity.
-  - unfold Conflicting. autorewrite with c_eval. reflexivity.
-  - unfold NoDecisions. unfold not. intros. destruct H. autorewrite with neg l_ann in H.
-    destruct (x =? Pos 1), (x =? Neg 1); simpl in H; discriminate.
-Qed.
+  Proof.
+    apply (rt_trans _ _ _ (state [(Pos 1, false)] [[Pos 1];[Neg 1]]) _).
+    - apply rt_step. apply unit_prop.
+    - apply rt_step. apply dead_end.
+  Qed.
 
-Example unit_prop: 
-  (state [] [[Pos 1];[Neg 1]]) ==>
-  (state [(Pos 1, false)] [[Pos 1];[Neg 1]]).
-Proof.
-  apply (t_unit _ _ [Pos 1] _).
-  - left. reflexivity.
-  - left. reflexivity.
-  - unfold Conflicting. autorewrite with c_eval. reflexivity.
-  - unfold Undef. autorewrite with l_eval. reflexivity.
-Qed.
-
-Example decide:
-  (state [] [[Pos 1];[Neg 1]]) ==>
-  (state [(Pos 1, true)] [[Pos 1];[Neg 1]]).
-Proof.
-  apply (t_decide _ _ [Pos 1] _).
-  - left. left. reflexivity.
-  - left. reflexivity.
-  - unfold Undef. autorewrite with l_eval. reflexivity.
-Qed.
-
-Example unit_prop__dead_end:
-  (state [] [[Pos 1];[Neg 1]]) ==>*
-  fail.
-Proof.
-  apply (rt_trans _ _ _ (state [(Pos 1, false)] [[Pos 1];[Neg 1]]) _).
-  - apply rt_step. apply unit_prop.
-  - apply rt_step. apply dead_end.
-Qed.
-
-Example backtrack:
-  (state [(Pos 1, true)] [[Pos 1];[Neg 1]]) ==>
-  (state [(Neg 1, false)] [[Pos 1];[Neg 1]]).
-Proof.
-  apply (t_backtrack [] [] _ [Neg 1] (Pos 1)).
-  - right. left. reflexivity.
-  - unfold Conflicting. simp c_eval. reflexivity.
-  - unfold NoDecisions. unfold not. intros. destruct H. simp l_ann in H. discriminate.
-Qed.
-
+  Example backtrack:
+    (state [(Pos 1, true)] [[Pos 1];[Neg 1]]) ==>
+    (state [(Neg 1, false)] [[Pos 1];[Neg 1]]).
+  Proof.
+    apply (t_backtrack [] [] _ [Neg 1] (Pos 1)).
+    - right. now left.
+    - reflexivity.
+    - unfold NoDecisions, not. now intros [? ?].
+  Qed.
 End TransExamples.
 
 Equations split_last_decision (m: PA): option (PA * Lit) :=
