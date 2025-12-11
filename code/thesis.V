@@ -1220,10 +1220,16 @@ Proof.
     simp clean. simpl. constructor.
   (* t_unit *)
   - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
-    unfold MR. simp clean. simpl. simp state_measure. apply left_slex.
+    unfold MR. remember (clean (state m f)) as x' eqn:Hx. rewrite Hx. simp clean. simpl. simp state_measure. apply left_slex.
     destruct (is_bounded f (l, false)) eqn:G.
     + rewrite dedupe_prop.
-      * admit.
+      * destruct x'.
+        -- discriminate.
+        -- symmetry in Hx. 
+           pose proof (clean__bounded m m1 f f1 Hx).
+           pose proof (clean__no_duplicates m m1 f f1 Hx).
+           simp clean in Hx. simpl in Hx. injection Hx as Hx. rewrite Hx. rewrite H9.
+           admit.
       * now apply undef__filter_undef.
     + simp is_bounded in G. pose proof (l_in_c__c_in_f__l_in_f f c l H2 H3). congruence.
   (* t_decide *)
