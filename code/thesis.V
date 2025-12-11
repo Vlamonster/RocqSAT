@@ -1212,6 +1212,17 @@ Proof.
   - reflexivity.
 Qed.
 
+Lemma undef__dedupe_undef: forall (m: PA) (l: Lit) (eq: Lit * bool -> Lit * bool -> bool),
+  Undef m l -> Undef (dedupe_by eq m) l.
+Proof. Admitted.
+
+Lemma undef__clean_undef: forall (m m': PA) (f f': CNF) (l: Lit),
+  Undef m l -> clean (state m f) = state m' f' -> Undef m' l.
+Proof.
+  intros. simp clean in H0. simpl in H0. injection H0 as <- <-.
+  apply undef__dedupe_undef. now apply undef__filter_undef.
+Qed.
+
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State), state m f ==> s' -> state m f >>[f] s'.
 Proof.
   intros. inversion H as 
@@ -1232,10 +1243,12 @@ Proof.
     + rewrite dedupe_prop.
       * destruct sc as [|m' f'].
         -- discriminate.
-        -- symmetry in Hsc. 
+        -- symmetry in Hsc.
+           pose proof (undef__clean_undef m m' f f' l_unit Hundef Hsc) as Hundef'.
            pose proof (clean__bounded m m' f f' Hsc) as Hm_bounded.
            pose proof (clean__no_duplicates m m' f f' Hsc) as Hno_dup.
            simp clean in Hsc. simpl in Hsc. injection Hsc as -> ->.
+           clear Hl_in_c Hc_in_f Hundef Hconflict c_unit.
            admit.
       * now apply undef__filter_undef.
     + simp is_bounded in Hl_bounded. 
