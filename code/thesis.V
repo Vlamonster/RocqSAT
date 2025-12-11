@@ -757,11 +757,11 @@ clean (state m f) :=
   let deduped := dedupe_by eqb_by_atom bounded in
   state deduped f.
 
-Lemma in_dedupe_by {A: Type} (eq: A -> A -> bool) (l: list A) (a: A):
-  In a (dedupe_by eq l) -> In a l.
+Lemma incl_dedupe {A: Type} (eq: A -> A -> bool) (l: list A):
+  incl (dedupe_by eq l) l.
 Proof.
-  funelim (dedupe_by eq l); simp dedupe_by; cbn.
-  intros [Heq | H0].
+  unfold incl. funelim (dedupe_by eq l); simp dedupe_by; cbn.
+  intros a [Heq | H0].
   - rewrite Heq. left; reflexivity.
   - specialize (H _ H0). apply filter_In in H as [Inal eqa].
     right; assumption.
@@ -775,7 +775,7 @@ Proof.
   - simpl. constructor.
     + unfold not. intros. destruct l. apply in_map_iff in H0 as [x [Heq Hin]].
       apply in_map_iff in Hin as [x' [Heq' Hin']]. simpl in Heq.
-      simp eqb_atom in Hin'. apply in_dedupe_by in Hin'. apply filter_In in Hin' as [_ G].
+      simp eqb_atom in Hin'. apply incl_dedupe in Hin'. apply filter_In in Hin' as [_ G].
       destruct x'. simp neqb_of in G. simpl in Heq'. subst x. simp eqb_by_atom in G.
       destruct l, l0.
       * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
@@ -795,7 +795,7 @@ Proof.
     + simp dedupe_by in Heqcall. injection Heqcall as Heqcall. subst m' f'. simpl. constructor.
     + simp dedupe_by in Heqcall. injection Heqcall as Heqcall. subst m' f'. simpl. constructor.
       * unfold not. intros. apply in_map_iff in H0 as [x [Heq Hin]].
-        apply in_map_iff in Hin as [x' [Heq' Hin']]. apply in_dedupe_by in Hin'.
+        apply in_map_iff in Hin as [x' [Heq' Hin']]. apply incl_dedupe in Hin'.
         apply filter_In in Hin' as [_ G1].
         -- destruct p. simpl in Heq. destruct x'. simpl in Heq'. subst.
            simp neqb_of in G1. simp eqb_by_atom in G1. destruct x, l0.
@@ -812,7 +812,7 @@ Proof.
   unfold Bounded. intros. funelim (clean (state m f)).
   - discriminate.
   - injection eqargs as eqargs. subst m0 f0. rewrite H in Heqcall. injection Heqcall as Heqcall.
-    subst f' m'. apply in_map_iff in H0 as [x [Heq Hin]]. apply in_dedupe_by in Hin.
+    subst f' m'. apply in_map_iff in H0 as [x [Heq Hin]]. apply incl_dedupe in Hin.
     apply filter_In in Hin as [Hin Hbnd]. funelim (is_bounded f x). funelim (l_in_f l f).
     rewrite Hbnd in Heqcall. rewrite Heqcall in Heqcall0. 
     apply existsb_exists in Heqcall0 as [c [Hcinf Hlinc]]. exists c.
@@ -1215,7 +1215,7 @@ Qed.
 Lemma undef__dedupe_undef: forall (m: PA) (l: Lit) (eq: Lit * bool -> Lit * bool -> bool),
   Undef m l -> Undef (dedupe_by eq m) l.
 Proof.
-  unfold Undef. intros. pose proof (in_dedupe_by eq m).
+  unfold Undef. intros. pose proof (incl_dedupe eq m).
   destruct (l_eval (dedupe_by eq m) l) eqn:G.
   - apply l_eval_some_in in G as [b' [G|G]].
     + apply H0 in G. apply in_l_eval_some in G. destruct G. congruence.
