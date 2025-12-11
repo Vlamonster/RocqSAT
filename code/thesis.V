@@ -1264,6 +1264,11 @@ Lemma total_dec: forall (m: PA) (f: CNF) (l: Lit),
   Bounded m f ->
   NoDuplicates m ->
   TotalLt (max_lit_f f - length (m ++d l)) (max_lit_f f - length m).
+Proof.
+  intros m f l Hl_bounded Hundef Hm_bounded Hno_dup. unfold TotalLt. unfold lt.
+  destruct (length (m ++d l) <=? max_lit_f f) eqn:G.
+  - apply Nat.leb_le in G. simpl in *. lia.
+  - admit.
 Admitted.
 
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State), state m f ==> s' -> state m f >>[f] s'.
