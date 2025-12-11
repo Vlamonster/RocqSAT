@@ -705,8 +705,13 @@ score_aux []        n x := [n - x];
 score_aux (m ++p l) n x := score_aux m n (S x);
 score_aux (m ++d l) n x := n - x :: score_aux m n 0.
 
+Equations clip (m: PA): PA :=
+clip []        := [];
+clip (m ++d l) := clip m;
+clip (m ++p l) := m ++p l.
+
 Equations score (m: PA) (f: CNF): list nat :=
-score m f := rev (score_aux m (max_lit_f f) 0).
+score m f := rev (score_aux (clip m) (max_lit_f f) 0).
 
 Equations score_total (m: PA) (f: CNF): nat :=
 score_total m f := (max_lit_f f) - length m.
@@ -1111,6 +1116,16 @@ Proof.
     + apply eqb_lit_refl.
 Qed.
 
+Lemma negl_in_c__c_in_f__l_in_f: forall (f: CNF) (c: Clause) (l: Lit),
+  In (neg l) c -> In c f -> l_in_f l f = true.
+Proof. 
+  intros. simp l_in_f. rewrite existsb_exists. exists c. split.
+  - assumption.
+  - simp l_in_c. rewrite orb_true_iff. right. rewrite existsb_exists. exists (neg l). split.
+    + assumption.
+    + apply eqb_lit_refl.
+Qed.
+
 Lemma undef__no_dupes: forall (m: PA) (l: Lit) (b: bool), 
   Undef m l -> forallb (neqb_of eqb_by_atom (l, b)) m = true.
 Proof.
@@ -1231,6 +1246,18 @@ Proof.
   apply undef__dedupe_undef. now apply undef__filter_undef.
 Qed.
 
+Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
+  score (m ++d l) f = score m f.
+Proof. reflexivity. Qed.
+
+Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
+  is_bounded f (l, false) = true ->
+  Undef m l ->
+  Bounded m f ->
+  NoDuplicates m ->
+  PrefixLt (max_lit_f f) (score (m ++p l) f) (score m f).
+Admitted.
+
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State), state m f ==> s' -> state m f >>[f] s'.
 Proof.
   intros. inversion H as 
@@ -1257,13 +1284,20 @@ Proof.
            pose proof (clean__no_duplicates m m' f f' Hsc) as Hno_dup.
            simp clean in Hsc. simpl in Hsc. injection Hsc as -> ->.
            clear Hl_in_c Hc_in_f Hundef Hconflict c_unit.
-           admit.
+           apply prefix_prop; assumption.
       * now apply undef__filter_undef.
     + simp is_bounded in Hl_bounded. 
       now rewrite (l_in_c__c_in_f__l_in_f f c_unit l_unit Hl_in_c Hc_in_f) in Hl_bounded.
   (* t_decide *)
   - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
-    unfold MR. simp clean. simpl. simp state_measure. admit.
+    unfold MR. simp clean. simpl. simp state_measure.
+    destruct (is_bounded f (l_decide, true)) eqn:Hl_bounded.
+    + rewrite dedupe_dec.
+      * rewrite score_dec. right. simp score_total. unfold TotalLt. simpl. admit.
+      * now apply undef__filter_undef.
+    + simp is_bounded in Hl_bounded. destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
+      * now rewrite (l_in_c__c_in_f__l_in_f f c_decide l_decide Hl_in_c Hc_in_f) in Hl_bounded.
+      * now rewrite (negl_in_c__c_in_f__l_in_f f c_decide l_decide Hnegl_in_c Hc_in_f) in Hl_bounded.
   (* t_backtrack *)
   - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
     unfold MR. simp clean. simpl. simp state_measure. apply left_slex. admit.
