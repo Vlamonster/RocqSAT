@@ -1258,6 +1258,14 @@ Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
   PrefixLt (max_lit_f f) (score (m ++p l) f) (score m f).
 Admitted.
 
+Lemma total_dec: forall (m: PA) (f: CNF) (l: Lit),
+  is_bounded f (l, true) = true ->
+  Undef m l ->
+  Bounded m f ->
+  NoDuplicates m ->
+  max_lit_f f - length (m ++d l) < max_lit_f f - length m.
+Admitted.
+
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State), state m f ==> s' -> state m f >>[f] s'.
 Proof.
   intros. inversion H as 
@@ -1289,11 +1297,21 @@ Proof.
     + simp is_bounded in Hl_bounded. 
       now rewrite (l_in_c__c_in_f__l_in_f f c_unit l_unit Hl_in_c Hc_in_f) in Hl_bounded.
   (* t_decide *)
-  - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. right.
-    unfold MR. simp clean. simpl. simp state_measure.
+  - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. unfold MR. right.
+    remember (clean (state m f)) as sc eqn:Hsc. 
+    rewrite Hsc. simp clean. simpl. simp state_measure.
     destruct (is_bounded f (l_decide, true)) eqn:Hl_bounded.
     + rewrite dedupe_dec.
-      * rewrite score_dec. right. simp score_total. unfold TotalLt. simpl. admit.
+      * rewrite score_dec. right. destruct sc as  [|m' f'].
+        -- discriminate.
+        -- symmetry in Hsc.
+           pose proof (undef__clean_undef m m' f f' l_decide Hundef Hsc) as Hundef'.
+           pose proof (clean__bounded m m' f f' Hsc) as Hm_bounded.
+           pose proof (clean__no_duplicates m m' f f' Hsc) as Hno_dup.
+           simp clean in Hsc. simpl in Hsc. injection Hsc as -> ->.
+           simp score_total. unfold TotalLt.
+           clear Hx_in_c Hc_in_f Hundef c_decide.
+           apply total_dec; assumption.
       * now apply undef__filter_undef.
     + simp is_bounded in Hl_bounded. destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
       * now rewrite (l_in_c__c_in_f__l_in_f f c_decide l_decide Hl_in_c Hc_in_f) in Hl_bounded.
