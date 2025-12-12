@@ -298,7 +298,7 @@ find_decision m (c :: f) with find_undef_l m c, find_decision m f :=
   | Some l, _ := Some l
   | _     , r := r.
 
-Equations l_in_c (l: Lit) (f: Clause): bool :=
+Equations l_in_c (l: Lit) (c: Clause): bool :=
 l_in_c l c := existsb (eqb_lit l) c || existsb (eqb_lit (neg l)) c.
 
 Equations l_in_f (l: Lit) (f: CNF): bool :=
@@ -307,8 +307,7 @@ l_in_f l f := existsb (l_in_c l) f.
 Equations next_state (s: State): option State :=
 next_state fail := None;
 next_state (state m f) :=
-  let split := split_last_decision m in
-  match find_conflict m f, split with
+  match find_conflict m f, split_last_decision m with
   (* t_fail *)
   | Some c, None => Some fail
   (* t_backtrack *)
@@ -675,7 +674,7 @@ Proof.
     + apply eqb_lit_refl.
 Qed.
 
-Lemma bla: forall (m m' n: PA) (l l': Lit),
+Lemma split_last_dec: forall (m m' n: PA) (l l': Lit),
   NoDecisions n -> split_last_decision (m ++d l ++a n) = Some (m', l') -> l = l'.
 Proof. 
   unfold NoDecisions. unfold not. intros. funelim (split_last_decision (m ++d l ++a n)).
@@ -685,8 +684,22 @@ Proof.
     + injection eqargs as <-. exfalso. apply H. exists (l, true). split.
       * now left.
       * reflexivity.
-  - admit.
-Admitted.
+  - destruct n.
+    + discriminate.
+    + injection eqargs as eqargs. destruct p. destruct b.
+      * exfalso. apply H0. exists (l1, true). split.
+        -- now left.
+        -- reflexivity.
+      * injection eqargs as <-. simpl in H1. simp split_last_decision in H1.
+        simpl in Heqcall. simp split_last_decision in Heqcall.
+        apply (H m0 m' n l0 l').
+        -- intros. apply H0. destruct H3. exists x. split.
+          ++ now right.
+          ++ intuition.
+        -- assumption.
+        -- assumption.
+        -- assumption.
+Qed.
 
 Lemma existsb_false_iff: forall (A: Type) (f: A -> bool) (l : list A),
   existsb f l = false <-> (forall (x: A), In x l -> f x = false).
@@ -800,7 +813,7 @@ Proof.
             ** now exists (state (m_split ++d l_split ++a n_split ++p l_unit) f).
             ** destruct (find_decision (m_split ++d l_split ++a n_split) f) as [l_decide|] eqn:Hfind_dec.
               --- now exists (state (m_split ++d l_split ++a n_split ++d l_decide) f).
-              --- apply (bla m_split m_split' n_split l_split l_split') in Hno_dec.
+              --- apply (split_last_dec m_split m_split' n_split l_split l_split') in Hno_dec.
                 +++ subst l_split'. destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
                   *** now rewrite (l_in_c__c_in_f__l_in_f f c_decide l_split Hl_in_c Hc_in_f) in Hl_in_f.
                   *** rewrite l_in_f__neg_l_in_f in Hl_in_f.
