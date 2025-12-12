@@ -1362,7 +1362,7 @@ Proof.
       m' f' c_conflict Hc_in_f Hconflict Hno_dec |
       m' f' c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef |
       m' f' c_decide l_decide Hx_in_c Hc_in_f Hundef |
-      m_split n_split f' c_conflict l_split Hc_in_f Hconflict Hno_dec
+      m_split n_split f' c_decide c_conflict l_split Hx_in_c Hc_in_f Hc'_in_f Hconflict Hno_dec
     ]; subst s'; try subst m'; try subst f'.
   (* t_fail *)
   - unfold StateLt. unfold MR. unfold StateLtUnion. unfold union. left.
