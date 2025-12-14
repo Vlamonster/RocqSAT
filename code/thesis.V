@@ -177,7 +177,7 @@ Module Trans.
   | state (m: PA) (f: CNF).
 
   (* Propositions used in the transition relation `==>`. *)
-  Definition NoDecisions (m: PA): Prop := ~ exists (la: Lit * Ann), In la m /\ snd la = dec.
+  Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
   Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false.
 
   Inductive Trans: relation State :=
@@ -229,9 +229,9 @@ Module TransExamples.
     apply (t_fail _ _ [Neg 1]).
     - right. now left.
     - reflexivity.
-    - unfold NoDecisions, not. intros [[l [|]] [H1 H2]].
-      + destruct H1. discriminate. destruct H.
-      + destruct H1. discriminate. destruct H.
+    - unfold NoDecisions, not. intros [l [H|H]].
+      + discriminate.
+      + contradiction.
   Qed.
 
   Example unit_prop: 
@@ -371,14 +371,12 @@ Proof.
   - discriminate.
   - rewrite <- Heqcall in H. injection H as H. subst. exists []. split.
     + reflexivity.
-    + intros. destruct H. destruct H. destruct H.
+    + intros. destruct H. destruct H.
   - rewrite <- Heqcall in H0. destruct (H m' l' H0). destruct H1. rewrite H1. exists (x ++p l). split.
     + reflexivity.
-    + intros. apply H2. destruct H3. destruct H3. exists x0. split.
-      * destruct H3. 
-        -- rewrite <- H3 in H4. discriminate.
-        -- assumption.
-      * assumption.
+    + intros. apply H2. destruct H3. destruct H3.
+      * discriminate.
+      * now exists x0.
 Qed.
 
 Lemma find_conflict_c_in_f: forall (m: PA) (f: CNF) (c: Clause), find_conflict m f = Some c -> In c f.
@@ -409,29 +407,23 @@ Qed.
 Lemma no_split__no_decision: forall (m: PA), split_last_decision m = None -> NoDecisions m.
 Proof. 
   unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
-  - destruct H0. destruct H0. destruct H0.
+  - destruct H0. destruct H0.
   - discriminate.
-  - destruct H1. destruct H1. apply (H m).
-    + assumption.
-    + exists x. split.
-      * destruct H1.
-        -- rewrite <- H1 in H2. discriminate.
-        -- assumption.
+  - destruct H1. destruct H1.
+    + discriminate.
+    + apply (H m).
       * assumption.
-    + reflexivity.
-    + reflexivity.
+      * now exists x.
+      * reflexivity.
+      * reflexivity.
 Qed.
 
 Lemma no_decision__no_split: forall (m: PA), NoDecisions m -> split_last_decision m = None.
 Proof.
   unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
   - reflexivity.
-  - exfalso. apply H. exists (l, dec). split.
-    + now left.
-    + reflexivity.
-  - apply H. intros. apply H0. destruct H1. destruct H1. exists x. split.
-    + now right.
-    + assumption. 
+  - exfalso. apply H. exists l. now left.
+  - apply H. intros. apply H0. destruct H1. exists x. now right.
 Qed.
 
 Lemma find_undef_l_in_c: forall (m: PA) (c: Clause) (l: Lit), find_undef_l m c = Some l -> In l c.
@@ -705,21 +697,15 @@ Proof.
   - congruence.
   - rewrite H0 in Heqcall. injection Heqcall as <- <-. destruct n.
     + rewrite app_nil_l in eqargs. now injection eqargs as <-.
-    + injection eqargs as <-. exfalso. apply H. exists (l, dec). split.
-      * now left.
-      * reflexivity.
+    + injection eqargs as <-. exfalso. apply H. exists l. now left.
   - destruct n.
     + discriminate.
     + injection eqargs as eqargs. destruct p. destruct a.
-      * exfalso. apply H0. exists (l1, dec). split.
-        -- now left.
-        -- reflexivity.
+      * exfalso. apply H0. exists l1. now left.
       * injection eqargs as <-. simpl in H1. simp split_last_decision in H1.
         simpl in Heqcall. simp split_last_decision in Heqcall.
         apply (H m0 m' n l0 l').
-        -- intros. apply H0. destruct H3. exists x. split.
-          ++ now right.
-          ++ intuition.
+        -- intros. apply H0. destruct H3. exists x. now right.
         -- assumption.
         -- assumption.
         -- assumption.
