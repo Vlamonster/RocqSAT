@@ -6,49 +6,103 @@ Import ListNotations.
 
 Open Scope bool_scope.
 
-(* Atoms are propositional symbols mapped to the naturals. *)
-Definition Atom: Type := nat.
+Module Atom.
+  (* Atoms are propositional symbols mapped to the naturals. *)
+  Definition Atom: Type := nat.
 
-Definition eqb_atom := Nat.eqb.
+  Definition eqb := Nat.eqb.
 
-(* Literals are either positive or negated variants of atoms. *)
-Inductive Lit: Type :=
-| Pos (p: Atom)
-| Neg (p: Atom).
+  Declare Scope atom_scope.
+  Notation "l1 =? l2" := (eqb l1 l2) (at level 70): atom_scope.
+  Open Scope atom_scope.
 
-Lemma eqb_atom_refl: forall (p: Atom), eqb_atom p p = true.
-Proof. apply Nat.eqb_refl. Qed.
+  Lemma eqb_refl: forall (p: Atom), p =? p = true.
+  Proof. apply Nat.eqb_refl. Qed.
 
-Lemma eqb_atom_sym: forall (p1 p2: Atom), eqb_atom p1 p2 = eqb_atom p2 p1.
-Proof. apply Nat.eqb_sym. Qed.
+  Lemma eqb_sym: forall (p1 p2: Atom), (p1 =? p2) = (p2 =? p1).
+  Proof. apply Nat.eqb_sym. Qed.
 
-Lemma eqb_atom_eq: forall (p1 p2: Atom), eqb_atom p1 p2 = true <-> p1 = p2.
-Proof. apply Nat.eqb_eq. Qed.
+  Lemma eqb_eq: forall (p1 p2: Atom), p1 =? p2 = true <-> p1 = p2.
+  Proof. apply Nat.eqb_eq. Qed.
+End Atom. Import Atom.
 
-Equations eqb_lit (l1 l2: Lit): bool :=
-eqb_lit (Pos p1) (Pos p2) := eqb_atom p1 p2;
-eqb_lit (Neg p1) (Neg p2) := eqb_atom p1 p2;
-eqb_lit _        _        := false.
+Module Lit.
+  (* Literals are either positive or negated variants of atoms. *)
+  Inductive Lit: Type :=
+  | Pos (p: Atom)
+  | Neg (p: Atom).
 
-Notation "l1 =? l2" := (eqb_lit l1 l2) (at level 70).
+  Equations eqb (l1 l2: Lit): bool :=
+  eqb (Pos p1) (Pos p2) := p1 =? p2;
+  eqb (Neg p1) (Neg p2) := p1 =? p2;
+  eqb _        _        := false.
 
-Lemma eqb_lit_refl: forall (l: Lit), l =? l = true.
-Proof. destruct l; simp eqb_lit; apply eqb_atom_refl. Qed.
+  Equations extract (l: Lit): Atom :=
+  extract (Pos p) := p;
+  extract (Neg p) := p.
 
-Lemma eqb_lit_sym: forall (l1 l2: Lit), (l1 =? l2) = (l2 =? l1).
-Proof. destruct l1, l2; simp eqb_lit; try reflexivity; try now apply eqb_atom_sym. Qed.
+  Declare Scope lit_scope.
+  Notation "l1 =? l2" := (eqb l1 l2) (at level 70): lit_scope.
+  Open Scope lit_scope.
 
-Lemma eqb_lit_eq: forall (l1 l2: Lit), l1 =? l2 = true <-> l1 = l2.
-Proof. destruct l1, l2; split; try simp eqb_lit; try rewrite eqb_atom_eq; try congruence. Qed.
+  Lemma eqb_refl: forall (l: Lit), l =? l = true.
+  Proof. destruct l; simp eqb; apply eqb_refl. Qed.
 
-Lemma eqb_lit_neq: forall (l1 l2: Lit), l1 =? l2 = false <-> l1 <> l2.
-Proof.
-  split.
-  - intros Hneqb Heq. subst. rewrite eqb_lit_refl in Hneqb. discriminate.
-  - intros Hneq. destruct (l1 =? l2) eqn:Heqb.
-    + apply eqb_lit_eq in Heqb. congruence.
-    + reflexivity.
-Qed.
+  Lemma eqb_sym: forall (l1 l2: Lit), (l1 =? l2) = (l2 =? l1).
+  Proof. destruct l1, l2; simp eqb; try reflexivity; try now apply eqb_sym. Qed.
+
+  Lemma eqb_eq: forall (l1 l2: Lit), l1 =? l2 = true <-> l1 = l2.
+  Proof. destruct l1, l2; split; try simp eqb; try rewrite eqb_eq; try congruence. Qed.
+
+  Lemma eqb_neq: forall (l1 l2: Lit), l1 =? l2 = false <-> l1 <> l2.
+  Proof. 
+    intros. rewrite <- not_iff_compat.
+    - now rewrite not_true_iff_false.
+    - apply eqb_eq.
+  Qed.
+End Lit. Import Lit.
+
+Module Neg.
+  (* Negates a literal (i.e. Pos becomes Neg and Neg becomes Pos). *)
+  Equations neg (l: Lit): Lit :=
+  neg (Pos p) := Neg p;
+  neg (Neg p) := Pos p.
+
+  Declare Scope neg_scope.
+  Notation "¬ l" := (neg l) (at level 65, right associativity, format "'[' ¬ ']' l"): neg_scope.
+  Open Scope neg_scope.
+
+  Lemma self_neq_neg: forall (l: Lit), l <> ¬l.
+  Proof. intros. apply eqb_neq. now funelim (l =? ¬l). Qed.
+
+  Lemma self_neqb_neg: forall (l: Lit), l =? ¬l = false.
+  Proof. intros. now funelim (l =? ¬l). Qed.
+
+  Lemma involutive: forall (l: Lit), ¬¬l = l.
+  Proof. intros. now funelim (¬l). Qed.
+
+  Lemma eqb_compat: forall (l1 l2: Lit), (l1 =? l2) = (¬l1 =? ¬l2).
+  Proof. now destruct l1, l2. Qed.
+
+  Lemma eq_compat: forall (l1 l2: Lit), l1 = l2 <-> ¬l1 = ¬l2.
+  Proof. intros. repeat rewrite <- eqb_eq. now rewrite eqb_compat. Qed.
+End Neg. Import Neg.
+
+Module PA.
+  (* An annotation on a literal (Lit * Ann) describing how its value was assigned. *)
+  Inductive Ann: Type :=
+  | dec
+  | prop.
+
+  (* A partial assignment for annoted literals. See `l_eval` for evaluation. *)
+  Definition PA: Type := list (Lit * Ann).
+
+  Declare Scope pa_scope.
+  Notation "m ++a n" := (n ++ m) (at level 55, left associativity): pa_scope.
+  Notation "m ++d l" := ((l, dec) :: m) (at level 55, left associativity): pa_scope.
+  Notation "m ++p l" := ((l, prop) :: m) (at level 55, left associativity): pa_scope.
+  Open Scope pa_scope.
+End PA. Import PA.
 
 (* A clause is a disjunction of literals. *)
 Definition Clause: Type := list Lit.
@@ -56,99 +110,64 @@ Definition Clause: Type := list Lit.
 (* A formula is a conjunction of clauses. *)
 Definition CNF: Type := list Clause.
 
-Equations neg (l: Lit): Lit :=
-neg (Pos p) := Neg p;
-neg (Neg p) := Pos p.
+Module Evaluation.
+  (* The first instance of `l` or `¬l` determines the value. *)
+  Equations l_eval (m: PA) (l: Lit): option bool :=
+  l_eval [] _ := None;
+  l_eval ((l', _) :: m) l with l =? l', l =? ¬l' :=
+    | true, _    := Some true
+    | _   , true := Some false
+    | _   , _    := l_eval m l.
 
-Lemma neg_neq: forall (l: Lit), l <> neg l.
-Proof. intros. apply eqb_lit_neq. now funelim (l =? neg l). Qed.
+  Equations l_ann (m: PA) (l: Lit): option Ann :=
+  l_ann [] _ := None;
+  l_ann ((l', a) :: m) l with l =? l', l =? ¬l' :=
+    | true, _    := Some a
+    | _   , true := Some a
+    | _   , _    := l_ann m l.
 
-Lemma neg_neqb: forall (l: Lit), l =? neg l = false.
-Proof. intros. now funelim (l =? neg l). Qed.
+  Equations l_remove (c: Clause) (l: Lit): Clause :=
+  l_remove c l := filter (fun l' => negb (l =? l')) c.
 
-Lemma neg_involutive: forall (l: Lit), neg (neg l) = l.
-Proof. intros. now funelim (neg l). Qed.
+  Equations c_eval (m: PA) (c: Clause): option bool :=
+  c_eval m [] := Some false;
+  c_eval m (l :: c) with l_eval m l, c_eval m c :=
+    | Some true , _          := Some true
+    | _         , Some true  := Some true
+    | Some false, Some false := Some false
+    | _         , _          := None.
 
-Lemma eqb_lit_neg_compat: forall (l1 l2: Lit), (l1 =? l2) = (neg l1 =? neg l2).
-Proof. now destruct l1, l2. Qed.
+  Equations f_eval (m: PA) (f: CNF): option bool :=
+  f_eval m [] := Some true;
+  f_eval m (c :: f) with c_eval m c, f_eval m f :=
+    | Some true , r          := r
+    | Some false, _          := Some false
+    | _         , Some false := Some false
+    | None      , _          := None.
 
-Lemma eq_lit_neg_compat: forall (l1 l2: Lit), l1 = l2 <-> neg l1 = neg l2.
-Proof. intros. repeat rewrite <- eqb_lit_eq. now rewrite eqb_lit_neg_compat. Qed.
+  Definition Def (m: PA) (l: Lit): Prop := exists (b: bool), l_eval m l = Some b.
+  Definition Undef (m: PA) (l: Lit): Prop := l_eval m l = None.
 
-Definition Unit (C: Clause): Prop := exists (l: Lit), C = [l].
-
-(* An annotation on a literal (Lit * Ann) describing how its value was assigned. *)
-Inductive Ann: Type :=
-| dec
-| prop.
-
-(* A partial assignment for annoted literals. See `l_eval` for evaluation. *)
-Definition PA: Type := list (Lit * Ann).
-
-Notation "m ++a n" := (n ++ m) (at level 65, left associativity).
-Notation "m ++d l" := ((l, dec) :: m) (at level 65, left associativity).
-Notation "m ++p l" := ((l, prop) :: m) (at level 65, left associativity).
-
-Equations l_extract (l: Lit): Atom :=
-l_extract (Pos p) := p;
-l_extract (Neg p) := p.
-
-(* The first instance of `l` or `neg l` determines the value. *)
-Equations l_eval (m: PA) (l: Lit): option bool :=
-l_eval [] _ := None;
-l_eval ((l', _) :: m) l with l =? l', l =? neg l' :=
-  | true, _    := Some true
-  | _   , true := Some false
-  | _   , _    := l_eval m l.
-
-Equations l_ann (m: PA) (l: Lit): option Ann :=
-l_ann [] _ := None;
-l_ann ((l', a) :: m) l with l =? l', l =? neg l' :=
-  | true, _    := Some a
-  | _   , true := Some a
-  | _   , _    := l_ann m l.
-
-Equations l_remove (c: Clause) (l: Lit): Clause :=
-l_remove c l := filter (fun l' => negb (l =? l')) c.
-
-Equations c_eval (m: PA) (c: Clause): option bool :=
-c_eval m [] := Some false;
-c_eval m (l :: c) with l_eval m l, c_eval m c :=
-  | Some true , _          := Some true
-  | _         , Some true  := Some true
-  | Some false, Some false := Some false
-  | _         , _          := None.
-
-Equations f_eval (m: PA) (f: CNF): option bool :=
-f_eval m [] := Some true;
-f_eval m (c :: f) with c_eval m c, f_eval m f :=
-  | Some true , r          := r
-  | Some false, _          := Some false
-  | _         , Some false := Some false
-  | None      , _          := None.
+  Lemma def_undef: forall (m: PA) (l: Lit), Def m l <-> ~ Undef m l.
+  Proof. 
+    unfold Def, Undef. intros. destruct (l_eval m l).
+    - intuition.
+      + discriminate.
+      + exists b. reflexivity.
+    - intuition. destruct H. discriminate.
+  Qed.
+End Evaluation. Import Evaluation.
 
 Module EvalExamples.
-Compute l_eval ([] ++p Pos 1) (Pos 1).
-Compute l_eval ([] ++p Pos 1) (Neg 1).
-Compute c_eval [] [Pos 1; Pos 2].
-Compute c_eval ([] ++p Pos 1) [Pos 1; Pos 2].
-Compute c_eval ([] ++p Neg 1) [Pos 1; Pos 2].
-Compute c_eval ([] ++p Pos 2) [Pos 1; Pos 2].
+  Compute l_eval ([] ++p Pos 1) (Pos 1).
+  Compute l_eval ([] ++p Pos 1) (Neg 1).
+  Compute c_eval [] [Pos 1; Pos 2].
+  Compute c_eval ([] ++p Pos 1) [Pos 1; Pos 2].
+  Compute c_eval ([] ++p Neg 1) [Pos 1; Pos 2].
+  Compute c_eval ([] ++p Pos 2) [Pos 1; Pos 2].
 End EvalExamples.
 
-Definition Def (m: PA) (l: Lit): Prop := exists (v: bool), l_eval m l = Some v.
-Definition Undef (m: PA) (l: Lit): Prop := l_eval m l = None.
-
-Lemma def_undef: forall (m: PA) (l: Lit), Def m l <-> ~ Undef m l.
-Proof. 
-  unfold Def, Undef. intros. destruct (l_eval m l).
-  - intuition.
-    + discriminate.
-    + exists b. reflexivity.
-  - intuition. destruct H. discriminate.
-Qed.
-
-Definition Total (m: PA): Prop := forall (l: Lit), Def m l.
+Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
 
 Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
 
@@ -182,18 +201,18 @@ Inductive Trans: relation State :=
   Trans (state m f) (state (m ++p l) f)
 (* Arbitrarily set an unassigned literal in the formula to true. *)
 | t_decide (m: PA) (f: CNF) (c: Clause) (l: Lit):
-  In l c \/ In (neg l) c ->
+  In l c \/ In (¬l) c ->
   In c f ->
   Undef m l ->
   Trans (state m f) (state (m ++d l) f)
 (* Backtrack by flipping the most recent decision literal. *)
 | t_backtrack (m n: PA) (f: CNF) (c c': Clause) (l: Lit):
-  In l c \/ In (neg l) c ->
+  In l c \/ In (¬l) c ->
   In c f ->
   In c' f ->
   Conflicting (m ++d l ++a n) c' ->
   NoDecisions n ->
-  Trans (state (m ++d l ++a n) f) (state (m ++p neg l) f).
+  Trans (state (m ++d l ++a n) f) (state (m ++p ¬l) f).
 
 Infix "==>" := Trans (at level 70).
 
@@ -304,7 +323,7 @@ find_decision m (c :: f) with find_undef_l m c, find_decision m f :=
   | _     , r := r.
 
 Equations l_in_c (l: Lit) (c: Clause): bool :=
-l_in_c l c := existsb (eqb_lit l) c || existsb (eqb_lit (neg l)) c.
+l_in_c l c := existsb (eqb l) c || existsb (eqb (¬l)) c.
 
 Equations l_in_f (l: Lit) (f: CNF): bool :=
 l_in_f l f := existsb (l_in_c l) f.
@@ -317,7 +336,7 @@ next_state (state m f) :=
   | Some c, None => Some fail
   (* t_backtrack *)
   | Some c, Some (m', l) => 
-    if l_in_f l f then Some (state (m' ++p neg l) f)
+    if l_in_f l f then Some (state (m' ++p ¬l) f)
     else
     (* t_unit *)
     match find_unit m f with
@@ -374,17 +393,17 @@ Proof.
 Qed.
 
 Lemma l_ann_prop_eq: forall (m: PA) (l: Lit), l_ann (m ++p l) l = Some prop. 
-Proof. intros. simp l_ann. rewrite eqb_lit_refl. simpl. reflexivity. Qed.
+Proof. intros. simp l_ann. rewrite eqb_refl. simpl. reflexivity. Qed.
 
-Lemma l_ann_prop_eq_neg: forall (m: PA) (l: Lit), l_ann (m ++p l) (neg l) = Some prop. 
+Lemma l_ann_prop_eq_neg: forall (m: PA) (l: Lit), l_ann (m ++p l) (¬l) = Some prop. 
 Proof. 
-  intros. simp l_ann. rewrite eqb_lit_refl. pose proof (neg_neq l). apply eqb_lit_neq in H.
-  rewrite eqb_lit_sym in H. rewrite H. simpl. reflexivity.
+  intros. simp l_ann. rewrite eqb_refl. pose proof (Neg.self_neq_neg l). apply eqb_neq in H.
+  rewrite eqb_sym in H. rewrite H. simpl. reflexivity.
 Qed.
 
-Lemma l_ann_prop_neq: forall (m: PA) (l l': Lit), l' <> l /\ l' <> neg l -> l_ann (m ++p l) l' = l_ann m l'. 
+Lemma l_ann_prop_neq: forall (m: PA) (l l': Lit), l' <> l /\ l' <> ¬l -> l_ann (m ++p l) l' = l_ann m l'. 
 Proof. 
-  intros. destruct H. simp l_ann. rewrite <- eqb_lit_neq in H, H0. rewrite H, H0. simpl. reflexivity.
+  intros. destruct H. simp l_ann. rewrite <- eqb_neq in H, H0. rewrite H, H0. simpl. reflexivity.
 Qed.
 
 Lemma no_split__no_decision: forall (m: PA), split_last_decision m = None -> NoDecisions m.
@@ -531,11 +550,11 @@ Proof.
   pose proof (c_eval_none__l_eval_none m c H).
   pose proof (c_eval_false__l_eval_false m (l_remove c l) H0).
   destruct H1. destruct H1. destruct (x =? l) eqn:G.
-  - apply eqb_lit_eq in G. subst. assumption.
+  - apply eqb_eq in G. subst. assumption.
   - pose proof (H2 x). assert (In x (l_remove c l)).
     + simp l_remove. rewrite filter_In. split.
       * assumption.
-      * rewrite eqb_lit_sym. rewrite G. reflexivity.
+      * rewrite eqb_sym. rewrite G. reflexivity.
     + apply H4 in H5. congruence. 
 Qed.
 
@@ -576,9 +595,9 @@ Proof.
           apply (t_backtrack m_split n_split f c_decide c_conflict l_split).
           ++ simp l_in_c in Hx_in_c. apply orb_true_iff in Hx_in_c as [Hl_in_c|Hnegl_in_c].
             ** left. apply existsb_exists in Hl_in_c as [l_decide [Hl_in_c Heq]]. 
-               apply eqb_lit_eq in Heq. congruence.
+               apply eqb_eq in Heq. congruence.
             ** right. apply existsb_exists in Hnegl_in_c as [l_decide [Hnegl_in_c Heq]].
-               apply eqb_lit_eq in Heq. congruence.
+               apply eqb_eq in Heq. congruence.
           ++ assumption.
           ++ apply (find_conflict_c_in_f m f c_conflict). assumption.
           ++ rewrite <- decomp. apply (find_conflict_conflicting m f c_conflict). assumption.
@@ -649,23 +668,23 @@ Proof.
     destruct (find_undef_l_exists m c0 l H H1). congruence.
 Qed.
 
-Lemma undef__neg_undef: forall (m: PA) (l: Lit), Undef m l <-> Undef m (neg l).
+Lemma undef__neg_undef: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
 Proof.
   unfold Undef. intros. funelim (l_eval m l).
   - intuition.
   - intuition.
     + discriminate.
-    + apply eqb_lit_eq in Heq. subst. simp l_eval in H. rewrite eqb_lit_refl in H. 
-      rewrite eqb_lit_sym in H. rewrite neg_neqb in H. discriminate.
+    + apply eqb_eq in Heq. subst. simp l_eval in H. rewrite eqb_refl in H. 
+      rewrite eqb_sym in H. rewrite Neg.self_neqb_neg in H. discriminate.
   - intuition.
     + discriminate.
-    + apply eqb_lit_eq in Heq. subst. simp neg in H. rewrite neg_involutive in H.
-      simp l_eval in H. rewrite eqb_lit_refl in H. rewrite neg_neqb in H. discriminate.
+    + apply eqb_eq in Heq. subst. simp neg in H. rewrite Neg.involutive in H.
+      simp l_eval in H. rewrite eqb_refl in H. rewrite Neg.self_neqb_neg in H. discriminate.
   - intuition.
-    + simp l_eval. rewrite <- eqb_lit_neg_compat. rewrite Heq0. rewrite eqb_lit_neg_compat in Heq.
-      rewrite neg_involutive in Heq. rewrite Heq. simpl. assumption.
-    + autorewrite with l_eval in H. rewrite <- eqb_lit_neg_compat in H. rewrite Heq0 in H.
-      rewrite eqb_lit_neg_compat in Heq. rewrite neg_involutive in Heq. rewrite Heq in H. simpl in H. 
+    + simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. rewrite Neg.eqb_compat in Heq.
+      rewrite Neg.involutive in Heq. rewrite Heq. simpl. assumption.
+    + autorewrite with l_eval in H. rewrite <- Neg.eqb_compat in H. rewrite Heq0 in H.
+      rewrite Neg.eqb_compat in Heq. rewrite Neg.involutive in Heq. rewrite Heq in H. simpl in H. 
       apply H1. apply H.
 Qed.
 
@@ -676,7 +695,7 @@ Proof.
   - assumption.
   - simp l_in_c. rewrite orb_true_iff. left. rewrite existsb_exists. exists l. split.
     + assumption.
-    + apply eqb_lit_refl.
+    + apply eqb_refl.
 Qed.
 
 Lemma split_last_dec: forall (m m' n: PA) (l l': Lit),
@@ -722,19 +741,19 @@ Proof.
       * intros. apply H. now right.
 Qed.
 
-Lemma l_in_f__neg_l_in_f: forall (f: CNF) (l: Lit), l_in_f l f = l_in_f (neg l) f.
+Lemma l_in_f__neg_l_in_f: forall (f: CNF) (l: Lit), l_in_f l f = l_in_f (¬l) f.
 Proof.
   intros. destruct (l_in_f l f) eqn:G.
   - simp l_in_f in *. apply existsb_exists in G as [c [Hc_in_f Hl_in_c]].
     simp l_in_c in *. apply orb_true_iff in Hl_in_c as [Hl_in_c|Hnegl_in_c].
     + symmetry. apply existsb_exists. exists c. split.
       * assumption.
-      * simp l_in_c. apply orb_true_iff. right. now rewrite neg_involutive.
+      * simp l_in_c. apply orb_true_iff. right. now rewrite Neg.involutive.
     + symmetry. apply existsb_exists. exists c. split.
       * assumption.
       * simp l_in_c. apply orb_true_iff. now left.
   - simp l_in_f in *. rewrite existsb_false_iff in G. symmetry. rewrite existsb_false_iff.
-    intros. apply G in H. simp l_in_c in *. rewrite neg_involutive. now rewrite orb_comm.
+    intros. apply G in H. simp l_in_c in *. rewrite Neg.involutive. now rewrite orb_comm.
 Qed.
 
 (* The rhs is weaker because there could be multiple { s': State | s ==> s' }. *)
@@ -754,7 +773,7 @@ Proof.
       destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind_conflict.
       * destruct (split_last_decision m) as [(m_split, l_split)|] eqn:Hsplit.
         -- destruct (l_in_f l_split f) eqn:Hl_in_f.
-          ++ now exists (state (m_split ++p neg l_split) f).
+          ++ now exists (state (m_split ++p ¬l_split) f).
           ++ destruct (find_unit m f) as [(c_unit, l_unit)|] eqn:Hfind_unit.
             ** now exists (state (m ++p l_unit) f).
             ** destruct (find_decision m f) as [l_decide|] eqn:Hfind_dec.
@@ -769,7 +788,7 @@ Proof.
       destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind_conflict.
       * destruct (split_last_decision m) as [(m_split, l_split)|] eqn:Hsplit.
         -- destruct (l_in_f l_split f) eqn:Hl_in_f. 
-          ++ now exists (state (m_split ++p neg l_split) f).
+          ++ now exists (state (m_split ++p ¬l_split) f).
           ++ destruct (find_unit m f) as [(c_unit', l_unit')|] eqn:Hfind_unit.
             ** now exists (state (m ++p l_unit') f).
             ** destruct (find_decision m f) as [l_decide|] eqn:Hfind_dec.
@@ -788,7 +807,7 @@ Proof.
       destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind_conflict.
       * destruct (split_last_decision m) as [(m_split, l_split)|] eqn:Hsplit.
         -- destruct (l_in_f l_split f) eqn:Hl_in_f.
-          ++ now exists (state (m_split ++p neg l_split) f).
+          ++ now exists (state (m_split ++p ¬l_split) f).
           ++ destruct (find_unit m f) as [(c_unit', l_unit')|] eqn:Hfind_unit.
             ** now exists (state (m ++p l_unit') f).
             ** destruct (find_decision m f) as [l_decide'|] eqn:Hfind_dec.
@@ -796,7 +815,7 @@ Proof.
               --- destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
                 +++ destruct (find_decision_exists m f c_decide l_decide Hl_in_c Hc_in_f Hundef). congruence.
                 +++ apply undef__neg_undef in Hundef.
-                    destruct (find_decision_exists m f c_decide (neg l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
+                    destruct (find_decision_exists m f c_decide (¬l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
         -- now exists fail.
       * destruct (find_unit m f) as [(c_unit', l_unit')|] eqn:Hfind_unit.
         -- now exists (state (m ++p l_unit') f).
@@ -805,7 +824,7 @@ Proof.
           ++ destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
             ** destruct (find_decision_exists m f c_decide l_decide Hl_in_c Hc_in_f Hundef). congruence.
             ** apply undef__neg_undef in Hundef.
-               destruct (find_decision_exists m f c_decide (neg l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
+               destruct (find_decision_exists m f c_decide (¬l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
   (* t_backtrack *)
   - funelim (next_state (state (m_split ++d l_split ++a n_split) f)).
     + discriminate.
@@ -813,7 +832,7 @@ Proof.
       destruct (find_conflict (m_split ++d l_split ++a n_split) f) as [c_conflict'|] eqn:Hfind_conflict.
       * destruct (split_last_decision (m_split ++d l_split ++a n_split)) as [(m_split', l_split')|] eqn:Hsplit.
         -- destruct (l_in_f l_split' f) eqn:Hl_in_f. 
-          ++ now exists (state (m_split' ++p neg l_split') f).
+          ++ now exists (state (m_split' ++p ¬l_split') f).
           ++ destruct (find_unit (m_split ++d l_split ++a n_split) f) as [(c_unit, l_unit)|] eqn:Hfind_unit.
             ** now exists (state (m_split ++d l_split ++a n_split ++p l_unit) f).
             ** destruct (find_decision (m_split ++d l_split ++a n_split) f) as [l_decide|] eqn:Hfind_dec.
@@ -822,7 +841,7 @@ Proof.
                 +++ subst l_split'. destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
                   *** now rewrite (l_in_c__c_in_f__l_in_f f c_decide l_split Hl_in_c Hc_in_f) in Hl_in_f.
                   *** rewrite l_in_f__neg_l_in_f in Hl_in_f.
-                      now rewrite (l_in_c__c_in_f__l_in_f f c_decide (neg l_split) Hnegl_in_c Hc_in_f) in Hl_in_f.
+                      now rewrite (l_in_c__c_in_f__l_in_f f c_decide (¬l_split) Hnegl_in_c Hc_in_f) in Hl_in_f.
                 +++ assumption.
         -- now exists fail.
       * destruct (find_unit (m_split ++d l_split ++a n_split) f) as [(c_unit', l_unit')|] eqn:Hfind_unit.
@@ -878,11 +897,11 @@ Equations score_total (m: PA) (f: CNF): nat :=
 score_total m f := (max_lit_f f) - length m.
 
 Definition NoDuplicates (m: PA): Prop := 
-  NoDup (map l_extract (map fst m)).
+  NoDup (map extract (map fst m)).
 
 Definition Bounded (m: PA) (f: CNF): Prop := 
   forall (l: Lit), In l (map fst m) -> 
-  exists (c: Clause), In c f /\ (In l c \/ In (neg l) c).
+  exists (c: Clause), In c f /\ (In l c \/ In (¬l) c).
 
 Definition Clean (m: PA) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.
@@ -905,7 +924,7 @@ Section dedupe_by.
 End dedupe_by.
 
 Equations eqb_by_atom (la la': Lit * Ann): bool :=
-eqb_by_atom (l, _) (l', _) := (l =? l') || (l =? neg l'). 
+eqb_by_atom (l, _) (l', _) := (l =? l') || (l =? ¬l'). 
 
 Equations is_bounded (f: CNF) (la: Lit * Ann): bool :=
 is_bounded f (l, _) := l_in_f l f.
@@ -928,7 +947,7 @@ Proof.
 Qed.
 
 Lemma dedupe_by__nodup: forall (m: PA),
-  NoDup (map l_extract (map fst (dedupe_by eqb_by_atom m))).
+  NoDup (map extract (map fst (dedupe_by eqb_by_atom m))).
 Proof.
   intros. funelim (dedupe_by eqb_by_atom m).
   - simpl. constructor.
@@ -938,10 +957,10 @@ Proof.
       simp eqb_atom in Hin'. apply incl_dedupe in Hin'. apply filter_In in Hin' as [_ G].
       destruct x'. simp neqb_of in G. simpl in Heq'. subst x. simp eqb_by_atom in G.
       destruct l, l0.
-      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
-      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
-      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
-      * simp l_extract in Heq. subst. rewrite eqb_lit_refl in G. discriminate.
+      * simp extract in Heq. subst. rewrite eqb_refl in G. discriminate.
+      * simp extract in Heq. subst. rewrite eqb_refl in G. discriminate.
+      * simp extract in Heq. subst. rewrite eqb_refl in G. discriminate.
+      * simp extract in Heq. subst. rewrite eqb_refl in G. discriminate.
     + assumption.
 Qed.
 
@@ -959,10 +978,10 @@ Proof.
         apply filter_In in Hin' as [_ G1].
         -- destruct p. simpl in Heq. destruct x'. simpl in Heq'. subst.
            simp neqb_of in G1. simp eqb_by_atom in G1. destruct x, l0.
-          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
-          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
-          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
-          ++ simp l_extract in Heq. subst p0. rewrite eqb_lit_refl in G1. discriminate.
+          ++ simp extract in Heq. subst p0. rewrite eqb_refl in G1. discriminate.
+          ++ simp extract in Heq. subst p0. rewrite eqb_refl in G1. discriminate.
+          ++ simp extract in Heq. subst p0. rewrite eqb_refl in G1. discriminate.
+          ++ simp extract in Heq. subst p0. rewrite eqb_refl in G1. discriminate.
       * apply dedupe_by__nodup.
 Qed.
 
@@ -979,10 +998,10 @@ Proof.
     funelim (l_in_c l c). rewrite Hlinc in Heqcall0. apply orb_true_iff in Heqcall0 as [G|G].
     + split.
       * assumption.
-      * left. apply existsb_exists in G as [x [G1 G2]]. simpl. rewrite eqb_lit_eq in G2. now subst.
+      * left. apply existsb_exists in G as [x [G1 G2]]. simpl. rewrite eqb_eq in G2. now subst.
     + split.
       * assumption.
-      * right. apply existsb_exists in G as [x [G1 G2]]. simpl. rewrite eqb_lit_eq in G2. now subst.
+      * right. apply existsb_exists in G as [x [G1 G2]]. simpl. rewrite eqb_eq in G2. now subst.
 Qed.
 
 Inductive FailLt: relation State :=
@@ -1253,7 +1272,7 @@ Proof.
   - injection eqargs as eqargs. subst m0 f0. rewrite Heqcall. destruct (find_conflict m f).
     + destruct (split_last_decision m).
       * destruct p. destruct (l_in_f l f).
-        -- right. right. now exists (p ++p neg l).
+        -- right. right. now exists (p ++p ¬l).
         -- destruct (find_unit m f).
           ++ destruct p0. right. right. now exists (m ++p l0).
           ++ destruct (find_decision m f).
@@ -1268,13 +1287,13 @@ Proof.
 Qed.
 
 Lemma negl_in_c__c_in_f__l_in_f: forall (f: CNF) (c: Clause) (l: Lit),
-  In (neg l) c -> In c f -> l_in_f l f = true.
+  In (¬l) c -> In c f -> l_in_f l f = true.
 Proof. 
   intros. simp l_in_f. rewrite existsb_exists. exists c. split.
   - assumption.
-  - simp l_in_c. rewrite orb_true_iff. right. rewrite existsb_exists. exists (neg l). split.
+  - simp l_in_c. rewrite orb_true_iff. right. rewrite existsb_exists. exists (¬l). split.
     + assumption.
-    + apply eqb_lit_refl.
+    + apply eqb_refl.
 Qed.
 
 Lemma undef__no_dupes: forall (m: PA) (l: Lit) (a: Ann), 
@@ -1283,12 +1302,12 @@ Proof.
   unfold Undef. induction m.
   - intros. simpl. reflexivity.
   - intros. simpl. simp neqb_of. apply andb_true_iff. split.
-    + destruct a. simp eqb_by_atom. destruct (l =? l0) eqn:G1, (l =? neg l0) eqn:G2.
+    + destruct a. simp eqb_by_atom. destruct (l =? l0) eqn:G1, (l =? ¬l0) eqn:G2.
       * simp l_eval in H. rewrite G1, G2 in H. simpl in H. discriminate.
       * simp l_eval in H. rewrite G1, G2 in H. simpl in H. discriminate.
       * simp l_eval in H. rewrite G1, G2 in H. simpl in H. discriminate.
       * simpl. reflexivity.
-    + apply IHm. destruct a. destruct (l =? l0) eqn:G1, (l =? neg l0) eqn:G2.
+    + apply IHm. destruct a. destruct (l =? l0) eqn:G1, (l =? ¬l0) eqn:G2.
       * simp l_eval in H. rewrite G1, G2 in H. simpl in H. discriminate.
       * simp l_eval in H. rewrite G1, G2 in H. simpl in H. discriminate.
       * simp l_eval in H. rewrite G1, G2 in H. simpl in H. discriminate.
@@ -1314,12 +1333,12 @@ Proof.
 Qed.
 
 Lemma l_eval_some_in: forall (m: PA) (l: Lit) (b: bool), 
-  l_eval m l = Some b -> exists (a: Ann), In (l, a) m \/ In (neg l, a) m.
+  l_eval m l = Some b -> exists (a: Ann), In (l, a) m \/ In (¬l, a) m.
 Proof. 
   intros. funelim (l_eval m l).
   - congruence.
-  - rewrite eqb_lit_eq in Heq. subst l'. exists a. left. now left.
-  - rewrite eqb_lit_eq in Heq. subst. exists a. right. rewrite neg_involutive. now left.
+  - rewrite eqb_eq in Heq. subst l'. exists a. left. now left.
+  - rewrite eqb_eq in Heq. subst. exists a. right. rewrite Neg.involutive. now left.
   - rewrite H0 in Heqcall. apply H in Heqcall; auto. destruct Heqcall. destruct H1.
     + exists x. left. now right.
     + exists x. right. now right.
@@ -1333,36 +1352,36 @@ Proof.
   - now exists true.
   - now exists false.
   - apply (H a0). inversion H0.
-    + injection H1 as <- <-. rewrite eqb_lit_refl in Heq0. discriminate.
+    + injection H1 as <- <-. rewrite eqb_refl in Heq0. discriminate.
     + assumption. 
 Qed.
 
 Lemma l_eval_some_neg: forall (m: PA) (l: Lit) (b: bool),
-  l_eval m l = Some b <-> l_eval m (neg l) = Some (negb b).
+  l_eval m l = Some b <-> l_eval m (¬l) = Some (negb b).
 Proof.
   intros. funelim (l_eval m l).
   - split.
     + intros. discriminate.
     + intros. discriminate.
   - split.
-    + intros. injection H as <-. rewrite eqb_lit_eq in Heq. subst l'.
-      simp l_eval. rewrite eqb_lit_refl. rewrite eqb_lit_sym. rewrite neg_neqb. simpl. reflexivity.
-    + intros. rewrite eqb_lit_eq in Heq. subst l'. simp l_eval in H.
-      rewrite eqb_lit_refl in H. rewrite eqb_lit_sym in H. rewrite neg_neqb in H. simpl in H.
+    + intros. injection H as <-. rewrite eqb_eq in Heq. subst l'.
+      simp l_eval. rewrite eqb_refl. rewrite eqb_sym. rewrite Neg.self_neqb_neg. simpl. reflexivity.
+    + intros. rewrite eqb_eq in Heq. subst l'. simp l_eval in H.
+      rewrite eqb_refl in H. rewrite eqb_sym in H. rewrite Neg.self_neqb_neg in H. simpl in H.
       injection H as H. destruct b; easy.
   - split.
-    + intros. rewrite eqb_lit_eq in Heq. subst. rewrite neg_involutive.
-      simp l_eval. rewrite eqb_lit_refl. rewrite neg_neqb. simpl. f_equal.
+    + intros. rewrite eqb_eq in Heq. subst. rewrite Neg.involutive.
+      simp l_eval. rewrite eqb_refl. rewrite Neg.self_neqb_neg. simpl. f_equal.
       injection H as <-. reflexivity.
-    + intros. f_equal. rewrite eqb_lit_eq in Heq. subst. rewrite neg_involutive in H.
-      simp l_eval in H. rewrite neg_neqb in H. rewrite eqb_lit_refl in H. simpl in H.
+    + intros. f_equal. rewrite eqb_eq in Heq. subst. rewrite Neg.involutive in H.
+      simp l_eval in H. rewrite Neg.self_neqb_neg in H. rewrite eqb_refl in H. simpl in H.
       injection H as H. destruct b; auto.
   - split.
-    + intros. simp l_eval. rewrite <- eqb_lit_neg_compat. rewrite Heq0. 
-      rewrite eqb_lit_neg_compat. rewrite neg_involutive. rewrite Heq. simpl.
+    + intros. simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. 
+      rewrite Neg.eqb_compat. rewrite Neg.involutive. rewrite Heq. simpl.
       apply H. assumption.
-    + intros. simp l_eval in H0. rewrite <- eqb_lit_neg_compat in H0. rewrite Heq0 in H0.
-      rewrite eqb_lit_neg_compat in H0. rewrite neg_involutive in H0. rewrite Heq in H0.
+    + intros. simp l_eval in H0. rewrite <- Neg.eqb_compat in H0. rewrite Heq0 in H0.
+      rewrite Neg.eqb_compat in H0. rewrite Neg.involutive in H0. rewrite Heq in H0.
       simpl in H0. apply H. assumption.
 Qed.
 
@@ -1374,7 +1393,7 @@ Proof.
   - apply l_eval_some_in in G as [b' [G|G]].
     + apply H0 in G. apply in_l_eval_some in G. destruct G. congruence.
     + apply H0 in G. apply in_l_eval_some in G. destruct G. apply l_eval_some_neg in H1.
-      rewrite neg_involutive in H1. congruence.
+      rewrite Neg.involutive in H1. congruence.
   - reflexivity.
 Qed.
 
@@ -1386,7 +1405,7 @@ Proof.
   - apply l_eval_some_in in G as [b' [G|G]].
     + apply H0 in G. apply in_l_eval_some in G. destruct G. congruence.
     + apply H0 in G. apply in_l_eval_some in G. destruct G. apply l_eval_some_neg in H1.
-      rewrite neg_involutive in H1. congruence.
+      rewrite Neg.involutive in H1. congruence.
   - reflexivity.
 Qed.
 
