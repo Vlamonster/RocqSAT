@@ -88,13 +88,27 @@ Module Neg.
   Proof. intros. repeat rewrite <- eqb_eq. now rewrite eqb_compat. Qed.
 End Neg. Import Neg.
 
-Module PA.
+Module Clause.
+  (* A clause is a disjunction of literals. *)
+  Definition Clause: Type := list Lit.
+
+  (* Remove a literal from a clause. *)
+  Equations l_remove (c: Clause) (l: Lit): Clause :=
+  l_remove c l := filter (fun (l': Lit) => negb (l =? l')) c.
+End Clause. Import Clause.
+
+Module CNF.
+  (* A formula is a conjunction of clauses. *)
+  Definition CNF: Type := list Clause.
+End CNF. Import CNF.
+
+Module Evaluation.
   (* An annotation on a literal (Lit * Ann) describing how its value was assigned. *)
   Inductive Ann: Type :=
   | dec
   | prop.
 
-  (* A partial assignment for annoted literals. See `l_eval` for evaluation. *)
+  (* A partial assignment for annoted literals. See below for evaluation. *)
   Definition PA: Type := list (Lit * Ann).
 
   Declare Scope pa_scope.
@@ -102,15 +116,7 @@ Module PA.
   Notation "m ++d l" := ((l, dec) :: m) (at level 55, left associativity): pa_scope.
   Notation "m ++p l" := ((l, prop) :: m) (at level 55, left associativity): pa_scope.
   Open Scope pa_scope.
-End PA. Import PA.
 
-(* A clause is a disjunction of literals. *)
-Definition Clause: Type := list Lit.
-
-(* A formula is a conjunction of clauses. *)
-Definition CNF: Type := list Clause.
-
-Module Evaluation.
   (* The first instance of `l` or `¬l` determines the value. *)
   Equations l_eval (m: PA) (l: Lit): option bool :=
   l_eval [] _ := None;
@@ -173,10 +179,6 @@ Module Trans.
   (* Propositions used in the transition relation `==>`. *)
   Definition NoDecisions (m: PA): Prop := ~ exists (la: Lit * Ann), In la m /\ snd la = dec.
   Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false.
-
-  (* Remove a literal from a clause. *)
-  Equations l_remove (c: Clause) (l: Lit): Clause :=
-  l_remove c l := filter (fun (l': Lit) => negb (l =? l')) c.
 
   Inductive Trans: relation State :=
   (* Fail if all literals are assigned and there is a conflict. *)
@@ -1546,34 +1548,36 @@ Section solve.
   Definition solve: State := solve_aux (state [] f) (initial_refl f).
 End solve.
 
-Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
-Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
+Module Satisfiability.
+  Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
+  Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
 
-Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
-Definition Unsat (f: CNF): Prop := ~ Sat f.
+  Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
+  Definition Unsat (f: CNF): Prop := ~ Sat f.
 
-Definition Entails (f f': CNF): Prop := forall (m: PA), Model m f -> Model m f'.
-Definition Equivalent (f f': CNF): Prop := Entails f f' /\ Entails f' f.
+  Definition Entails (f f': CNF): Prop := forall (m: PA), Model m f -> Model m f'.
+  Definition Equivalent (f f': CNF): Prop := Entails f f' /\ Entails f' f.
 
-Theorem fail_final: Final fail.
-Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
+  Theorem fail_final: Final fail.
+  Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
 
-Theorem final_exists: forall (f: CNF),
-  (state [] f ==>* fail /\ Final fail) \/
-  (exists (m: PA), state [] f ==>* state m f /\ Final (state m f)).
-Admitted.
+  Theorem final_exists: forall (f: CNF),
+    (state [] f ==>* fail /\ Final fail) \/
+    (exists (m: PA), state [] f ==>* state m f /\ Final (state m f)).
+  Admitted.
 
-Theorem final_sat_refl: forall (f: CNF) (m: PA),
-  state [] f ==>* state m f /\ Final (state m f) <-> Sat f.
-Admitted.
+  Theorem final_sat_refl: forall (f: CNF) (m: PA),
+    state [] f ==>* state m f /\ Final (state m f) <-> Sat f.
+  Admitted.
 
-Theorem final_unsat_refl: forall (f: CNF),
-  state [] f ==>* fail /\ Final fail <-> Unsat f.
-Admitted.
+  Theorem final_unsat_refl: forall (f: CNF),
+    state [] f ==>* fail /\ Final fail <-> Unsat f.
+  Admitted.
 
-Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
-Proof.
-  intros. destruct (final_exists f).
-  - right. apply final_unsat_refl. assumption.
-  - left. destruct H. apply (final_sat_refl f x). assumption.
-Qed.
+  Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
+  Proof.
+    intros. destruct (final_exists f).
+    - right. apply final_unsat_refl. assumption.
+    - left. destruct H. apply (final_sat_refl f x). assumption.
+  Qed.
+End Satisfiability.
