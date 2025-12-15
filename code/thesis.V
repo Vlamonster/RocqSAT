@@ -690,6 +690,19 @@ Proof.
     + apply eqb_refl.
 Qed.
 
+Lemma l_in_f__l_in_c_in_f: forall (f: CNF) (l: Lit),
+  l_in_f l f = true -> exists (c: Clause), (In l c \/ In (¬l) c) /\ In c f.
+Proof.
+  intros. simp l_in_f in H. apply existsb_exists in H. destruct H. destruct H.
+  simp l_in_c in H0. apply orb_true_iff in H0. exists x. destruct H0.
+  - apply existsb_exists in H0. destruct H0. destruct H0. apply eqb_eq in H1. subst x0. split.
+    + now left.
+    + assumption.
+  - apply existsb_exists in H0. destruct H0. destruct H0. apply eqb_eq in H1. subst x0. split.
+    + now right.
+    + assumption.
+Qed.
+
 Lemma split_last_dec: forall (m m' n: PA) (l l': Lit),
   NoDecisions n -> split_last_decision (m ++d l ++a n) = Some (m', l') -> l = l'.
 Proof. 
@@ -1414,6 +1427,36 @@ Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
   PrefixLt (max_lit_f f) (score (m ++p l) f) (score m f).
 Admitted.
 
+Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
+  Bounded m f -> is_bounded f (l, a) = true -> Bounded ((l, a) :: m) f.
+Proof.
+  unfold Bounded. intros. simp is_bounded in H0. apply l_in_f__l_in_c_in_f in H0.
+  destruct H0. destruct H0. destruct H0.
+  - simpl in H1. destruct H1.
+    + subst l0. exists x. split.
+      * assumption.
+      * now left.
+    + now apply H.
+  - simpl in H1. destruct H1.
+    + subst l0. exists x. split.
+      * assumption.
+      * now right.
+    + now apply H.
+Qed.
+
+Lemma nodup_cons: forall (m: PA) (l: Lit) (a: Ann),
+  NoDuplicates m -> Undef m l -> NoDuplicates ((l, a) :: m).
+Proof.
+  unfold Undef, NoDuplicates. intros. admit.
+Admitted.
+
+Lemma bounded__nodup__length_le: forall (m: PA) (f: CNF) (l: Lit),
+  Bounded (m ++d l) f ->
+  NoDuplicates (m ++d l) ->
+  length (m ++d l) <= max_lit_f f.
+Proof.
+Admitted.
+
 Lemma total_dec: forall (m: PA) (f: CNF) (l: Lit),
   is_bounded f (l, dec) = true ->
   Undef m l ->
@@ -1421,11 +1464,11 @@ Lemma total_dec: forall (m: PA) (f: CNF) (l: Lit),
   NoDuplicates m ->
   TotalLt (max_lit_f f - length (m ++d l)) (max_lit_f f - length m).
 Proof.
-  intros m f l Hl_bounded Hundef Hm_bounded Hno_dup. unfold TotalLt. unfold lt.
-  destruct (length (m ++d l) <=? max_lit_f f) eqn:G.
-  - apply Nat.leb_le in G. simpl in *. lia.
-  - admit.
-Admitted.
+  intros m f l Hl_bounded Hundef Hm_bounded Hm_nodup. unfold TotalLt. unfold lt.
+  pose proof (bounded_cons m f l dec Hm_bounded Hl_bounded) as Hbounded. clear Hm_bounded Hl_bounded.
+  pose proof (nodup_cons m l dec Hm_nodup Hundef) as Hnodup. clear Hundef Hm_nodup.
+  pose proof (bounded__nodup__length_le m f l Hbounded Hnodup). simpl in *. lia.
+Qed.
 
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State), state m f ==> s' -> state m f >>[f] s'.
 Proof.
