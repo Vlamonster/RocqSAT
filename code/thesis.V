@@ -1447,8 +1447,26 @@ Qed.
 Lemma nodup_cons: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates m -> Undef m l -> NoDuplicates ((l, a) :: m).
 Proof.
-  unfold Undef, NoDuplicates. intros. admit.
-Admitted.
+  unfold Undef, NoDuplicates. intros. simpl. constructor.
+  - unfold not. intros. funelim (l_eval m l).
+    + contradiction.
+    + congruence.
+    + congruence.
+    + simpl in *. destruct H2. 
+      * destruct l, l'.
+        -- simp extract in H2. subst p0. now rewrite eqb_refl in Heq0.
+        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite eqb_refl in Heq.
+        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite eqb_refl in Heq.
+        -- simp extract in H2. subst p0. now rewrite eqb_refl in Heq0.
+      * apply (H m l).
+        -- assumption.
+        -- now inversion H0.
+        -- congruence.
+        -- assumption.
+        -- reflexivity.
+        -- reflexivity.  
+  - assumption.
+Qed.
 
 Lemma bounded__nodup__length_le: forall (m: PA) (f: CNF) (l: Lit),
   Bounded (m ++d l) f ->
