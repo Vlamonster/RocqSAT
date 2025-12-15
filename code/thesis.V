@@ -332,10 +332,125 @@ Lemma wf_backtrack: forall (m m': PA) (f: CNF) (l: Lit),
   WellFormed m f -> WellFormed (m' ++p ¬l) f.
 Admitted.
 
+Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 
+  c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
+Proof. 
+  induction c. intros.
+  - discriminate.
+  - intros. destruct (l_eval m a) eqn:G1.
+    + destruct b.
+      * simp c_eval in H. rewrite G1 in H. simpl in H. discriminate.
+      * simp c_eval in H. rewrite G1 in H. simpl in H. destruct (c_eval m c) eqn:G2.
+        -- destruct b; discriminate.
+        -- apply IHc in H. destruct H. destruct H. exists x. split.
+          ++ right. assumption.
+          ++ assumption.
+    + exists a. split.
+      * left. reflexivity.
+      * assumption.
+Qed.
+
+Lemma c_eval_false__l_eval_false: forall (m: PA) (c: Clause),
+  c_eval m c = Some false -> forall (l: Lit), In l c -> l_eval m l = Some false.
+Proof. 
+  induction c.
+  - intros. contradiction.
+  - intros. simp c_eval in H. destruct (l_eval m a) eqn:G1.
+    + destruct b.
+      * simpl in H. discriminate.
+      * simpl in H. destruct (c_eval m c) eqn:G2.
+        -- destruct b.
+          ++ discriminate.
+          ++ inversion H0.
+            ** subst. assumption.
+            ** apply (IHc H l H1).
+        -- discriminate.
+    + simpl in H. destruct (c_eval m c) eqn:G2.
+      * destruct b; discriminate.
+      * discriminate.
+Qed.
+
+Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
+  c_eval m c = None -> c_eval m (l_remove c l) = Some false -> Undef m l.
+Proof.
+  unfold Undef. intros. 
+  pose proof (c_eval_none__l_eval_none m c H).
+  pose proof (c_eval_false__l_eval_false m (l_remove c l) H0).
+  destruct H1. destruct H1. destruct (x =? l) eqn:G.
+  - apply eqb_eq in G. subst. assumption.
+  - pose proof (H2 x). assert (In x (l_remove c l)).
+    + simp l_remove. rewrite filter_In. split.
+      * assumption.
+      * rewrite eqb_sym. rewrite G. reflexivity.
+    + apply H4 in H5. congruence. 
+Qed.
+
+Lemma find_unit_l_l_in_c: forall (m: PA) (c: Clause) (l: Lit),
+  find_unit_l m c = Some l -> In l c.
+Proof.
+  intros. funelim (find_unit_l m c). rewrite H in Heqcall. 
+  apply find_some in Heqcall. destruct Heqcall. assumption.
+Qed.
+
+Lemma find_unit_l_in_c: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
+  find_unit m f = Some (c, l) -> In l c.
+Proof. 
+  intros. funelim (find_unit m f).
+  - congruence.
+  - apply H. rewrite <- H0. assumption.
+  - rewrite H in Heqcall. injection Heqcall as Heqcall. subst. 
+    apply (find_unit_l_l_in_c m c0 l0). assumption.
+  - apply H. congruence.
+Qed.
+
+Lemma find_unit_c_in_f: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
+  find_unit m f = Some (c, l) -> In c f.
+Proof. 
+  intros. funelim (find_unit m f).
+  - congruence.
+  - right. apply (H c0 l0). congruence.
+  - rewrite H in Heqcall. injection Heqcall as Heqcall. subst. left. reflexivity.
+  - right. apply (H c0 l). congruence.
+Qed.
+
+Lemma find_unit__undef: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
+  find_unit m f = Some (c, l) -> Undef m l.
+Proof. 
+  unfold Undef. intros. funelim (find_unit m f).
+  - congruence.
+  - rewrite H0 in Heqcall. now apply H in Heqcall.
+  - rewrite H in Heqcall. injection Heqcall as <- <-.
+    simp find_unit_l in Heq. apply find_some in Heq.
+    destruct Heq. simp is_conflict in H1. destruct (c_eval m (l_remove c l)) eqn:G.
+    + destruct b.
+      * discriminate.
+      * apply (undef_remove_false__undef m c l); assumption.
+    + discriminate.
+  - rewrite H0 in Heqcall. now apply H in Heqcall.
+Qed.
+
+Lemma find_unit__bounded: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
+  find_unit m f = Some (c, l) -> l_in_f f l = true.
+Proof.
+  intros. simp l_in_f. apply existsb_exists. exists c. split.
+  - now apply find_unit_c_in_f in H.
+  - simp l_in_c. apply orb_true_iff. left. apply existsb_exists. exists l. split.
+    + now apply find_unit_l_in_c in H.
+    + apply eqb_refl.
+Qed.
+
 Lemma wf_unit: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
   find_unit m f = Some (c, l) ->
   WellFormed m f -> WellFormed (m ++p l) f.
-Admitted.
+Proof.
+  unfold WellFormed. intros m f c l Heq Hwf. split.
+  - apply nodup_cons.
+    + intuition congruence.
+    + now apply find_unit__undef in Heq.
+  - apply bounded_cons. 
+    + intuition congruence. 
+    + now apply find_unit__bounded in Heq.
+Qed.
 
 Lemma find_decision__undef: forall (m: PA) (f: CNF) (l: Lit),
   find_decision m f = Some l -> Undef m l.
@@ -569,33 +684,7 @@ Proof.
     + right. assumption.
 Qed.
 
-Lemma find_unit_l_l_in_c: forall (m: PA) (c: Clause) (l: Lit),
-  find_unit_l m c = Some l -> In l c.
-Proof.
-  intros. funelim (find_unit_l m c). rewrite H in Heqcall. 
-  apply find_some in Heqcall. destruct Heqcall. assumption.
-Qed.
 
-Lemma find_unit_l_in_c: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> In l c.
-Proof. 
-  intros. funelim (find_unit m f).
-  - congruence.
-  - apply H. rewrite <- H0. assumption.
-  - rewrite H in Heqcall. injection Heqcall as Heqcall. subst. 
-    apply (find_unit_l_l_in_c m c0 l0). assumption.
-  - apply H. congruence.
-Qed.
-
-Lemma find_unit_c_in_f: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> In c f.
-Proof. 
-  intros. funelim (find_unit m f).
-  - congruence.
-  - right. apply (H c0 l0). congruence.
-  - rewrite H in Heqcall. injection Heqcall as Heqcall. subst. left. reflexivity.
-  - right. apply (H c0 l). congruence.
-Qed.
 
 Lemma find_unit_conflicting: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
   find_unit m f = Some (c, l) -> Conflicting m (l_remove c l).
@@ -610,59 +699,6 @@ Proof.
     + assumption.
     + congruence.
   - apply H. congruence.
-Qed.
-
-Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 
-  c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
-Proof. 
-  induction c. intros.
-  - discriminate.
-  - intros. destruct (l_eval m a) eqn:G1.
-    + destruct b.
-      * simp c_eval in H. rewrite G1 in H. simpl in H. discriminate.
-      * simp c_eval in H. rewrite G1 in H. simpl in H. destruct (c_eval m c) eqn:G2.
-        -- destruct b; discriminate.
-        -- apply IHc in H. destruct H. destruct H. exists x. split.
-          ++ right. assumption.
-          ++ assumption.
-    + exists a. split.
-      * left. reflexivity.
-      * assumption.
-Qed.
-
-Lemma c_eval_false__l_eval_false: forall (m: PA) (c: Clause),
-  c_eval m c = Some false -> forall (l: Lit), In l c -> l_eval m l = Some false.
-Proof. 
-  induction c.
-  - intros. contradiction.
-  - intros. simp c_eval in H. destruct (l_eval m a) eqn:G1.
-    + destruct b.
-      * simpl in H. discriminate.
-      * simpl in H. destruct (c_eval m c) eqn:G2.
-        -- destruct b.
-          ++ discriminate.
-          ++ inversion H0.
-            ** subst. assumption.
-            ** apply (IHc H l H1).
-        -- discriminate.
-    + simpl in H. destruct (c_eval m c) eqn:G2.
-      * destruct b; discriminate.
-      * discriminate.
-Qed.
-
-Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
-  c_eval m c = None -> c_eval m (l_remove c l) = Some false -> Undef m l.
-Proof.
-  unfold Undef. intros. 
-  pose proof (c_eval_none__l_eval_none m c H).
-  pose proof (c_eval_false__l_eval_false m (l_remove c l) H0).
-  destruct H1. destruct H1. destruct (x =? l) eqn:G.
-  - apply eqb_eq in G. subst. assumption.
-  - pose proof (H2 x). assert (In x (l_remove c l)).
-    + simp l_remove. rewrite filter_In. split.
-      * assumption.
-      * rewrite eqb_sym. rewrite G. reflexivity.
-    + apply H4 in H5. congruence. 
 Qed.
 
 Lemma find_unit_undef: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
