@@ -356,6 +356,30 @@ Proof.
     + now apply Hbounded.
 Admitted.
 
+Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
+  NoDuplicates ((l, a) :: m) -> Undef m l.
+Proof. Admitted.
+
+Lemma undef__neg_undef: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
+Proof.
+  unfold Undef. intros. funelim (l_eval m l).
+  - intuition.
+  - intuition.
+    + discriminate.
+    + apply eqb_eq in Heq. subst. simp l_eval in H. rewrite eqb_refl in H. 
+      rewrite eqb_sym in H. rewrite Neg.self_neqb_neg in H. discriminate.
+  - intuition.
+    + discriminate.
+    + apply eqb_eq in Heq. subst. simp neg in H. rewrite Neg.involutive in H.
+      simp l_eval in H. rewrite eqb_refl in H. rewrite Neg.self_neqb_neg in H. discriminate.
+  - intuition.
+    + simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. rewrite Neg.eqb_compat in Heq.
+      rewrite Neg.involutive in Heq. rewrite Heq. simpl. assumption.
+    + autorewrite with l_eval in H. rewrite <- Neg.eqb_compat in H. rewrite Heq0 in H.
+      rewrite Neg.eqb_compat in Heq. rewrite Neg.involutive in Heq. rewrite Heq in H. simpl in H. 
+      apply H1. apply H.
+Qed.
+
 Lemma wf_backtrack: forall (m m': PA) (f: CNF) (l: Lit),
   split_last_decision m = Some (m', l) ->
   WellFormed m f -> WellFormed (m' ++p ¬l) f.
@@ -367,7 +391,11 @@ Proof.
       * assumption.
       * apply incl_tl. apply incl_refl.
     + unfold WellFormed in *. split.
-      * destruct Hwf as [Hnodup _]. destruct Hwf' as [Hnodup' _]. admit.
+      * destruct Hwf as [Hnodup _]. destruct Hwf' as [Hnodup' _].
+        apply nodup_cons__undef in Hnodup. apply undef__neg_undef in Hnodup. 
+        apply nodup_cons.
+        -- assumption.
+        -- assumption.
       * destruct Hwf as [_ Hbounded]. destruct Hwf' as [_ Hbounded'].
         assert (In l (map fst (m' ++d l))).
         -- simpl. now left.
@@ -380,7 +408,7 @@ Proof.
               --- now left.
           ++ now apply Hbounded' in H1.
   - apply incl_appr. apply incl_refl.
-Admitted.
+Qed.
 
 Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 
   c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
@@ -848,25 +876,7 @@ Proof.
     destruct (find_undef_l_exists m c0 l H H1). congruence.
 Qed.
 
-Lemma undef__neg_undef: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
-Proof.
-  unfold Undef. intros. funelim (l_eval m l).
-  - intuition.
-  - intuition.
-    + discriminate.
-    + apply eqb_eq in Heq. subst. simp l_eval in H. rewrite eqb_refl in H. 
-      rewrite eqb_sym in H. rewrite Neg.self_neqb_neg in H. discriminate.
-  - intuition.
-    + discriminate.
-    + apply eqb_eq in Heq. subst. simp neg in H. rewrite Neg.involutive in H.
-      simp l_eval in H. rewrite eqb_refl in H. rewrite Neg.self_neqb_neg in H. discriminate.
-  - intuition.
-    + simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. rewrite Neg.eqb_compat in Heq.
-      rewrite Neg.involutive in Heq. rewrite Heq. simpl. assumption.
-    + autorewrite with l_eval in H. rewrite <- Neg.eqb_compat in H. rewrite Heq0 in H.
-      rewrite Neg.eqb_compat in Heq. rewrite Neg.involutive in Heq. rewrite Heq in H. simpl in H. 
-      apply H1. apply H.
-Qed.
+
 
 Lemma l_in_c__c_in_f__l_in_f: forall (f: CNF) (c: Clause) (l: Lit),
   In l c -> In c f -> l_in_f l f = true.
