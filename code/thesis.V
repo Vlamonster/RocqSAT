@@ -354,9 +354,33 @@ Proof.
   - now apply Hbounded.
 Qed.
 
+Lemma l_eval_some_in: forall (m: PA) (l: Lit) (b: bool), 
+  l_eval m l = Some b -> exists (a: Ann), In (l, a) m \/ In (¬l, a) m.
+Proof. 
+  intros. funelim (l_eval m l).
+  - congruence.
+  - rewrite eqb_eq in Heq. subst l'. exists a. left. now left.
+  - rewrite eqb_eq in Heq. subst. exists a. right. rewrite Neg.involutive. now left.
+  - rewrite H0 in Heqcall. apply H in Heqcall; auto. destruct Heqcall. destruct H1.
+    + exists x. left. now right.
+    + exists x. right. now right.
+Qed.
+
 Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> Undef m l.
-Proof. Admitted.
+Proof. 
+  unfold NoDuplicates, Undef. intros. simpl in *. inversion H.
+  destruct (l_eval m l) eqn:G.
+  - apply l_eval_some_in in G. exfalso. apply H2. 
+    apply in_map_iff. destruct G. destruct H4.
+    + exists l. split.
+      * reflexivity.
+      * apply in_map_iff. exists (l, x0). intuition.
+    + exists (¬l). split.
+      * destruct l; reflexivity.
+      * apply in_map_iff. exists (¬l, x0). intuition.
+  - reflexivity.
+Qed.
 
 Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> NoDuplicates m.
@@ -1521,17 +1545,7 @@ Proof.
     apply forallb_filter_id in H0. rewrite H0. now simp dedupe_by.
 Qed.
 
-Lemma l_eval_some_in: forall (m: PA) (l: Lit) (b: bool), 
-  l_eval m l = Some b -> exists (a: Ann), In (l, a) m \/ In (¬l, a) m.
-Proof. 
-  intros. funelim (l_eval m l).
-  - congruence.
-  - rewrite eqb_eq in Heq. subst l'. exists a. left. now left.
-  - rewrite eqb_eq in Heq. subst. exists a. right. rewrite Neg.involutive. now left.
-  - rewrite H0 in Heqcall. apply H in Heqcall; auto. destruct Heqcall. destruct H1.
-    + exists x. left. now right.
-    + exists x. right. now right.
-Qed.
+
 
 Lemma in_l_eval_some: forall (m: PA) (l: Lit) (a: Ann), 
   In (l, a) m -> exists (b: bool), l_eval m l = Some b.
