@@ -342,19 +342,17 @@ Proof.
       * now exists x0.
 Qed.
 
-Lemma wf_incl: forall (m m': PA) (f: CNF),
-  incl m m' -> WellFormed m' f -> WellFormed m f.
+Lemma bounded_incl: forall (m m': PA) (f: CNF),
+  incl m m' -> Bounded m' f -> Bounded m f.
 Proof.
-  unfold WellFormed, incl. intros m m' f Hincl Hwf. split.
-  - destruct Hwf as [Hnodup _]. admit.
-  - destruct Hwf as [_ Hbounded]. unfold Bounded in *. intros.
-    apply in_map_iff in H. destruct H. destruct H. apply Hincl in H0.
-    assert (In l (map fst m')).
-    + apply in_map_iff. exists x. split.
-      * assumption.
-      * assumption.
-    + now apply Hbounded.
-Admitted.
+  unfold incl. intros m m' f Hincl Hbounded.
+  unfold Bounded in *. intros. apply in_map_iff in H. destruct H. destruct H. apply Hincl in H0.
+  assert (In l (map fst m')).
+  - apply in_map_iff. exists x. split.
+    + assumption.
+    + assumption.
+  - now apply Hbounded.
+Qed.
 
 Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> Undef m l.
@@ -384,21 +382,16 @@ Lemma wf_backtrack: forall (m m': PA) (f: CNF) (l: Lit),
   split_last_decision m = Some (m', l) ->
   WellFormed m f -> WellFormed (m' ++p ¬l) f.
 Proof.
-  intros m m' f l Heq Hwf. apply split_decomp in Heq as [n [Heq _]].
-  rewrite Heq in Hwf. apply (wf_incl (m' ++d l)) in Hwf.
-  - assert (Hwf': WellFormed m' f).
-    + apply (wf_incl m') in Hwf.
-      * assumption.
-      * apply incl_tl. apply incl_refl.
-    + unfold WellFormed in *. split.
-      * destruct Hwf as [Hnodup _]. destruct Hwf' as [Hnodup' _].
-        apply nodup_cons__undef in Hnodup. apply undef__neg_undef in Hnodup. 
-        apply nodup_cons.
+  unfold WellFormed. intros m m' f l Heq Hwf. apply split_decomp in Heq as [n [Heq _]].
+  rewrite Heq in Hwf. split.
+  - admit.
+  - destruct Hwf as [_ Hbounded]. apply (bounded_incl (m' ++d l)) in Hbounded.
+    + assert (Hbounded': Bounded m' f).
+      * apply (bounded_incl m') in Hbounded.
         -- assumption.
-        -- assumption.
-      * destruct Hwf as [_ Hbounded]. destruct Hwf' as [_ Hbounded'].
-        assert (In l (map fst (m' ++d l))).
-        -- simpl. now left.
+        -- apply incl_tl. apply incl_refl.
+      * assert (In l (map fst (m' ++d l))).
+        -- now left.
         -- apply Hbounded in H. destruct H. destruct H. unfold Bounded. intros.
            simpl in H1. destruct H1.
           ++ subst l0. exists x. split.
@@ -407,8 +400,8 @@ Proof.
               --- right. now rewrite Neg.involutive.
               --- now left.
           ++ now apply Hbounded' in H1.
-  - apply incl_appr. apply incl_refl.
-Qed.
+    + apply incl_appr. apply incl_refl.
+Admitted.
 
 Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 
   c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
