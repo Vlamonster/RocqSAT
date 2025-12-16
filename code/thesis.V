@@ -364,7 +364,7 @@ Proof. Admitted.
 
 Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> NoDuplicates m.
-Proof. Admitted.
+Proof. intros. now inversion H. Qed.
 
 Lemma undef__neg_undef: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
 Proof.
