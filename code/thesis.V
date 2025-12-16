@@ -358,6 +358,14 @@ Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> Undef m l.
 Proof. Admitted.
 
+Lemma nodup_app__nodup: forall (m n: PA),
+  NoDuplicates (m ++a n) -> NoDuplicates m.
+Proof. Admitted.
+
+Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
+  NoDuplicates ((l, a) :: m) -> NoDuplicates m.
+Proof. Admitted.
+
 Lemma undef__neg_undef: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
 Proof.
   unfold Undef. intros. funelim (l_eval m l).
@@ -384,7 +392,13 @@ Lemma wf_backtrack: forall (m m': PA) (f: CNF) (l: Lit),
 Proof.
   unfold WellFormed. intros m m' f l Heq Hwf. apply split_decomp in Heq as [n [Heq _]].
   rewrite Heq in Hwf. split.
-  - admit.
+  - destruct Hwf as [Hnodup _]. apply (nodup_app__nodup (m' ++d l)) in Hnodup.
+    assert (Hnodup': NoDuplicates m').
+    + now apply (nodup_cons__nodup) in Hnodup.
+    + apply nodup_cons__undef in Hnodup. apply undef__neg_undef in Hnodup.
+      apply nodup_cons.
+      * assumption.
+      * assumption.
   - destruct Hwf as [_ Hbounded]. apply (bounded_incl (m' ++d l)) in Hbounded.
     + assert (Hbounded': Bounded m' f).
       * apply (bounded_incl m') in Hbounded.
@@ -401,7 +415,7 @@ Proof.
               --- now left.
           ++ now apply Hbounded' in H1.
     + apply incl_appr. apply incl_refl.
-Admitted.
+Qed.
 
 Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 
   c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
