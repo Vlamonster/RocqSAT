@@ -845,30 +845,58 @@ Proof.
           ++ destruct (find_conflict_exists m f c_conflict Hc_in_f Hconflict). congruence.
 Qed.
 
-Equations max_lit_c (c: Clause): nat :=
-max_lit_c []           := 0;
-max_lit_c (Pos p :: c) := max p (max_lit_c c);
-max_lit_c (Neg p :: c) := max p (max_lit_c c).
+Equations max_atom_c (c: Clause): nat :=
+max_atom_c []           := 0;
+max_atom_c (Pos p :: c) := max p (max_atom_c c);
+max_atom_c (Neg p :: c) := max p (max_atom_c c).
 
-Equations max_lit_f (f: CNF): nat :=
-max_lit_f []       := 0;
-max_lit_f (c :: f) := max (max_lit_c c) (max_lit_f f).
+Equations max_atom_f (f: CNF): nat :=
+max_atom_f []       := 0;
+max_atom_f (c :: f) := max (max_atom_c c) (max_atom_f f).
 
 Equations score_aux (m: PA) (n x: nat): list nat :=
 score_aux []        n x := [n - x];
 score_aux (m ++p l) n x := score_aux m n (S x);
 score_aux (m ++d l) n x := n - x :: score_aux m n 0.
 
-Equations clip (m: PA): PA :=
-clip []        := [];
-clip (m ++d l) := clip m;
-clip (m ++p l) := m ++p l.
+Equations pad (m: list nat) (n x: nat): list nat :=
+pad m n 0     := m;
+pad m n (S x) := pad (m ++ [n]) n x.
 
 Equations score (m: PA) (f: CNF): list nat :=
-score m f := rev (score_aux (clip m) (max_lit_f f) 0).
+score m f :=
+  let max_atom := max_atom_f f in
+  let unpadded := rev (score_aux m max_atom 0) in
+  pad unpadded max_atom (S max_atom - length unpadded).
 
 Equations score_total (m: PA) (f: CNF): nat :=
-score_total m f := (max_lit_f f) - length m.
+score_total m f := (max_atom_f f) - length m.
+
+Module ScoreExamples.
+  Example score_1: score [] [[Pos 1;Pos 2]] = [2; 2; 2].
+  Proof. reflexivity. Qed.
+
+  Example score_2: score ([] ++p Pos 1) [[Pos 1;Pos 2]] = [1; 2; 2].
+  Proof. reflexivity. Qed.
+
+  Example score_3: score ([] ++d Pos 1) [[Pos 1;Pos 2]] = [2; 2; 2].
+  Proof. reflexivity. Qed.
+
+  Example score_4: score ([] ++d Neg 1 ++p Pos 2) [[Pos 1;Pos 2]] = [2; 1; 2].
+  Proof. reflexivity. Qed.
+
+  Example score_total_1: score_total [] [[Pos 1;Pos 2]] = 2.
+  Proof. reflexivity. Qed.
+
+  Example score_total_2: score_total ([] ++p Pos 1) [[Pos 1;Pos 2]] = 1.
+  Proof. reflexivity. Qed.
+
+  Example score_total_3: score_total ([] ++d Pos 1) [[Pos 1;Pos 2]] = 1.
+  Proof. reflexivity. Qed.
+
+  Example score_total_4: score_total ([] ++d Neg 1 ++p Pos 2) [[Pos 1;Pos 2]] = 0.
+  Proof. reflexivity. Qed.
+End ScoreExamples.
 
 Inductive FailLt: relation State :=
 | f_fail (m: PA) (f: CNF) (Hwf: WellFormed m f):
@@ -986,7 +1014,7 @@ Lemma wf_total_lt: well_founded TotalLt.
 Proof. apply lt_wf. Qed.
 
 Definition StateLexLt (f: CNF): relation (list nat * nat) :=
-  slexprod _ _ (PrefixLt (max_lit_f f)) TotalLt.
+  slexprod _ _ (PrefixLt (max_atom_f f)) TotalLt.
 
 Lemma wf_state_lex_lt: forall (f: CNF), well_founded (StateLexLt f).
 Proof.
@@ -1099,16 +1127,18 @@ Qed.
 
 Lemma prefix_unit: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++p l) f ->
-  PrefixLt (max_lit_f f) (score (m ++p l) f) (score m f).
+  PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f).
 Proof. Admitted.
 
+(* Not quite true as is, needs small adjustment.
 Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
   score (m ++d l) f = score m f.
 Proof. reflexivity. Qed.
+*)
 
 Lemma wf__length_le: forall (m: PA) (f: CNF),
   WellFormed m f ->
-  length m <= max_lit_f f.
+  length m <= max_atom_f f.
 Proof. Admitted.
 
 Lemma total_dec: forall (m: PA) (f: CNF) (l: Lit),
@@ -1122,7 +1152,7 @@ Qed.
 Lemma prefix_backtrack: forall (m n: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l ++a n) f ->
   WellFormed (m ++p ¬l) f ->
-  PrefixLt (max_lit_f f) (score (m ++p ¬l) f) (score (m ++d l ++a n) f).
+  PrefixLt (max_atom_f f) (score (m ++p ¬l) f) (score (m ++d l ++a n) f).
 Proof. Admitted.
 
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
@@ -1141,14 +1171,13 @@ Proof.
   - unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
     now apply prefix_unit.
   (* t_decide *)
-  - unfold StateLt. right. unfold MR. simp state_measure. rewrite score_dec. apply right_slex.
-    now apply total_dec.
+  - unfold StateLt. right. unfold MR. simp state_measure. admit.
   (* t_backtrack *)
   - unfold StateLt. right. unfold MR. simp state_measure. rewrite <- H0. apply left_slex.
     apply prefix_backtrack.
     + now rewrite H0.
     + assumption.
-Qed.
+Admitted.
 
 Lemma next_state__state_lt: forall (m: PA) (f: CNF) (Hwf: WellFormed m f) (s': State), 
   next_state (state m f Hwf) = Some s' -> state m f Hwf >>[f] s'.
