@@ -845,6 +845,258 @@ Proof.
           ++ destruct (find_conflict_exists m f c_conflict Hc_in_f Hconflict). congruence.
 Qed.
 
+Equations max_lit_c (c: Clause): nat :=
+max_lit_c []           := 0;
+max_lit_c (Pos p :: c) := max p (max_lit_c c);
+max_lit_c (Neg p :: c) := max p (max_lit_c c).
+
+Equations max_lit_f (f: CNF): nat :=
+max_lit_f []       := 0;
+max_lit_f (c :: f) := max (max_lit_c c) (max_lit_f f).
+
+Equations score_aux (m: PA) (n x: nat): list nat :=
+score_aux []        n x := [n - x];
+score_aux (m ++p l) n x := score_aux m n (S x);
+score_aux (m ++d l) n x := n - x :: score_aux m n 0.
+
+Equations clip (m: PA): PA :=
+clip []        := [];
+clip (m ++d l) := clip m;
+clip (m ++p l) := m ++p l.
+
+Equations score (m: PA) (f: CNF): list nat :=
+score m f := rev (score_aux (clip m) (max_lit_f f) 0).
+
+Equations score_total (m: PA) (f: CNF): nat :=
+score_total m f := (max_lit_f f) - length m.
+
+Inductive FailLt: relation State :=
+| f_fail (m: PA) (f: CNF) (Hwf: WellFormed m f):
+  FailLt fail (state m f Hwf).
+
+Lemma wf_fail_lt: well_founded FailLt.
+Proof.
+  unfold well_founded. intros m. constructor. intros m' Hlt. destruct Hlt.
+  constructor. intros m' Hlt. inversion Hlt.
+Qed.
+
+Inductive PrefixLt (x: nat): relation (list nat) :=
+| p_head (m m': list nat) (n n': nat):
+  length (n :: m) <= x ->
+  length (n' :: m') <= x ->
+  n < n' ->
+  PrefixLt x (n :: m) (n' :: m')
+| p_tail (m m': list nat) (n: nat):
+  length (n :: m) <= x ->
+  length (n :: m') <= x ->
+  PrefixLt x m m' ->
+  PrefixLt x (n :: m) (n :: m').
+
+Inductive cll: relation (list nat) :=
+| hd_less (n n': nat) (m m': list nat):
+  n < n' ->
+  cll (n :: m) (n' :: m')
+| tl_less (n: nat) (m m': list nat):
+  cll m m' ->
+  cll (n :: m) (n :: m').
+
+Definition bcll (n: nat) (m m': list nat): Prop :=
+  length m <= n /\ length m' <= n /\ cll m m'.
+
+Lemma bcll__prefix_lt: forall (x: nat) (m m': list nat),
+  bcll x m m' <-> PrefixLt x m m'.
+Proof.
+  intros. split.
+  - intros. inversion H as [H1 [H2 H3]]. induction H3.
+    + apply p_head.
+      * assumption.
+      * assumption.
+      * assumption.
+    + apply p_tail.
+      * assumption.
+      * assumption.
+      * apply IHcll.
+        -- unfold bcll. split.
+          ++ simpl in H1. apply le_S in H1. now apply le_S_n.
+          ++ split. 
+            ** simpl in H2. apply le_S in H2. now apply le_S_n.
+            ** assumption.
+        -- simpl in H1. apply le_S in H1. now apply le_S_n.
+        -- simpl in H2. apply le_S in H2. now apply le_S_n.
+  - intros. 
+    + induction H.
+      * unfold bcll. split.
+        -- assumption.
+        -- split.
+          ++ assumption.
+          ++ apply hd_less. assumption.
+      * unfold bcll. split.
+        -- assumption.
+        -- split.
+          ++ assumption.
+          ++ apply tl_less. destruct IHPrefixLt as [_ [_ H2]]. assumption.
+Qed.
+
+Definition list_to_sum (n: nat) (m: list nat): nat * list nat + unit :=
+  if List.length m <=? n then
+  match m with
+  | nil => inr tt
+  | h :: t => inl (h, t)
+  end else inr tt.
+
+Definition bcll' (n: nat) (m m': list nat): Prop :=
+  le_AsB _ _ (slexprod _ _ lt (bcll n)) (fun _ _ => False) (list_to_sum (S n) m) (list_to_sum (S n) m').
+
+Lemma cll_incl {n} (m m': list nat): bcll (S n) m m' -> bcll' n m m'.
+Proof.
+  intros [Hl1 [Hl2 H]]. unfold bcll'. unfold list_to_sum.
+  rewrite 2 leb_correct; auto.
+  destruct H; constructor.
+  + constructor 1. auto.
+  + constructor 2. simpl in *; split; [| split]; auto; lia.
+Qed.
+
+Lemma wf_bcll: forall (x: nat), well_founded (bcll x).
+Proof.
+  induction x.
+  - intros l. constructor. intros [] [H1 [H2 H3]].
+    + inversion H3.
+    + simpl in H1; lia.
+  - apply (wf_incl _ _ (fun l1 l2 => bcll' x l1 l2)).
+    + red. apply cll_incl.
+    + unfold bcll'.
+      apply wf_inverse_image.
+      apply wf_disjoint_sum.
+      * apply wf_slexprod.
+        -- apply lt_wf.
+        -- apply IHx.
+      * constructor; intros ? [].
+Qed.
+
+Lemma wf_prefix_lt: forall x, well_founded (PrefixLt x).
+Proof.
+  intro x. apply (wf_incl _ _ (bcll x)).
+  - unfold inclusion. now apply bcll__prefix_lt.
+  - apply wf_bcll.
+Qed.
+
+Definition TotalLt: relation nat := lt.
+
+Lemma wf_total_lt: well_founded TotalLt.
+Proof. apply lt_wf. Qed.
+
+Definition StateLexLt (f: CNF): relation (list nat * nat) :=
+  slexprod _ _ (PrefixLt (max_lit_f f)) TotalLt.
+
+Lemma wf_state_lex_lt: forall (f: CNF), well_founded (StateLexLt f).
+Proof.
+  intros. apply wf_slexprod.
+  - apply wf_prefix_lt.
+  - apply wf_total_lt.
+Qed.
+
+Equations state_measure (s: State): list nat * nat :=
+state_measure fail          := ([]       , 0              );
+state_measure (state m f _) := (score m f, score_total m f).
+
+Definition StateLt (f: CNF): relation State := union _ FailLt (MR (StateLexLt f) state_measure).
+
+Lemma wf_state_lt: forall (f: CNF), well_founded (StateLt f).
+Proof.
+  intros. apply wf_union.
+  - unfold commut. intros. inversion H. subst. exists (state m f0 Hwf).
+    + unfold MR in H0. simp state_measure in H0. inversion H0.
+      * subst. inversion H3.
+      * subst. inversion H3.
+    + unfold MR in H0. simp state_measure in H0. inversion H0.
+      * subst. inversion H3.
+      * subst. inversion H3.
+  - apply wf_fail_lt.
+  - apply wf_MR. apply wf_state_lex_lt.
+Qed.
+  
+Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40, format "s '/ ' '[' >>[ ']' f ] '/ ' s'").
+
+Equations prefix_lt (x: nat) (m m': list nat): bool :=
+prefix_lt _     []       _            := false;
+prefix_lt _     _        []           := false;
+prefix_lt 0     _        _            := false;
+prefix_lt (S x) (n :: m) (n' :: m') :=
+  (length m <=? x) && 
+  (length m' <=? x) &&
+  ((n <? n') || (n =? n')%nat && (prefix_lt x m m')).
+
+Lemma prefix_step: forall (x: nat) (m m': list nat),
+  length m <= x -> length m' <= x -> PrefixLt x m m' <-> PrefixLt (S x) m m'.
+Proof. 
+  intros. split.
+  - intros. induction H1.
+    + apply p_head.
+      * now apply le_S in H1.
+      * now apply le_S in H2.
+      * assumption.
+    + apply p_tail.
+      * now apply le_S in H1.
+      * now apply le_S in H2.
+      * apply IHPrefixLt.
+        -- apply le_S in H1. now apply le_S_n.
+        -- apply le_S in H2. now apply le_S_n.
+  - intros. induction H1.
+    + apply p_head.
+      * assumption.
+      * assumption.
+      * assumption.
+    + apply p_tail.
+      * assumption.
+      * assumption.
+      * apply IHPrefixLt.
+        -- now apply le_S_n.
+        -- now apply le_S_n. 
+Qed.
+
+Lemma prefix_lt_refl: forall (x: nat) (m m': list nat), 
+  prefix_lt x m m' = true <-> PrefixLt x m m'.
+Proof.
+  intros. funelim (prefix_lt x m m').
+  - split.
+    + intros. discriminate.
+    + intros. inversion H.
+  - split.
+    + intros. discriminate.
+    + intros. inversion H.
+  - split.
+    + intros. discriminate.
+    + intros. inversion H; subst.
+      * simpl in H4. inversion H4.
+      * simpl in H4. inversion H4.
+  - split.
+    + intros. rewrite Heqcall in H0. simp prefix_lt in H0. destruct (n <? n') eqn:G.
+      * apply p_head.
+        -- apply andb_true_iff in H0 as [H1 H2]. apply andb_true_iff in H1 as [H1 H3].
+           simpl. apply le_n_S. now apply Nat.leb_le.
+        -- apply andb_true_iff in H0 as [H1 H2]. apply andb_true_iff in H1 as [H1 H3].
+           simpl. apply le_n_S. now apply Nat.leb_le.
+        -- now apply Nat.ltb_lt.
+      * simpl in H0. apply andb_true_iff in H0 as [H1 H2].
+        apply andb_true_iff in H1 as [H1 H3]. apply andb_true_iff in H2 as [H2 H4].
+        rewrite Nat.eqb_eq in H2. subst n'. apply p_tail.
+        -- simpl. apply le_n_S. now apply Nat.leb_le.
+        -- simpl. apply le_n_S. now apply Nat.leb_le.
+        -- apply H in H4. rewrite <- prefix_step.
+          ++ assumption.
+          ++ now apply Nat.leb_le.
+          ++ now apply Nat.leb_le.
+    + intros. inversion H0; subst.
+      * apply Nat.ltb_lt in H7. rewrite H7. simpl.
+        simpl in H5, H6. apply le_S_n in H5, H6.
+        apply Nat.leb_le in H5, H6. now rewrite H5, H6.
+      * simpl in H5, H6. apply le_S_n in H5, H6.
+        apply (prefix_step x m m' H5 H6) in H7.
+        apply Nat.leb_le in H5, H6. rewrite H5, H6.
+        simpl. rewrite <- H in H7. rewrite H7.
+        rewrite Nat.eqb_refl. simpl. apply orb_true_r.
+Qed.
+
 (* 
 Module TransExamples.
   Example dead_end:
@@ -1033,34 +1285,13 @@ solve_n (S n) s with next_state s :=
   | Some s' := solve_n n s'
   | None := s.
 
-Equations max_lit_c (c: Clause): nat :=
-max_lit_c []           := 0;
-max_lit_c (Pos p :: c) := max p (max_lit_c c);
-max_lit_c (Neg p :: c) := max p (max_lit_c c).
 
-Equations max_lit_f (f: CNF): nat :=
-max_lit_f []       := 0;
-max_lit_f (c :: f) := max (max_lit_c c) (max_lit_f f).
 
 Equations max_lit (s: State): nat :=
 max_lit fail        := 0;
 max_lit (state _ f) := max_lit_f f. 
 
-Equations score_aux (m: PA) (n x: nat): list nat :=
-score_aux []        n x := [n - x];
-score_aux (m ++p l) n x := score_aux m n (S x);
-score_aux (m ++d l) n x := n - x :: score_aux m n 0.
 
-Equations clip (m: PA): PA :=
-clip []        := [];
-clip (m ++d l) := clip m;
-clip (m ++p l) := m ++p l.
-
-Equations score (m: PA) (f: CNF): list nat :=
-score m f := rev (score_aux (clip m) (max_lit_f f) 0).
-
-Equations score_total (m: PA) (f: CNF): nat :=
-score_total m f := (max_lit_f f) - length m.
 
 (* The following has to be wrapped in a section due to a bug in Equations. *)
 Section dedupe_by.
@@ -1158,260 +1389,6 @@ Proof.
     + split.
       * assumption.
       * right. apply existsb_exists in G as [x [G1 G2]]. simpl. rewrite eqb_eq in G2. now subst.
-Qed.
-
-Inductive FailLt: relation State :=
-| f_fail (m: PA) (f: CNF):
-  FailLt fail (state m f).
-
-Lemma wf_fail_lt: well_founded FailLt.
-Proof.
-  unfold well_founded. intros m. constructor. intros m' Hlt. destruct Hlt.
-  constructor. intros m' Hlt. inversion Hlt.
-Qed.
-
-Inductive PrefixLt (x: nat): relation (list nat) :=
-| p_head (m m': list nat) (n n': nat):
-  length (n :: m) <= x ->
-  length (n' :: m') <= x ->
-  n < n' ->
-  PrefixLt x (n :: m) (n' :: m')
-| p_tail (m m': list nat) (n: nat):
-  length (n :: m) <= x ->
-  length (n :: m') <= x ->
-  PrefixLt x m m' ->
-  PrefixLt x (n :: m) (n :: m').
-
-Inductive cll: relation (list nat) :=
-| hd_less (n n': nat) (m m': list nat):
-  n < n' ->
-  cll (n :: m) (n' :: m')
-| tl_less (n: nat) (m m': list nat):
-  cll m m' ->
-  cll (n :: m) (n :: m').
-
-Definition bcll (n: nat) (m m': list nat): Prop :=
-  length m <= n /\ length m' <= n /\ cll m m'.
-
-Lemma bcll__prefix_lt: forall (x: nat) (m m': list nat),
-  bcll x m m' <-> PrefixLt x m m'.
-Proof.
-  intros. split.
-  - intros. inversion H as [H1 [H2 H3]]. induction H3.
-    + apply p_head.
-      * assumption.
-      * assumption.
-      * assumption.
-    + apply p_tail.
-      * assumption.
-      * assumption.
-      * apply IHcll.
-        -- unfold bcll. split.
-          ++ simpl in H1. apply le_S in H1. now apply le_S_n.
-          ++ split. 
-            ** simpl in H2. apply le_S in H2. now apply le_S_n.
-            ** assumption.
-        -- simpl in H1. apply le_S in H1. now apply le_S_n.
-        -- simpl in H2. apply le_S in H2. now apply le_S_n.
-  - intros. 
-    + induction H.
-      * unfold bcll. split.
-        -- assumption.
-        -- split.
-          ++ assumption.
-          ++ apply hd_less. assumption.
-      * unfold bcll. split.
-        -- assumption.
-        -- split.
-          ++ assumption.
-          ++ apply tl_less. destruct IHPrefixLt as [_ [_ H2]]. assumption.
-Qed.
-
-Definition list_to_sum (n: nat) (m: list nat): nat * list nat + unit :=
-  if List.length m <=? n then
-  match m with
-  | nil => inr tt
-  | h :: t => inl (h, t)
-  end else inr tt.
-
-Definition bcll' (n: nat) (m m': list nat): Prop :=
-  le_AsB _ _ (slexprod _ _ lt (bcll n)) (fun _ _ => False) (list_to_sum (S n) m) (list_to_sum (S n) m').
-
-Lemma cll_incl {n} (m m': list nat): bcll (S n) m m' -> bcll' n m m'.
-Proof.
-  intros [Hl1 [Hl2 H]]. unfold bcll'. unfold list_to_sum.
-  rewrite 2 leb_correct; auto.
-  destruct H; constructor.
-  + constructor 1. auto.
-  + constructor 2. simpl in *; split; [| split]; auto; lia.
-Qed.
-
-Lemma wf_bcll: forall (x: nat), well_founded (bcll x).
-Proof.
-  induction x.
-  - intros l. constructor. intros [] [H1 [H2 H3]].
-    + inversion H3.
-    + simpl in H1; lia.
-  - apply (wf_incl _ _ (fun l1 l2 => bcll' x l1 l2)).
-    + red. apply cll_incl.
-    + unfold bcll'.
-      apply wf_inverse_image.
-      apply wf_disjoint_sum.
-      * apply wf_slexprod.
-        -- apply lt_wf.
-        -- apply IHx.
-      * constructor; intros ? [].
-Qed.
-
-Lemma wf_prefix_lt: forall x, well_founded (PrefixLt x).
-Proof.
-  intro x. apply (wf_incl _ _ (bcll x)).
-  - unfold inclusion. now apply bcll__prefix_lt.
-  - apply wf_bcll.
-Qed.
-
-Definition TotalLt: relation nat := lt.
-
-Lemma wf_total_lt: well_founded TotalLt.
-Proof. apply lt_wf. Qed.
-
-Definition StateLexLt (f: CNF): relation (list nat * nat) :=
-  slexprod _ _ (PrefixLt (max_lit_f f)) TotalLt.
-
-Lemma wf_state_lex_lt: forall (f: CNF), well_founded (StateLexLt f).
-Proof.
-  intros. apply wf_slexprod.
-  - apply wf_prefix_lt.
-  - apply wf_total_lt.
-Qed.
-
-Equations state_measure (s: State): list nat * nat :=
-state_measure fail        := ([]       , 0              );
-state_measure (state m f) := (score m f, score_total m f).
-
-Definition StateLtUnion (f: CNF): relation State := union _ FailLt (MR (StateLexLt f) state_measure).
-
-Lemma wf_state_lt_union: forall (f: CNF), well_founded (StateLtUnion f).
-Proof.
-  intros. apply wf_union.
-  - unfold commut.
-    intros. inversion H. subst. exists (state m f).
-    + unfold MR in H0. simp state_measure in H0. inversion H0.
-      * subst. inversion H3.
-      * subst. inversion H3.
-    + unfold MR in H0. simp state_measure in H0. inversion H0.
-      * subst. inversion H3.
-      * subst. inversion H3.
-  - apply wf_fail_lt.
-  - apply wf_MR. apply wf_state_lex_lt.
-Qed.
-
-Inductive StateLt' (f: CNF): relation State :=
-| s_fail (s s': State):
-  FailLt s s' ->
-  StateLt' f s s'
-| s_lex (s s': State):
-  StateLexLt f (state_measure s) (state_measure s') ->
-  StateLt' f s s'.
-
-Lemma state_lt_union_state_lt': forall (f: CNF) (s s': State),
-  StateLtUnion f s s' <-> StateLt' f s s'.
-Proof.
-  intros. split.
-  - intros. inversion H.
-    + now apply s_fail.
-    + unfold MR in H0. now apply s_lex.
-  - intros. inversion H.
-    + unfold StateLtUnion. unfold union. left. assumption.
-    + unfold StateLtUnion. unfold union. right. unfold MR. assumption.
-Qed.
-
-Definition StateLt (f: CNF): relation State := 
-  MR (StateLtUnion f) clean.
-
-Lemma wf_state_lt: forall (f: CNF), well_founded (StateLt f).
-Proof. intros. apply measure_wf. apply wf_state_lt_union. Qed.
-  
-Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40, format "s '/ ' '[' >>[ ']' f ] '/ ' s'").
-
-Equations prefix_lt (x: nat) (m m': list nat): bool :=
-prefix_lt _     []       _            := false;
-prefix_lt _     _        []           := false;
-prefix_lt 0     _        _            := false;
-prefix_lt (S x) (n :: m) (n' :: m') :=
-  (length m <=? x) && 
-  (length m' <=? x) &&
-  ((n <? n') || (n =? n')%nat && (prefix_lt x m m')).
-
-Lemma prefix_step: forall (x: nat) (m m': list nat),
-  length m <= x -> length m' <= x -> PrefixLt x m m' <-> PrefixLt (S x) m m'.
-Proof. 
-  intros. split.
-  - intros. induction H1.
-    + apply p_head.
-      * now apply le_S in H1.
-      * now apply le_S in H2.
-      * assumption.
-    + apply p_tail.
-      * now apply le_S in H1.
-      * now apply le_S in H2.
-      * apply IHPrefixLt.
-        -- apply le_S in H1. now apply le_S_n.
-        -- apply le_S in H2. now apply le_S_n.
-  - intros. induction H1.
-    + apply p_head.
-      * assumption.
-      * assumption.
-      * assumption.
-    + apply p_tail.
-      * assumption.
-      * assumption.
-      * apply IHPrefixLt.
-        -- now apply le_S_n.
-        -- now apply le_S_n. 
-Qed.
-
-Lemma prefix_lt_refl: forall (x: nat) (m m': list nat), 
-  prefix_lt x m m' = true <-> PrefixLt x m m'.
-Proof.
-  intros. funelim (prefix_lt x m m').
-  - split.
-    + intros. discriminate.
-    + intros. inversion H.
-  - split.
-    + intros. discriminate.
-    + intros. inversion H.
-  - split.
-    + intros. discriminate.
-    + intros. inversion H; subst.
-      * simpl in H4. inversion H4.
-      * simpl in H4. inversion H4.
-  - split.
-    + intros. rewrite Heqcall in H0. simp prefix_lt in H0. destruct (n <? n') eqn:G.
-      * apply p_head.
-        -- apply andb_true_iff in H0 as [H1 H2]. apply andb_true_iff in H1 as [H1 H3].
-           simpl. apply le_n_S. now apply Nat.leb_le.
-        -- apply andb_true_iff in H0 as [H1 H2]. apply andb_true_iff in H1 as [H1 H3].
-           simpl. apply le_n_S. now apply Nat.leb_le.
-        -- now apply Nat.ltb_lt.
-      * simpl in H0. apply andb_true_iff in H0 as [H1 H2].
-        apply andb_true_iff in H1 as [H1 H3]. apply andb_true_iff in H2 as [H2 H4].
-        rewrite Nat.eqb_eq in H2. subst n'. apply p_tail.
-        -- simpl. apply le_n_S. now apply Nat.leb_le.
-        -- simpl. apply le_n_S. now apply Nat.leb_le.
-        -- apply H in H4. rewrite <- prefix_step.
-          ++ assumption.
-          ++ now apply Nat.leb_le.
-          ++ now apply Nat.leb_le.
-    + intros. inversion H0; subst.
-      * apply Nat.ltb_lt in H7. rewrite H7. simpl.
-        simpl in H5, H6. apply le_S_n in H5, H6.
-        apply Nat.leb_le in H5, H6. now rewrite H5, H6.
-      * simpl in H5, H6. apply le_S_n in H5, H6.
-        apply (prefix_step x m m' H5 H6) in H7.
-        apply Nat.leb_le in H5, H6. rewrite H5, H6.
-        simpl. rewrite <- H in H7. rewrite H7.
-        rewrite Nat.eqb_refl. simpl. apply orb_true_r.
 Qed.
 
 Lemma clean_same_formula: forall (m m': PA) (f f': CNF),
