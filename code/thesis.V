@@ -1130,15 +1130,14 @@ Lemma prefix_unit: forall (m: PA) (f: CNF) (l: Lit),
   PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f).
 Proof. Admitted.
 
-(* Not quite true as is, needs small adjustment.
-Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
-  score (m ++d l) f = score m f.
-Proof. reflexivity. Qed.
-*)
-
 Lemma wf__length_le: forall (m: PA) (f: CNF),
   WellFormed m f ->
   length m <= max_atom_f f.
+Proof. Admitted.
+
+Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
+  WellFormed (m ++d l) f ->
+  score (m ++d l) f = score m f.
 Proof. Admitted.
 
 Lemma total_dec: forall (m: PA) (f: CNF) (l: Lit),
@@ -1171,13 +1170,15 @@ Proof.
   - unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
     now apply prefix_unit.
   (* t_decide *)
-  - unfold StateLt. right. unfold MR. simp state_measure. admit.
+  - unfold StateLt. right. unfold MR. simp state_measure. rewrite score_dec.
+    + apply right_slex. now apply total_dec.
+    + assumption.
   (* t_backtrack *)
   - unfold StateLt. right. unfold MR. simp state_measure. rewrite <- H0. apply left_slex.
     apply prefix_backtrack.
     + now rewrite H0.
     + assumption.
-Admitted.
+Qed.
 
 Lemma next_state__state_lt: forall (m: PA) (f: CNF) (Hwf: WellFormed m f) (s': State), 
   next_state (state m f Hwf) = Some s' -> state m f Hwf >>[f] s'.
