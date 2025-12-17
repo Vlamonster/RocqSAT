@@ -1140,7 +1140,7 @@ Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
   score (m ++d l) f = score m f.
 Proof. Admitted.
 
-Lemma total_dec: forall (m: PA) (f: CNF) (l: Lit),
+Lemma total_decide: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l) f ->
   TotalLt (score_total (m ++d l) f) (score_total m f).
 Proof.
@@ -1171,7 +1171,7 @@ Proof.
     now apply prefix_unit.
   (* t_decide *)
   - unfold StateLt. right. unfold MR. simp state_measure. rewrite score_dec.
-    + apply right_slex. now apply total_dec.
+    + apply right_slex. now apply total_decide.
     + assumption.
   (* t_backtrack *)
   - unfold StateLt. right. unfold MR. simp state_measure. rewrite <- H0. apply left_slex.
