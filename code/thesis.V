@@ -1244,7 +1244,7 @@ Module Satisfiability.
     exists (s: State), state [] f (initial_wf f) ==>* s /\ Final s.
   Admitted.
 
-  Theorem final_sat_refl: forall (f: CNF) (m: PA) (Hwf: WellFormed m f),
+  Theorem final_sat_refl: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),
     state [] f (initial_wf f) ==>* state m f Hwf /\ Final (state m f Hwf) <-> Sat f.
   Admitted.
 
@@ -1254,9 +1254,11 @@ Module Satisfiability.
 
   Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
   Proof.
-    intros. destruct (final_exists f).
+    intros. destruct (final_exists f) as [[|m f' Hwf] ].
     - right. now apply final_unsat_refl.
-    - left. destruct H as [m [Hwf ?]]. now apply (final_sat_refl f m Hwf).
+    - left. destruct H. assert (f = f').
+      + now apply (trans_clos_same_formula [] m f f' (initial_wf f) Hwf).
+      + subst f'. apply (final_sat_refl m f Hwf). split; assumption.
   Qed.
 End Satisfiability.
 
