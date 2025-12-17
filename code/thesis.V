@@ -1227,6 +1227,41 @@ Section solve.
   Definition solve: State := solve_aux (state [] f (initial_wf f)) (initial_refl f).
 End solve.
 
+Module Satisfiability.
+  Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
+  Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
+
+  Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
+  Definition Unsat (f: CNF): Prop := ~ Sat f.
+
+  Definition Entails (f f': CNF): Prop := forall (m: PA), Model m f -> Model m f'.
+  Definition Equivalent (f f': CNF): Prop := Entails f f' /\ Entails f' f.
+
+  Theorem fail_final: Final fail.
+  Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
+
+  Theorem final_exists: forall (f: CNF),
+    (state [] f (initial_wf f) ==>* fail /\ Final fail) \/
+    (exists (m: PA) (Hwf: WellFormed m f), 
+      state [] f (initial_wf f) ==>* state m f Hwf /\ Final (state m f Hwf)).
+  Admitted.
+
+  Theorem final_sat_refl: forall (f: CNF) (m: PA) (Hwf: WellFormed m f),
+    state [] f (initial_wf f) ==>* state m f Hwf /\ Final (state m f Hwf) <-> Sat f.
+  Admitted.
+
+  Theorem final_unsat_refl: forall (f: CNF),
+    state [] f (initial_wf f) ==>* fail /\ Final fail <-> Unsat f.
+  Admitted.
+
+  Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
+  Proof.
+    intros. destruct (final_exists f).
+    - right. now apply final_unsat_refl.
+    - left. destruct H as [m [Hwf ?]]. now apply (final_sat_refl f m Hwf).
+  Qed.
+End Satisfiability.
+
 (*
 Equations option_bind {A B: Type} (f: A -> option B) (o: option A): option B :=
 option_bind _ None     := None;
@@ -1394,38 +1429,4 @@ Proof.
       rewrite Neg.eqb_compat in H0. rewrite Neg.involutive in H0. rewrite Heq in H0.
       simpl in H0. apply H. assumption.
 Qed.
-
-Module Satisfiability.
-  Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
-  Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
-
-  Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
-  Definition Unsat (f: CNF): Prop := ~ Sat f.
-
-  Definition Entails (f f': CNF): Prop := forall (m: PA), Model m f -> Model m f'.
-  Definition Equivalent (f f': CNF): Prop := Entails f f' /\ Entails f' f.
-
-  Theorem fail_final: Final fail.
-  Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
-
-  Theorem final_exists: forall (f: CNF),
-    (state [] f ==>* fail /\ Final fail) \/
-    (exists (m: PA), state [] f ==>* state m f /\ Final (state m f)).
-  Admitted.
-
-  Theorem final_sat_refl: forall (f: CNF) (m: PA),
-    state [] f ==>* state m f /\ Final (state m f) <-> Sat f.
-  Admitted.
-
-  Theorem final_unsat_refl: forall (f: CNF),
-    state [] f ==>* fail /\ Final fail <-> Unsat f.
-  Admitted.
-
-  Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
-  Proof.
-    intros. destruct (final_exists f).
-    - right. apply final_unsat_refl. assumption.
-    - left. destruct H. apply (final_sat_refl f x). assumption.
-  Qed.
-End Satisfiability. 
 *)
