@@ -870,7 +870,7 @@ score m f :=
   pad unpadded max_atom (S max_atom - length unpadded).
 
 Equations score_total (m: PA) (f: CNF): nat :=
-score_total m f := (max_atom_f f) - length m.
+score_total m f := S (max_atom_f f) - length m.
 
 Module ScoreExamples.
   Example score_1: score [] [[Pos 1;Pos 2]] = [2; 2; 2].
@@ -885,16 +885,16 @@ Module ScoreExamples.
   Example score_4: score ([] ++d Neg 1 ++p Pos 2) [[Pos 1;Pos 2]] = [2; 1; 2].
   Proof. reflexivity. Qed.
 
-  Example score_total_1: score_total [] [[Pos 1;Pos 2]] = 2.
+  Example score_total_1: score_total [] [[Pos 1;Pos 2]] = 3.
   Proof. reflexivity. Qed.
 
-  Example score_total_2: score_total ([] ++p Pos 1) [[Pos 1;Pos 2]] = 1.
+  Example score_total_2: score_total ([] ++p Pos 1) [[Pos 1;Pos 2]] = 2.
   Proof. reflexivity. Qed.
 
-  Example score_total_3: score_total ([] ++d Pos 1) [[Pos 1;Pos 2]] = 1.
+  Example score_total_3: score_total ([] ++d Pos 1) [[Pos 1;Pos 2]] = 2.
   Proof. reflexivity. Qed.
 
-  Example score_total_4: score_total ([] ++d Neg 1 ++p Pos 2) [[Pos 1;Pos 2]] = 0.
+  Example score_total_4: score_total ([] ++d Neg 1 ++p Pos 2) [[Pos 1;Pos 2]] = 1.
   Proof. reflexivity. Qed.
 End ScoreExamples.
 
@@ -1132,7 +1132,7 @@ Proof. Admitted.
 
 Lemma wf__length_le: forall (m: PA) (f: CNF),
   WellFormed m f ->
-  length m <= max_atom_f f.
+  length m <= S (max_atom_f f).
 Proof. Admitted.
 
 Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
@@ -1145,7 +1145,7 @@ Lemma total_decide: forall (m: PA) (f: CNF) (l: Lit),
   TotalLt (score_total (m ++d l) f) (score_total m f).
 Proof.
   intros m f l Hwf. pose proof (wf__length_le (m ++d l) f Hwf).
-  unfold TotalLt. simp score_total. simpl in *. lia.
+  unfold TotalLt. simp score_total. simpl in *. destruct (length m); lia.
 Qed.
 
 Lemma prefix_backtrack: forall (m n: PA) (f: CNF) (l: Lit),
