@@ -1169,10 +1169,24 @@ Lemma wf__length_le: forall (m: PA) (f: CNF),
   length m <= S (max_atom_f f).
 Proof. Admitted.
 
+Lemma score_aux_le: forall (m: PA) (f: CNF) (l: Lit),
+  WellFormed (m ++d l) f ->
+  length (score_aux m (max_atom_f f) 0) <= max_atom_f f.
+Proof. Admitted.
+
 Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l) f ->
   score (m ++d l) f = score m f.
-Proof. Admitted.
+Proof.
+  intros. simp score. simpl. simp score_aux. simpl.
+  rewrite length_app. simpl. rewrite Nat.add_1_r. 
+  destruct (length (rev (score_aux m (max_atom_f f) 0))) eqn:G.
+  - simp pad. now rewrite Nat.sub_0_r.
+  - rewrite length_rev in G. pose proof (score_aux_le m f l H).
+    + assert (T: S (max_atom_f f - S n) = max_atom_f f - n).
+      * lia.
+      * rewrite <- T. simp pad. now rewrite Nat.sub_0_r.
+Qed.
 
 Lemma total_decide: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l) f ->
