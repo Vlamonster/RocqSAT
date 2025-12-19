@@ -865,6 +865,15 @@ Proof.
           ++ destruct (find_conflict_exists m f c_conflict Hc_in_f Hconflict). congruence.
 Qed.
 
+Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
+Proof.
+  unfold Final. unfold not. intros. split.
+  - intros. destruct H0. apply next_state_exists in H0. destruct H0. congruence.
+  - intros. destruct (next_state s) eqn:G.
+    + apply next_state_sound in G. exfalso. apply H. exists s0. assumption.
+    + reflexivity.
+Qed.
+
 Equations max_atom_c (c: Clause): nat :=
 max_atom_c []           := 0;
 max_atom_c (Pos p :: c) := max p (max_atom_c c);
@@ -1441,15 +1450,6 @@ Proof.
       * simp l_in_c. apply orb_true_iff. now left.
   - simp l_in_f in *. rewrite existsb_false_iff in G. symmetry. rewrite existsb_false_iff.
     intros. apply G in H. simp l_in_c in *. rewrite Neg.involutive. now rewrite orb_comm.
-Qed.
-
-Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
-Proof.
-  unfold Final. unfold not. intros. split.
-  - intros. destruct H0. apply next_state_exists in H0. destruct H0. congruence.
-  - intros. destruct (next_state s) eqn:G.
-    + apply next_state_sound in G. exfalso. apply H. exists s0. assumption.
-    + reflexivity.
 Qed.
 
 (* Temporarily has `n` for testing, until termination in proven. *)
