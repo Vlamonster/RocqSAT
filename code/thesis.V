@@ -1169,10 +1169,25 @@ Lemma wf__length_le: forall (m: PA) (f: CNF),
   length m <= S (max_atom_f f).
 Proof. Admitted.
 
+Lemma score_aux_length: forall (m: PA) (n n': nat),
+  length (score_aux m n n') <= S (length m).
+Proof.
+  intros. funelim (score_aux m n n').
+  - simpl. apply le_n.
+  - simpl. now apply le_n_S.
+  - simpl. lia.
+Qed.
+
 Lemma score_aux_le: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l) f ->
   length (score_aux m (max_atom_f f) 0) <= S (max_atom_f f).
-Proof. Admitted.
+Proof.
+  intros. 
+  pose proof (score_aux_length m (max_atom_f f) 0).
+  pose proof (score_aux_length (m ++d l) (max_atom_f f) 0).
+  pose proof (wf__length_le (m ++d l) f H).
+  simpl in *. lia.
+Qed.
 
 Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l) f ->
