@@ -1157,6 +1157,88 @@ Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
   PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f).
 Proof. Admitted.
 
+Lemma max_atom_c_le: forall (c: Clause) (l: Lit) (p: Atom),
+  In l c ->
+  extract l = p ->
+  p <= max_atom_c c.
+Proof.
+  intros c l p Hin Heq. funelim (max_atom_c c).
+  - contradiction.
+  - inversion Hin.
+    + subst l. simp extract. apply Nat.max_le_iff. now left.
+    + destruct l as [p'|p'].
+      * simp extract. apply (H (Pos p') p') in H0.
+        -- apply Nat.max_le_iff. now right.
+        -- reflexivity.
+      * simp extract. apply (H (Neg p') p') in H0.
+        -- apply Nat.max_le_iff. now right.
+        -- reflexivity.
+  - inversion Hin.
+    + subst l. simp extract. apply Nat.max_le_iff. now left.
+    + destruct l as [p'|p'].
+      * simp extract. apply (H (Pos p') p') in H0.
+        -- apply Nat.max_le_iff. now right.
+        -- reflexivity.
+      * simp extract. apply (H (Neg p') p') in H0.
+        -- apply Nat.max_le_iff. now right.
+        -- reflexivity.
+Qed.
+
+Lemma max_atom_f_le: forall (f: CNF) (c: Clause) (l: Lit) (p: Atom),
+  In l c ->
+  In c f ->
+  extract l = p ->
+  p <= max_atom_f f.
+Proof.
+  intros f c l p Hl_in_c Hc_in_f Heq. funelim (max_atom_f f).
+  - contradiction.
+  - inversion Hc_in_f.
+    + subst c0. destruct l as [p|p].
+      * simp extract. apply Nat.max_le_iff. left. apply (max_atom_c_le c (Pos p) p).
+        -- assumption.
+        -- reflexivity.
+      * simp extract. apply Nat.max_le_iff. left. apply (max_atom_c_le c (Neg p) p).
+        -- assumption.
+        -- reflexivity.
+    + destruct l as [p|p].
+      * apply Nat.max_le_iff. right. simp extract. apply (H c0 (Pos p) p).
+        -- assumption.
+        -- assumption.
+        -- reflexivity.
+      * apply Nat.max_le_iff. right. simp extract. apply (H c0 (Neg p) p).
+        -- assumption.
+        -- assumption.
+        -- reflexivity.
+Qed.
+
+Lemma wf_le: forall (m: PA) (f: CNF) (p: Atom),
+  WellFormed m f ->
+  In p (map extract (map fst m)) ->
+  p <= max_atom_f f.
+Proof.
+  intros m f p Hwf Hin. apply in_map_iff in Hin as [l [Heq Hin]].
+  apply in_map_iff in Hin as [(l', a) [Heq' Hin]]. simpl in Heq'. subst l'.
+  destruct Hwf as [Hnodup Hbounded]. apply Hbounded in Hin as [c [Hc_in_f [Hl_in_c|Hnegl_in_c]]].
+  - destruct l as [p'|p'].
+    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Pos p)).
+      * assumption.
+      * assumption.
+      * reflexivity.
+    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Neg p)).
+      * assumption.
+      * assumption.
+      * reflexivity.
+  - destruct l as [p'|p'].
+    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Neg p)).
+      * assumption.
+      * assumption.
+      * reflexivity.
+    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Pos p)).
+      * assumption.
+      * assumption.
+      * reflexivity.
+Qed.
+
 Lemma wf__length_le: forall (m: PA) (f: CNF),
   WellFormed m f ->
   length m <= S (max_atom_f f).
