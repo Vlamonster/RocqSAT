@@ -1306,19 +1306,20 @@ Lemma prefix_repeat: forall (l1 l2: list nat) (m n x x': nat),
   length l2 + x' <= m ->
   PrefixLt m l1 l2 -> PrefixLt m (l1 ++ repeat n x) (l2 ++ repeat n x').
 Proof.
-  intros. induction H3.
+  intros l1 l2 m n x x' Hin_l1 Hin_l2 Hle_l1 Hle_l2 Hlt. 
+  induction Hlt as [l1 l2 a1 a2 _ _ Hlt|l1 l2 a _ _ _ IH].
   - simpl. apply p_head.
-    + simpl. rewrite length_app. rewrite repeat_length. simpl in H1. lia.
-    + simpl. rewrite length_app. rewrite repeat_length. simpl in H2. lia.
+    + simpl. rewrite length_app. now rewrite repeat_length.
+    + simpl. rewrite length_app. now rewrite repeat_length.
     + assumption.
   - simpl. apply p_tail.
-    + simpl. simpl in H1. rewrite length_app. rewrite repeat_length. lia.
-    + simpl. simpl in H2. rewrite length_app. rewrite repeat_length. lia.
-    + apply IHPrefixLt.
-      * intros. apply H. now right.
-      * intros. apply H0. now right.
-      * simpl in H1. lia.
-      * simpl in H2. lia.
+    + simpl. rewrite length_app. now rewrite repeat_length.
+    + simpl. rewrite length_app. now rewrite repeat_length.
+    + apply IH.
+      * intros. apply Hin_l1. now right.
+      * intros. apply Hin_l2. now right.
+      * simpl in Hle_l1. lia.
+      * simpl in Hle_l2. lia.
 Qed.
 
 Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
