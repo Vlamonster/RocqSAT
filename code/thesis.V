@@ -893,35 +893,35 @@ pad m n (S x) := pad (m ++ [n]) n x.
 Equations score (m: PA) (f: CNF): list nat :=
 score m f :=
   let max_atom := max_atom_f f in
-  let unpadded := rev (score_aux m max_atom 0) in
-  pad unpadded max_atom (S (S max_atom) - length unpadded).
+  let unpadded := rev (score_aux m (S max_atom) 0) in
+  pad unpadded (S max_atom) (S (S max_atom) - length unpadded).
 
 Equations score_total (m: PA) (f: CNF): nat :=
 score_total m f := S (max_atom_f f) - length m.
 
 Module ScoreExamples.
-  Example score_1: score [] [[Pos 1;Pos 2]] = [2; 2; 2; 2].
+  Example score_1: score [] [[Pos 0; Pos 1]] = [2; 2; 2].
   Proof. reflexivity. Qed.
 
-  Example score_2: score ([] ++p Pos 1) [[Pos 1;Pos 2]] = [1; 2; 2; 2].
+  Example score_2: score ([] ++p Pos 0) [[Pos 0; Pos 1]] = [1; 2; 2].
   Proof. reflexivity. Qed.
 
-  Example score_3: score ([] ++d Pos 1) [[Pos 1;Pos 2]] = [2; 2; 2; 2].
+  Example score_3: score ([] ++d Pos 0) [[Pos 0; Pos 1]] = [2; 2; 2].
   Proof. reflexivity. Qed.
 
-  Example score_4: score ([] ++d Neg 1 ++p Pos 2) [[Pos 1;Pos 2]] = [2; 1; 2; 2].
+  Example score_4: score ([] ++d Neg 0 ++p Pos 1) [[Pos 0; Pos 1]] = [2; 1; 2].
   Proof. reflexivity. Qed.
 
-  Example score_total_1: score_total [] [[Pos 1;Pos 2]] = 3.
+  Example score_total_1: score_total [] [[Pos 0; Pos 1]] = 2.
   Proof. reflexivity. Qed.
 
-  Example score_total_2: score_total ([] ++p Pos 1) [[Pos 1;Pos 2]] = 2.
+  Example score_total_2: score_total ([] ++p Pos 0) [[Pos 0; Pos 1]] = 1.
   Proof. reflexivity. Qed.
 
-  Example score_total_3: score_total ([] ++d Pos 1) [[Pos 1;Pos 2]] = 2.
+  Example score_total_3: score_total ([] ++d Pos 0) [[Pos 0; Pos 1]] = 1.
   Proof. reflexivity. Qed.
 
-  Example score_total_4: score_total ([] ++d Neg 1 ++p Pos 2) [[Pos 1;Pos 2]] = 1.
+  Example score_total_4: score_total ([] ++d Neg 0 ++p Pos 1) [[Pos 0; Pos 1]] = 0.
   Proof. reflexivity. Qed.
 End ScoreExamples.
 
@@ -1272,13 +1272,13 @@ Proof.
   - simpl. lia.
 Qed.
 
-Lemma score_aux_le: forall (m: PA) (f: CNF) (l: Lit),
+Lemma score_aux_le: forall (m: PA) (f: CNF) (l: Lit) (n: nat),
   WellFormed (m ++d l) f ->
-  length (score_aux m (max_atom_f f) 0) <= S (max_atom_f f).
+  length (score_aux m n 0) <= S (max_atom_f f).
 Proof.
   intros. 
-  pose proof (score_aux_length m (max_atom_f f) 0).
-  pose proof (score_aux_length (m ++d l) (max_atom_f f) 0).
+  pose proof (score_aux_length m n 0).
+  pose proof (score_aux_length (m ++d l) n 0).
   pose proof (wf_length_le (m ++d l) f H).
   simpl in *. lia.
 Qed.
@@ -1289,14 +1289,14 @@ Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
 Proof.
   intros. simp score. simpl. simp score_aux. simpl.
   rewrite length_app. simpl. rewrite Nat.add_1_r. 
-  destruct (length (rev (score_aux m (max_atom_f f) 0))) eqn:G.
-  - simp pad. now rewrite Nat.sub_0_r.
+  destruct (length (rev (score_aux m (S (max_atom_f f)) 0))) eqn:G.
+  - reflexivity.
   - destruct n.
     + simp pad. now rewrite Nat.sub_0_r.
-    + rewrite length_rev in G. pose proof (score_aux_le m f l H).
+    + rewrite length_rev in G. pose proof (score_aux_le m f l (S (max_atom_f f)) H).
       assert (T: S (max_atom_f f - S n) = max_atom_f f - n).
       * lia.
-      * rewrite <- T. simp pad. now rewrite Nat.sub_0_r.
+      * now rewrite <- T.
 Qed.
 
 Lemma total_decide: forall (m: PA) (f: CNF) (l: Lit),
