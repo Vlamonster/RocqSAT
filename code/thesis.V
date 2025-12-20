@@ -1038,7 +1038,7 @@ Lemma wf_total_lt: well_founded TotalLt.
 Proof. apply lt_wf. Qed.
 
 Definition StateLexLt (f: CNF): relation (list nat * nat) :=
-  slexprod _ _ (PrefixLt (max_atom_f f)) TotalLt.
+  slexprod _ _ (PrefixLt (S (S (max_atom_f f)))) TotalLt.
 
 Lemma wf_state_lex_lt: forall (f: CNF), well_founded (StateLexLt f).
 Proof.
@@ -1264,14 +1264,14 @@ Proof.
   - simpl. lia.
 Qed.
 
-Lemma score_aux_length_le: forall (m: PA) (f: CNF) (l: Lit) (n x: nat),
-  WellFormed (m ++d l) f ->
+Lemma score_aux_length_le: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (n x: nat),
+  WellFormed ((l, a) :: m) f ->
   length (score_aux m n x) <= S (max_atom_f f).
 Proof.
   intros. 
   pose proof (score_aux_length m n x).
   pose proof (score_aux_length (m ++d l) n x).
-  pose proof (wf_length_le (m ++d l) f H).
+  pose proof (wf_length_le ((l, a) :: m) f H).
   simpl in *. lia.
 Qed.
 
@@ -1299,7 +1299,7 @@ Proof.
   - destruct n.
     + simp pad. now rewrite Nat.sub_0_r.
     + rewrite length_rev in G. 
-      pose proof (score_aux_length_le m f l (S (max_atom_f f)) 0 H).
+      pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
       assert (T: S (max_atom_f f - S n) = max_atom_f f - n).
       * lia.
       * now rewrite <- T.
@@ -1338,26 +1338,58 @@ Qed.
 
 Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++p l) f ->
-  PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f).
+  PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score m f).
 Proof.
-  intros m f l Hwf. simp score. simpl. apply prefix_repeat.
+  intros m f l Hwf. 
+  pose proof (wf_cons__wf m f l prop Hwf) as Hwf'. 
+  simp score. simpl. apply prefix_repeat.
   - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
   - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
-  - admit.
-  - admit.
+  - repeat rewrite length_rev.
+    destruct (length (score_aux (m ++p l) (S (max_atom_f f)) 0)) eqn:Heq.
+    + lia.
+    + destruct n.
+      * lia.
+      * pose proof (score_aux_length (m ++p l) (S (max_atom_f f)) 0).
+        pose proof (wf_length_le (m ++p l) f Hwf) .
+        simpl in *. lia.
+  - repeat rewrite length_rev.
+    destruct (length (score_aux m (S (max_atom_f f)) 0)) eqn:Heq.
+    + lia.
+    + destruct n.
+      * lia.
+      * pose proof (score_aux_length m (S (max_atom_f f)) 0).
+        pose proof (wf_length_le m f Hwf').
+        simpl in *. lia.
   - admit.
 Admitted.
 
 Lemma prefix_app: forall (m n: PA) (f: CNF) (l l': Lit),
-  PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f) ->
-  PrefixLt (max_atom_f f) (score (m ++p l) f) (score (m ++d l' ++a n) f).
+  WellFormed (m ++p l) f ->
+  WellFormed (m ++d l' ++a n) f ->
+  PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score m f) ->
+  PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score (m ++d l' ++a n) f).
 Proof.
-  intros m n f l l' Hlt. simp score. simpl. apply prefix_repeat.
-  + intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
-  + intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
-  + admit.
-  + admit.
-  + admit.
+  intros m n f l l' Hwf Hwf' Hlt. simp score. simpl. apply prefix_repeat.
+  - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
+  - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
+  - repeat rewrite length_rev.
+    destruct (length (score_aux (m ++p l) (S (max_atom_f f)) 0)) eqn:Heq.
+    + lia.
+    + destruct n0.
+      * lia.
+      * pose proof (score_aux_length (m ++p l) (S (max_atom_f f)) 0).
+        pose proof (wf_length_le (m ++p l) f Hwf) .
+        simpl in *. lia.
+  - repeat rewrite length_rev.
+    destruct (length (score_aux (m ++d l' ++a n) (S (max_atom_f f)) 0)) eqn:Heq.
+    + lia.
+    + destruct n0.
+      * lia.
+      * pose proof (score_aux_length (m ++d l' ++a n) (S (max_atom_f f)) 0).
+        pose proof (wf_length_le (m ++d l' ++a n) f Hwf').
+        simpl in *. lia.
+  - admit.
 Admitted.
 
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
@@ -1381,7 +1413,10 @@ Proof.
     + assumption.
   (* t_backtrack *)
   - unfold StateLt. right. unfold MR. simp state_measure. rewrite <- H0. apply left_slex.
-    apply prefix_app. now apply prefix_prop.
+    apply prefix_app.
+    + assumption.
+    + now rewrite H0.
+    + now apply prefix_prop.
 Qed.
 
 Lemma next_state__state_lt: forall (m: PA) (f: CNF) (Hwf: WellFormed m f) (s': State), 
