@@ -886,15 +886,12 @@ score_aux []        n x := [n - x];
 score_aux (m ++p l) n x := score_aux m n (S x);
 score_aux (m ++d l) n x := n - x :: score_aux m n 0.
 
-Equations pad (m: list nat) (n x: nat): list nat :=
-pad m n 0     := m;
-pad m n (S x) := pad (m ++ [n]) n x.
-
 Equations score (m: PA) (f: CNF): list nat :=
 score m f :=
   let max_atom := max_atom_f f in
   let unpadded := rev (score_aux m (S max_atom) 0) in
-  pad unpadded (S max_atom) (S (S max_atom) - length unpadded).
+  let  padding := repeat (S max_atom) (S (S max_atom) - length unpadded) in
+  unpadded ++ padding.
 
 Equations score_total (m: PA) (f: CNF): nat :=
 score_total m f := S (max_atom_f f) - length m.
@@ -1152,11 +1149,6 @@ Proof.
         rewrite Nat.eqb_refl. simpl. apply orb_true_r.
 Qed.
 
-Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
-  WellFormed (m ++p l) f ->
-  PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f).
-Proof. Admitted.
-
 Lemma max_atom_c_le: forall (c: Clause) (l: Lit) (p: Atom),
   In l c ->
   extract l = p ->
@@ -1288,7 +1280,7 @@ Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
   score (m ++d l) f = score m f.
 Proof.
   intros. simp score. simpl. simp score_aux. simpl.
-  rewrite length_app. simpl. rewrite Nat.add_1_r. 
+  rewrite length_app. simpl. rewrite Nat.add_1_r. rewrite <- app_assoc.
   destruct (length (rev (score_aux m (S (max_atom_f f)) 0))) eqn:G.
   - reflexivity.
   - destruct n.
@@ -1307,10 +1299,31 @@ Proof.
   unfold TotalLt. simp score_total. simpl in *. destruct (length m); lia.
 Qed.
 
-Lemma prefix_app: forall (m n: PA) (f: CNF) (l l': Lit),
-  PrefixLt (max_atom_f f) (score (m ++p l) f) (score (m ++d l') f) ->
-  PrefixLt (max_atom_f f) (score (m ++p l) f) (score (m ++d l' ++a n) f).
+Lemma prefix_repeat: forall (l1 l2: list nat) (m n x x': nat),
+  (forall (k: nat), In k l1 -> k <= n) ->
+  (forall (k: nat), In k l2 -> k <= n) ->
+  PrefixLt m l1 l2 -> PrefixLt m (l1 ++ repeat n x) (l2 ++ repeat n x').
 Proof. Admitted.
+
+Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
+  WellFormed (m ++p l) f ->
+  PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f).
+Proof.
+  intros m f l Hwf. simp score. simpl. apply prefix_repeat.
+  - admit.
+  - admit.
+  - admit.
+Admitted.
+
+Lemma prefix_app: forall (m n: PA) (f: CNF) (l l': Lit),
+  PrefixLt (max_atom_f f) (score (m ++p l) f) (score m f) ->
+  PrefixLt (max_atom_f f) (score (m ++p l) f) (score (m ++d l' ++a n) f).
+Proof.
+  intros m n f l l' Hlt. simp score. simpl. apply prefix_repeat.
+  + admit.
+  + admit.
+  + admit.
+Admitted.
 
 Lemma trans__state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
   state m f Hwf ==> s' -> state m f Hwf >>[f] s'.
@@ -1333,9 +1346,7 @@ Proof.
     + assumption.
   (* t_backtrack *)
   - unfold StateLt. right. unfold MR. simp state_measure. rewrite <- H0. apply left_slex.
-    apply prefix_app. rewrite score_dec.
-    + now apply prefix_prop.
-    + apply (wf_app__wf _ n_split). now rewrite H0.
+    apply prefix_app. now apply prefix_prop.
 Qed.
 
 Lemma next_state__state_lt: forall (m: PA) (f: CNF) (Hwf: WellFormed m f) (s': State), 
