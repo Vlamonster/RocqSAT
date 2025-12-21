@@ -1329,6 +1329,66 @@ Proof.
       * simpl in Hle_l2. lia.
 Qed.
 
+Lemma prefix_prefix: forall (m1 m2 n: list nat) (x: nat),
+  length (m1 ++a n) <= x ->
+  length (m2 ++a n) <= x ->
+  PrefixLt x m1 m2 ->
+  PrefixLt x (m1 ++a n) (m2 ++a n).
+Proof. 
+  intros m1 m2 n. generalize dependent m1. generalize dependent m2.
+  induction n.
+  - now intros.
+  - intros. simpl in *. apply p_tail.
+    + assumption.
+    + assumption.
+    + apply IHn.
+      * lia.
+      * lia.
+      * assumption.
+Qed.
+
+Lemma prefix_shift: forall (m: PA) (f: CNF) (x: nat),
+  WellFormed m f ->
+  x + length m <= max_atom_f f ->
+  PrefixLt (S (S (max_atom_f f))) 
+           (rev (score_aux m (S (max_atom_f f)) (S x)))
+           (rev (score_aux m (S (max_atom_f f)) x)).
+Proof.
+  induction m.
+  - intros. simp score_aux. simpl. destruct x eqn:G.
+    + apply p_head.
+      * simpl. lia.
+      * simpl. lia.
+      * lia.
+    + apply p_head.
+      * simpl. lia.
+      * simpl. lia.
+      * lia.
+  - intros. destruct a. destruct a.
+    + simp score_aux. simpl. destruct x eqn:G.
+      * apply prefix_prefix.
+        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
+           rewrite length_app. rewrite length_rev. simpl. lia.
+        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
+           rewrite length_app. rewrite length_rev. simpl. lia.
+        -- apply p_head.
+          ++ simpl. lia.
+          ++ simpl. lia.
+          ++ lia.
+      * apply prefix_prefix.
+        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
+           rewrite length_app. rewrite length_rev. simpl. lia.
+        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
+           rewrite length_app. rewrite length_rev. simpl. lia.
+        -- apply p_head.
+          ++ simpl. lia.
+          ++ simpl. lia.
+          ++ lia.
+    + simp score_aux. apply IHm.
+      * now apply wf_cons__wf in H.
+      * simpl in H0. lia.
+Qed.
+
 Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (m ++p l) f ->
   PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score m f).
@@ -1354,8 +1414,10 @@ Proof.
       * pose proof (score_aux_length m (S (max_atom_f f)) 0).
         pose proof (wf_length_le m f Hwf').
         simpl in *. lia.
-  - admit.
-Admitted.
+  - simp score_aux. apply prefix_shift.
+    + assumption.
+    + apply wf_length_le in Hwf. simpl in Hwf. lia.
+Qed.
 
 Lemma prefix_app: forall (m n: PA) (f: CNF) (l l': Lit),
   WellFormed (m ++p l) f ->
