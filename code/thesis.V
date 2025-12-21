@@ -1354,8 +1354,9 @@ Lemma prefix_shift: forall (m: PA) (f: CNF) (x: nat),
            (rev (score_aux m (S (max_atom_f f)) (S x)))
            (rev (score_aux m (S (max_atom_f f)) x)).
 Proof.
-  induction m.
-  - intros. simp score_aux. simpl. destruct x eqn:G.
+  intros m f x Hwf Hle. generalize dependent x.
+  induction m as [|[l [|]] m IH].
+  - intros. simp score_aux. simpl. destruct x eqn:Heq.
     + apply p_head.
       * simpl. lia.
       * simpl. lia.
@@ -1364,29 +1365,28 @@ Proof.
       * simpl. lia.
       * simpl. lia.
       * lia.
-  - intros. destruct a. destruct a.
-    + simp score_aux. simpl. destruct x eqn:G.
-      * apply prefix_prefix.
-        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
-           rewrite length_app. rewrite length_rev. simpl. lia.
-        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
-           rewrite length_app. rewrite length_rev. simpl. lia.
-        -- apply p_head.
-          ++ simpl. lia.
-          ++ simpl. lia.
-          ++ lia.
-      * apply prefix_prefix.
-        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
-           rewrite length_app. rewrite length_rev. simpl. lia.
-        -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
-           rewrite length_app. rewrite length_rev. simpl. lia.
-        -- apply p_head.
-          ++ simpl. lia.
-          ++ simpl. lia.
-          ++ lia.
-    + simp score_aux. apply IHm.
-      * now apply wf_cons__wf in H.
-      * simpl in H0. lia.
+  - intros. simp score_aux. simpl. destruct x eqn:Heq.
+    * apply prefix_prefix.
+      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
+          rewrite length_app. rewrite length_rev. simpl. lia.
+      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
+          rewrite length_app. rewrite length_rev. simpl. lia.
+      -- apply p_head.
+        ++ simpl. lia.
+        ++ simpl. lia.
+        ++ lia.
+    * apply prefix_prefix.
+      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
+          rewrite length_app. rewrite length_rev. simpl. lia.
+      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
+          rewrite length_app. rewrite length_rev. simpl. lia.
+      -- apply p_head.
+        ++ simpl. lia.
+        ++ simpl. lia.
+        ++ lia.
+  - intros. simp score_aux. apply IH.
+    * now apply wf_cons__wf in Hwf.
+    * simpl in Hle. lia.
 Qed.
 
 Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
