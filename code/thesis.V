@@ -730,38 +730,37 @@ Qed.
 
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
 Proof.
-  intros. funelim (next_state s); rewrite H in Heqcall; clear H; symmetry in Heqcall.
+  intros. funelim (next_state s); rewrite H in Heqcall; clear H.
   - discriminate.
   - destruct (find_conflict m f) as [c_conflict|] eqn:find_conflict.
     + destruct (inspect (split_last_decision m)) as [[(m_split, l_split)|] split_last_decision].
       (* t_backtrack *)
-      * injection Heqcall as Heqcall. rewrite Heqcall. 
-        pose proof (split_decomp _ _ _ split_last_decision) as decomp. 
-        destruct decomp as [n_split [decomp no_dec]]. subst m.
+      * injection Heqcall as <-.
+        destruct (split_decomp _ _ _ split_last_decision) as [n_split [-> no_dec]].
         apply (t_backtrack m_split n_split f c_conflict l_split).
-        -- apply (find_conflict_c_in_f (m_split ++d l_split ++a n_split) f c_conflict). assumption.
-        -- apply (find_conflict_conflicting (m_split ++d l_split ++a n_split) f c_conflict). assumption.
+        -- now apply (find_conflict_c_in_f (m_split ++d l_split ++a n_split) f c_conflict).
+        -- now apply (find_conflict_conflicting (m_split ++d l_split ++a n_split) f c_conflict).
         -- assumption.
       (* t_fail *)
-      * injection Heqcall as Heqcall. rewrite Heqcall. apply (t_fail m f c_conflict).
-        -- apply (find_conflict_c_in_f m f c_conflict). assumption.
-        -- apply (find_conflict_conflicting m f c_conflict). assumption.
-        -- apply (no_split__no_decision m). assumption.
+      * injection Heqcall as <-. apply (t_fail m f c_conflict).
+        -- now apply (find_conflict_c_in_f m f c_conflict).
+        -- now apply (find_conflict_conflicting m f c_conflict).
+        -- now apply (no_split__no_decision m).
     + destruct (inspect (find_unit m f)) as [[(c_unit, l_unit)|] find_unit].
       (* t_unit *)
-      * injection Heqcall as Heqcall. rewrite Heqcall. apply (t_unit m f c_unit l_unit).
-        -- apply (find_unit_l_in_c m f c_unit l_unit). assumption.
-        -- apply (find_unit_c_in_f m f c_unit l_unit). assumption.
-        -- apply (find_unit_conflicting m f c_unit l_unit). assumption.
-        -- apply (find_unit_undef m f c_unit l_unit). assumption.
+      * injection Heqcall as <-. apply (t_unit m f c_unit l_unit).
+        -- now apply (find_unit_l_in_c m f c_unit l_unit).
+        -- now apply (find_unit_c_in_f m f c_unit l_unit).
+        -- now apply (find_unit_conflicting m f c_unit l_unit).
+        -- now apply (find_unit_undef m f c_unit l_unit).
       * destruct (inspect (find_decision m f)) as [[l_decide|] find_decision].
         (* t_decide *)
-        -- injection Heqcall as Heqcall. rewrite Heqcall.
+        -- injection Heqcall as <-.
            destruct (find_decision_decomp m f l_decide find_decision) as [c_decide [Hc Hc_in_f]].
            apply (t_decide m f c_decide l_decide).
-          ++ left. apply (find_undef_l_in_c m c_decide l_decide). assumption.
+          ++ left. now apply (find_undef_l_in_c m c_decide l_decide).
           ++ assumption.
-          ++ apply (find_undef_l_undef m c_decide l_decide). assumption.
+          ++ now apply (find_undef_l_undef m c_decide l_decide).
         -- discriminate.
 Qed.
 
