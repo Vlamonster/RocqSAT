@@ -1413,9 +1413,9 @@ Proof.
 Qed.
 
 Lemma score_aux_split: forall (m1 m2: PA) (l: Lit) (n x: nat),
-  rev (score_aux (m1 ++d l ++a m2) n x) = rev ((score_aux m1 n 0) ++a (score_aux m2 n x)).
+  score_aux (m1 ++d l ++a m2) n x = (score_aux m1 n 0) ++a (score_aux m2 n x).
 Proof.
-  intros. f_equal.
+  intros.
   generalize dependent x.
   induction m2.
   - intros. rewrite app_nil_l. simp score_aux. simpl. reflexivity.
