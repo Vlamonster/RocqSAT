@@ -1591,9 +1591,32 @@ Module Satisfiability.
   Theorem fail_final: Final fail.
   Proof. unfold Final. unfold not. intros. inversion H. inversion H0. Qed.
 
+  Lemma solve_aux_trans: forall (f: CNF) (s s': State) (H: state [] f (initial_wf f) ==>* s),
+    solve_aux f s H = s' -> state [] f (initial_wf f) ==>* s'.
+  Proof.
+    intros. funelim (solve_aux f s H).
+    - now apply H0.
+    - assumption.
+  Qed.
+
+  Lemma solve_aux_final: forall (f: CNF) (s s': State) (H: state [] f (initial_wf f) ==>* s),
+    solve_aux f s H = s' -> Final s'.
+  Proof.
+    intros. apply next_state_final_refl. funelim (solve_aux f s H).
+    - now apply H0.
+    - assumption.
+  Qed.
+
   Theorem final_exists: forall (f: CNF),
     exists (s: State), state [] f (initial_wf f) ==>* s /\ Final s.
-  Admitted.
+    intros. destruct (solve f) as [|m' f' Hwf'] eqn:H.
+    - exists fail. split.
+      + now apply solve_aux_trans in H.
+      + now apply solve_aux_final in H.
+    - exists (state m' f' Hwf'). split.
+      + now apply solve_aux_trans in H.
+      + now apply solve_aux_final in H.
+  Qed.
 
   Theorem final_sat_refl: forall (f: CNF),
     (exists (m: PA) (Hwf: WellFormed m f),
