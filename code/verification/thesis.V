@@ -1584,7 +1584,9 @@ Section solve.
       + rewrite ns in G. injection G as ->. now constructor.
       + rewrite ns in G. destruct G. destruct H0. injection H0 as ->.
         apply next_state_sound in ns. assert (state [] f (initial_wf f) ==>* state x f0 x0).
-        * apply (rt_trans _ _ _ (state m f0 Hwf) _ H). now apply rt_step.
+        * eapply rt_trans.
+          -- apply H.
+          -- now apply rt_step.
         * apply trans_clos_same_formula in H0. subst f0. now apply trans__state_lt.
   Qed.
 
