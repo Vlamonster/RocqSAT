@@ -1703,9 +1703,56 @@ Module Satisfiability.
   convert_prop (m ++p l) := convert_prop m ++d l;
   convert_prop (m ++d l) := convert_prop m ++d l.
 
-  Lemma convert_prop_model: forall (m: PA) (f: CNF),
+  Lemma convert_prop_l: forall (m: PA) (l: Lit) (v: option bool),
+    l_eval m l = v -> l_eval (convert_prop m) l = v.
+  Proof.
+    intros. funelim (convert_prop m).
+    - reflexivity.
+    - simp l_eval. destruct (l0 =? l), (l0 =? ¬l).
+      + reflexivity.
+      + reflexivity.
+      + reflexivity.
+      + simpl. now apply H.
+    - simp l_eval. destruct (l0 =? l), (l0 =? ¬l).
+      + reflexivity.
+      + reflexivity.
+      + reflexivity.
+      + simpl. now apply H.
+  Qed.
+
+  Lemma convert_prop_c: forall (m: PA) (c: Clause),
+    c_eval m c = Some true -> c_eval (convert_prop m) c = Some true.
+  Proof.
+    intros. induction c as [|l c IH].
+    - discriminate.
+    - simp c_eval in *. destruct (l_eval m l) as [[|]|] eqn:Hl.
+      + apply convert_prop_l in Hl. now rewrite Hl. 
+      + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
+        * apply convert_prop_l in Hl. rewrite Hl.
+          apply IH in H. now rewrite H.
+        * discriminate.
+        * discriminate.
+      + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
+        * apply convert_prop_l in Hl. rewrite Hl.
+          apply IH in H. now rewrite H.
+        * discriminate.
+        * discriminate.
+  Qed.
+
+  Lemma convert_prop_f: forall (m: PA) (f: CNF),
     Model m f -> Model (convert_prop m) f.
-  Admitted.
+  Proof.
+    unfold Model. intros. induction f as [|c f IH].
+    - intros. reflexivity.
+    - intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
+      + simpl in H. apply convert_prop_c in Hc. simp f_eval.
+        rewrite Hc. apply IH in H. rewrite H. reflexivity.
+      + discriminate.
+      + simpl in H. destruct (f_eval m f) as [[|]|] eqn:Hf.
+        * discriminate.
+        * discriminate.
+        * discriminate.
+  Qed.
 
   Lemma convert_prop_only_dec: forall (m: PA) (l: Lit) (a: Ann),
     In (l, a) (convert_prop m) -> a = dec.
@@ -1727,15 +1774,25 @@ Module Satisfiability.
     | false := bound m f.
 
   Lemma f_eval_cons: forall (m: PA) (f: CNF) (c: Clause),
-    f_eval m (c :: f) = Some true -> f_eval m f = Some true.
+    f_eval m (c :: f) = Some true -> 
+    f_eval m f = Some true /\ c_eval m c = Some true.
   Proof.
     intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-    - assumption.
-    - discriminate.
-    - destruct (f_eval m f) as [[|]|] eqn:Hf.
+    - split.
+      + assumption.
       + reflexivity.
+    - split.
       + discriminate.
       + discriminate.
+    - split.
+      + destruct (f_eval m f) as [[|]|] eqn:Hf.
+        * reflexivity.
+        * discriminate.
+        * discriminate.
+      + destruct (f_eval m f) as [[|]|] eqn:Hf.
+        * discriminate.
+        * discriminate.
+        * discriminate.
   Qed.
 
   Lemma bound_model: forall (m: PA) (f: CNF),
