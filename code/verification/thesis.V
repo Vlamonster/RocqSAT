@@ -2,7 +2,7 @@ From Equations Require Import Equations.
 From Stdlib Require Import Nat Bool Arith List Relations Wellfounded Lia.
 Import ListNotations.
 
-(* Do not assume functional extionsality with Equations. *)
+(* Do not assume functional extensionality with Equations. *)
 Unset Equations With Funext.
 
 Open Scope bool_scope.
@@ -1698,13 +1698,79 @@ Module Satisfiability.
       + now apply find_undef_l_undef in Hfind_undef_l.
   Qed.
 
+  Equations convert_prop (m: PA): PA :=
+  convert_prop []        := [];
+  convert_prop (m ++p l) := convert_prop m ++d l;
+  convert_prop (m ++d l) := convert_prop m ++d l.
+
+  Lemma convert_prop_model: forall (m: PA) (f: CNF),
+    Model m f -> Model (convert_prop m) f.
+  Admitted.
+
+  Lemma convert_prop_only_dec: forall (m: PA) (l: Lit) (a: Ann),
+    In (l, a) (convert_prop m) -> a = dec.
+  Proof.
+    intros. funelim (convert_prop m).
+    - inversion H.
+    - simp convert_prop in H0. inversion H0.
+      + now injection H1 as <- <-.
+      + now apply (H l0).
+    - simp convert_prop in H0. inversion H0.
+      + now injection H1 as <- <-.
+      + now apply (H l0).
+  Qed.
+
+  Equations bound (m: PA) (f: CNF): PA :=
+  bound [] f := [];
+  bound ((l, a) :: m) f with l_in_f f l :=
+    | true  := (l, a) :: bound m f
+    | false := bound m f.
+
+  Lemma f_eval_cons: forall (m: PA) (f: CNF) (c: Clause),
+    f_eval m (c :: f) = Some true -> f_eval m f = Some true.
+  Proof.
+    intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
+    - assumption.
+    - discriminate.
+    - destruct (f_eval m f) as [[|]|] eqn:Hf.
+      + reflexivity.
+      + discriminate.
+      + discriminate.
+  Qed.
+
+  Lemma bound_model: forall (m: PA) (f: CNF),
+    Model m f -> Model (bound m f) f.
+  Admitted.
+
+  Lemma bound_bounded: forall (m: PA) (f: CNF), Bounded (bound m f) f.
+  Proof.
+    unfold Bounded. intros. funelim (bound m f).
+    - inversion H.
+    - simp bound in H0. rewrite Heq in H0. simpl in H0. destruct H0.
+      + injection H0 as <- <-. apply l_in_f_exists in Heq as [c [Hx_in_c Hc_in_f]].
+        exists c. intuition.
+      + now apply H in H0.
+    - simp bound in H0. rewrite Heq in H0. simpl in H0. now apply H in H0.
+  Qed.
+
+  Lemma bound_incl: forall (m: PA) (f: CNF),
+    incl (bound m f) m.
+  Proof.
+    unfold incl. intros m f [l a] Hin. funelim (bound m f).
+    - inversion Hin.
+    - simp bound in Hin. rewrite Heq in Hin. simpl in Hin. destruct Hin.
+      + injection H0 as <- <-. now left.
+      + right. now apply H.
+    - simp bound in Hin. rewrite Heq in Hin. simpl in Hin. right. now apply H.
+  Qed.
+
   Theorem final_sat_refl: forall (f: CNF),
     (exists (m: PA) (Hwf: WellFormed m f),
       state [] f (initial_wf f) ==>* state m f Hwf /\ Final (state m f Hwf)) <-> Sat f.
   Proof.
     intros. split.
     - intros [m [Hwf [Htrans Hfinal]]]. exists m. now apply final_model in Hfinal.
-    - intros Hsat. admit.
+    - intros Hsat. unfold Sat in Hsat. unfold Model in Hsat. destruct Hsat as [m Heq]. admit.
   Admitted.
 
   Theorem final_unsat_refl: forall (f: CNF),
