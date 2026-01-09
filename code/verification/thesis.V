@@ -1743,8 +1743,8 @@ Module Satisfiability.
     Model m f -> Model (convert_prop m) f.
   Proof.
     unfold Model. intros. induction f as [|c f IH].
-    - intros. reflexivity.
-    - intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
+    - reflexivity.
+    - simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
       + simpl in H. apply convert_prop_c in Hc. simp f_eval.
         rewrite Hc. apply IH in H. rewrite H. reflexivity.
       + discriminate.
@@ -1795,9 +1795,30 @@ Module Satisfiability.
         * discriminate.
   Qed.
 
-  Lemma bound_model: forall (m: PA) (f: CNF),
-    Model m f -> Model (bound m f) f.
+  Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
+    In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
   Admitted.
+
+  Lemma bound_cons: forall (m: PA) (f: CNF) (c: Clause),
+    Model (bound m f) f -> Model (bound m (c :: f)) f.
+  Admitted.
+
+  Lemma bound_f: forall (m: PA) (f: CNF),
+    Model m f -> Model (bound m f) f.
+  Proof.
+    unfold Model. intros. induction f as [|c f IH].
+    - reflexivity.
+    - simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
+      + simpl in H. simp f_eval.
+        apply (bound_c _ (c :: f)) in Hc.
+        * rewrite Hc. simpl. apply IH in H. now apply bound_cons.
+        * now left.
+      + discriminate.
+      + destruct (f_eval m f) as [[|]|] eqn:Hf.
+        * discriminate.
+        * discriminate.
+        * discriminate.
+  Qed.
 
   Lemma bound_bounded: forall (m: PA) (f: CNF), Bounded (bound m f) f.
   Proof.
