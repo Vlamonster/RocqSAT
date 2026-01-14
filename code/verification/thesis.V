@@ -1698,6 +1698,145 @@ Module Satisfiability.
       + now apply find_undef_l_undef in Hfind_undef_l.
   Qed.
 
+  Equations c_totalize (m: PA) (c: Clause): PA :=
+  c_totalize m [] := m;
+  c_totalize m (l :: c) with l_eval m l :=
+    | None := c_totalize (m ++d l) c
+    | _    := c_totalize m c.
+
+  Equations f_totalize (m: PA) (f: CNF): PA :=
+  f_totalize m []       := m;
+  f_totalize m (c :: f) := f_totalize (c_totalize m c) f.
+
+  Lemma f_eval_cons: forall (m: PA) (f: CNF) (c: Clause),
+    f_eval m (c :: f) = Some true -> 
+    f_eval m f = Some true /\ c_eval m c = Some true.
+  Proof.
+    intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
+    - split.
+      + assumption.
+      + reflexivity.
+    - split.
+      + discriminate.
+      + discriminate.
+    - split.
+      + destruct (f_eval m f) as [[|]|] eqn:Hf.
+        * reflexivity.
+        * discriminate.
+        * discriminate.
+      + destruct (f_eval m f) as [[|]|] eqn:Hf.
+        * discriminate.
+        * discriminate.
+        * discriminate.
+  Qed.
+
+  Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
+    Undef m l' -> l_eval m l = Some b -> l_eval ((l', a) :: m) l = Some b.
+  Proof.
+    unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
+    - exfalso. rewrite eqb_eq in G2. subst l'. now rewrite self_neqb_neg in G1.
+    - exfalso. rewrite eqb_eq in G1. subst l. apply (undef__neg_undef m l') in H. congruence.
+    - exfalso. rewrite eqb_eq in G2. subst l'. congruence.
+    - assumption.
+  Qed.
+
+  Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (a: Ann) (b: bool),
+    Undef m l -> c_eval m c = Some b -> c_eval ((l, a) :: m) c = Some b.
+  Proof.
+    unfold Undef. induction c as [|l c IH].
+    - intros. assumption.
+    - intros. simp c_eval in *. destruct (l_eval m l) as [[|]|] eqn:Hl.
+      + now rewrite (l_eval_extend_undef m l l0 a true H Hl).
+      + rewrite (l_eval_extend_undef m l l0 a false H Hl). simpl in *.
+        destruct (c_eval m c) as [[|]|] eqn:Hc.
+        * rewrite (IH l0 a b H H0). now injection H0 as <-.
+        * rewrite (IH l0 a b H H0). now injection H0 as <-.
+        * discriminate.
+      + destruct (c_eval m c) as [[|]|] eqn:Hc.
+        * simpl in H0. rewrite (IH l0 a b H H0). injection H0 as <-.
+          destruct (l_eval ((l0, a) :: m) l) as [[|]|].
+          -- reflexivity.
+          -- reflexivity.
+          -- reflexivity.
+        * discriminate.
+        * discriminate.
+  Qed.
+
+  Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (b: bool),
+    Undef m l -> f_eval m f = Some b -> f_eval ((l, a) :: m) f = Some b.
+  Proof.
+    unfold Undef. induction f as [|c f IH].
+    - intros. assumption.
+    - intros. simp f_eval in *. destruct (c_eval m c) as [[|]|] eqn:Hc.
+      + simpl in H0. rewrite (IH l a b H H0). 
+        now rewrite (c_eval_extend_undef m c l a true H Hc).
+      + simpl in H0. now rewrite (c_eval_extend_undef m c l a false H Hc).
+      + simpl in H0. destruct (f_eval m f) as [[|]|] eqn:Hf.
+        * discriminate.
+        * rewrite (IH l a b H H0). 
+          destruct ((c_eval ((l, a) :: m) c)) as [[|]|].
+          -- reflexivity.
+          -- assumption.
+          -- now injection H0 as <-.
+        * discriminate.
+  Qed.
+
+  Lemma c_totalize_l: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
+    l_eval m l = Some b -> l_eval (c_totalize m c) l = Some b.
+  Proof.
+    intros. funelim (c_totalize m c).
+    - assumption.
+    - now apply H.
+    - apply H. now apply l_eval_extend_undef.
+  Qed.
+
+  Lemma c_totalize_c: forall (m: PA) (c c': Clause) (b: bool),
+    c_eval m c = Some b -> c_eval (c_totalize m c') c = Some b.
+  Proof.
+    intros. funelim (c_totalize m c').
+    - assumption.
+    - now apply H.
+    - apply H. now apply c_eval_extend_undef.
+  Qed.
+
+  Lemma c_totalize_f: forall (m: PA) (f: CNF) (c: Clause),
+    Model m f -> Model (c_totalize m c) f.
+  Proof.
+    unfold Model. intros. funelim (c_totalize m c).
+    - assumption.
+    - apply H.
+      + assumption.
+      + reflexivity.
+      + reflexivity.
+    - apply H.
+      + now apply f_eval_extend_undef.
+      + reflexivity.
+      + reflexivity.
+  Qed.
+
+  Lemma f_totalize_c: forall (m: PA) (f: CNF) (c: Clause) (b: bool),
+    c_eval m c = Some b -> c_eval (f_totalize m f) c = Some b.
+  Proof.
+    intros. funelim (f_totalize m f).
+    - assumption.
+    - apply H. now apply c_totalize_c.
+  Qed.
+
+  Lemma f_totalize_f: forall (m: PA) (f: CNF),
+    Model m f -> Model (f_totalize m f) f.
+  Proof.
+    unfold Model. intros. funelim (f_totalize m f).
+    - reflexivity.
+    - apply f_eval_cons in H0 as [Hf Hc].
+      simp f_eval.
+      assert (c_eval (f_totalize (c_totalize m c) f) c = Some true).
+      + apply f_totalize_c. now apply c_totalize_c.
+      + rewrite H0. simpl. apply H.
+        * now apply c_totalize_f.
+        * reflexivity.
+        * reflexivity.
+  Qed.
+
   Equations convert_prop (m: PA): PA :=
   convert_prop []        := [];
   convert_prop (m ++p l) := convert_prop m ++d l;
@@ -1772,28 +1911,6 @@ Module Satisfiability.
   bound ((l, a) :: m) f with l_in_f f l :=
     | true  := (l, a) :: bound m f
     | false := bound m f.
-
-  Lemma f_eval_cons: forall (m: PA) (f: CNF) (c: Clause),
-    f_eval m (c :: f) = Some true -> 
-    f_eval m f = Some true /\ c_eval m c = Some true.
-  Proof.
-    intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-    - split.
-      + assumption.
-      + reflexivity.
-    - split.
-      + discriminate.
-      + discriminate.
-    - split.
-      + destruct (f_eval m f) as [[|]|] eqn:Hf.
-        * reflexivity.
-        * discriminate.
-        * discriminate.
-      + destruct (f_eval m f) as [[|]|] eqn:Hf.
-        * discriminate.
-        * discriminate.
-        * discriminate.
-  Qed.
 
   Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
     In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
