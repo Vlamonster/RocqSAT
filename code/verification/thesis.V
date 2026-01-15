@@ -292,24 +292,41 @@ l_in_c c l := existsb (eqb l) c || existsb (eqb (¬l)) c.
 Equations l_in_f (f: CNF) (l: Lit): bool :=
 l_in_f f l := existsb (fun (c: Clause) => l_in_c c l) f.
 
-Lemma l_in_f_exists: forall (f: CNF) (l: Lit),
-  l_in_f f l = true -> exists (c: Clause), (In l c \/ In (¬l) c) /\ In c f.
+Lemma l_in_c_iff: forall (c: Clause) (l: Lit),
+  l_in_c c l = true <-> In l c \/ In (¬l) c.
 Proof.
-  intros. simp l_in_f in H. apply existsb_exists in H. destruct H. destruct H.
-  simp l_in_c in H0. apply orb_true_iff in H0. exists x. destruct H0.
-  - apply existsb_exists in H0. destruct H0. destruct H0. apply eqb_eq in H1. subst x0. split.
-    + now left.
+  intros. split.
+  - intros. simp l_in_c in H. apply orb_true_iff in H as [Hl_in_c|Hnegl_in_c].
+    + apply existsb_exists in Hl_in_c as [l' [Hl_in_c Heq]].
+      rewrite eqb_eq in Heq. subst l'. now left.
+    + apply existsb_exists in Hnegl_in_c as [l' [Hnegl_in_c Heq]].
+      rewrite eqb_eq in Heq. subst l'. now right.
+  - intros. simp l_in_c. apply orb_true_iff. destruct H as [Hl_in_c|Hnegl_in_c].
+    + left. apply existsb_exists. exists l. split.
+      * assumption.
+      * apply eqb_refl.
+    + right. apply existsb_exists. exists (¬l). split.
+      * assumption.
+      * apply eqb_refl.
+Qed.
+
+Lemma l_in_f_iff: forall (f: CNF) (l: Lit),
+  l_in_f f l = true <-> exists (c: Clause), (In l c \/ In (¬l) c) /\ In c f.
+Proof.
+  intros. split.
+  - intros. simp l_in_f in H. apply existsb_exists in H as [c [Hc_in_f Hl_in_c]].
+    apply l_in_c_iff in Hl_in_c. now exists c.
+  - intros. destruct H as [c [Hx_in_c Hc_in_f]]. simp l_in_f.
+    apply existsb_exists. exists c. split.
     + assumption.
-  - apply existsb_exists in H0. destruct H0. destruct H0. apply eqb_eq in H1. subst x0. split.
-    + now right.
-    + assumption.
+    + now apply l_in_c_iff.
 Qed.
 
 Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
   Bounded m f -> l_in_f f l = true -> Bounded ((l, a) :: m) f.
 Proof.
   unfold Bounded. intros m f l a Hbounded Hl_in_f l' a' Hin. 
-  apply l_in_f_exists in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
+  apply l_in_f_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
   - inversion Hin.
     + injection H as <- <-. exists c. intuition.
     + now apply Hbounded in H.
@@ -1987,7 +2004,7 @@ Module Satisfiability.
     unfold Bounded. intros. funelim (bound m f).
     - inversion H.
     - simp bound in H0. rewrite Heq in H0. simpl in H0. destruct H0.
-      + injection H0 as <- <-. apply l_in_f_exists in Heq as [c [Hx_in_c Hc_in_f]].
+      + injection H0 as <- <-. apply l_in_f_iff in Heq as [c [Hx_in_c Hc_in_f]].
         exists c. intuition.
       + now apply H in H0.
     - simp bound in H0. rewrite Heq in H0. simpl in H0. now apply H in H0.
@@ -2020,12 +2037,19 @@ Module Satisfiability.
         * simp l_eval in H1. rewrite G1 in H1. now rewrite G2 in H1.
     - apply H.
       + assumption.
-      + simp l_eval in H1. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
-        * simpl in H1. admit.
-        * simpl in H1. admit.
-        * simpl in H1. admit.
-        * assumption.
-  Admitted.
+      + destruct H0 as [c [Hl_in_c Hc_in_f]].
+        assert (l_in_f f l0 = true).
+        * apply l_in_f_iff. exists c. intuition.
+        * simp l_eval in H1. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
+          -- simpl in H1. rewrite eqb_eq in G2. congruence.
+          -- simpl in H1. rewrite eqb_eq in G1. subst l0.
+             apply l_in_f_iff in H0 as [c' [Hx_in_c' Hc_in_f']].
+             assert (l_in_f f l = true).
+            ++ apply l_in_f_iff. exists c'. rewrite involutive in Hx_in_c'. intuition.
+            ++ congruence.
+          -- simpl in H1. rewrite eqb_eq in G2. congruence.
+          -- assumption.
+  Qed.
 
   Theorem final_sat_refl: forall (f: CNF),
     (exists (m: PA) (Hwf: WellFormed m f),
