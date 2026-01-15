@@ -1814,6 +1814,14 @@ Module Satisfiability.
       + reflexivity.
   Qed.
 
+  Lemma f_totalize_l: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
+    l_eval m l = Some b -> l_eval (f_totalize m f) l = Some b.
+  Proof.
+    intros. funelim (f_totalize m f).
+    - assumption.
+    - apply H. now apply c_totalize_l.
+  Qed.
+
   Lemma f_totalize_c: forall (m: PA) (f: CNF) (c: Clause) (b: bool),
     c_eval m c = Some b -> c_eval (f_totalize m f) c = Some b.
   Proof.
@@ -1837,21 +1845,45 @@ Module Satisfiability.
         * reflexivity.
   Qed.
 
+  Lemma c_totalize_all_def: forall (m: PA) (c: Clause) (l: Lit),
+    In l c -> Def (c_totalize m c) l.
+  Proof.
+    unfold Def. intros m c. generalize dependent m. induction c as [|l' c IH].
+    - intros. inversion H.
+    - intros. destruct (l_eval m l) eqn:Hl.
+      + exists b. now apply c_totalize_l.
+      + inversion H.
+        * subst l'. simp c_totalize. rewrite Hl. simpl.
+          exists true. apply c_totalize_l. simp l_eval.
+          rewrite self_neqb_neg. now rewrite eqb_refl.
+        * simp c_totalize. destruct (l_eval m l').
+          -- simpl. now apply IH.
+          -- simpl. now apply IH.
+  Qed.
+
+  Lemma f_totalize_all_def: forall (m: PA) (f: CNF) (l: Lit),
+    (exists (c: Clause), In l c /\ In c f) -> Def (f_totalize m f) l.
+  Proof.
+    unfold Def. intros m f. generalize dependent m. induction f as [|c f IH].
+    - intros. destruct H as [c [_ Hc_in_f]]. inversion Hc_in_f.
+    - intros. destruct H as [c' [Hl_in_c Hc_in_f]].
+      destruct (l_eval m l) eqn:Hl.
+      + exists b. now apply f_totalize_l.
+      + inversion Hc_in_f.
+        * subst c'. simp f_totalize. apply (c_totalize_all_def m) in Hl_in_c.
+          destruct Hl_in_c as [b Hdef]. exists b. now apply f_totalize_l.
+        * simp f_totalize. apply IH. now exists c'.
+  Qed.
+
   Equations convert_prop (m: PA): PA :=
-  convert_prop []        := [];
-  convert_prop (m ++p l) := convert_prop m ++d l;
-  convert_prop (m ++d l) := convert_prop m ++d l.
+  convert_prop []            := [];
+  convert_prop ((l, _) :: m) := convert_prop m ++d l.
 
   Lemma convert_prop_l: forall (m: PA) (l: Lit) (v: option bool),
     l_eval m l = v -> l_eval (convert_prop m) l = v.
   Proof.
     intros. funelim (convert_prop m).
     - reflexivity.
-    - simp l_eval. destruct (l0 =? l), (l0 =? ¬l).
-      + reflexivity.
-      + reflexivity.
-      + reflexivity.
-      + simpl. now apply H.
     - simp l_eval. destruct (l0 =? l), (l0 =? ¬l).
       + reflexivity.
       + reflexivity.
@@ -1901,9 +1933,22 @@ Module Satisfiability.
     - simp convert_prop in H0. inversion H0.
       + now injection H1 as <- <-.
       + now apply (H l0).
-    - simp convert_prop in H0. inversion H0.
-      + now injection H1 as <- <-.
-      + now apply (H l0).
+  Qed.
+
+  Lemma convert_prop_all_def: forall (m: PA) (f: CNF) (l: Lit),
+    (exists (c: Clause), In l c /\ In c f) -> 
+    Def m l ->
+    Def (convert_prop m) l.
+  Proof.
+    unfold Def. intros. funelim (convert_prop m).
+    - assumption.
+    - simp l_eval. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
+      + simpl. now exists true.
+      + simpl. now exists false.
+      + simpl. now exists true.
+      + simpl. apply (H f).
+        * assumption.
+        * simp l_eval in H1. rewrite G1 in H1. now rewrite G2 in H1.
   Qed.
 
   Equations bound (m: PA) (f: CNF): PA :=
@@ -1958,6 +2003,29 @@ Module Satisfiability.
       + right. now apply H.
     - simp bound in Hin. rewrite Heq in Hin. simpl in Hin. right. now apply H.
   Qed.
+
+  Lemma bound_all_def: forall (m: PA) (f: CNF) (l: Lit),
+    (exists (c: Clause), In l c /\ In c f) -> 
+    Def m l ->
+    Def (bound m f) l.
+  Proof.
+    unfold Def. intros. funelim (bound m f).
+    - assumption.
+    - simp l_eval. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
+      + simpl. now exists true.
+      + simpl. now exists false.
+      + simpl. now exists true.
+      + simpl. apply H.
+        * assumption.
+        * simp l_eval in H1. rewrite G1 in H1. now rewrite G2 in H1.
+    - apply H.
+      + assumption.
+      + simp l_eval in H1. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
+        * simpl in H1. admit.
+        * simpl in H1. admit.
+        * simpl in H1. admit.
+        * assumption.
+  Admitted.
 
   Theorem final_sat_refl: forall (f: CNF),
     (exists (m: PA) (Hwf: WellFormed m f),
