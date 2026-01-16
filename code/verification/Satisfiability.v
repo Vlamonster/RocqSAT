@@ -30,7 +30,8 @@ Proof.
   unfold Model. unfold Final. unfold not. intros. destruct (f_eval m f) eqn:Heq.
   - destruct b.
     + reflexivity.
-    + exfalso. apply H. apply false_conflict_exists in Heq as [c_conflict Hfind_conflict].
+    + exfalso. apply H. apply f_eval_false_iff in Heq as [c [Hc_in_f Hconflict]].
+      destruct (find_conflict_exists _ _ _ Hc_in_f Hconflict) as [c_conflict Hfind_conflict].
       destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
       (* t_backtrack *)
       * exists (state (m_split ++p ¬l_split) f (wf_backtrack m m_split f l_split Hsplit Hwf)).

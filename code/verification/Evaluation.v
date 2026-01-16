@@ -53,6 +53,8 @@ Proof.
   - intuition. destruct H. discriminate.
 Qed.
 
+Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false.
+
 Module EvalExamples.
   Example example_l_eval_1: l_eval ([] ++p Pos 1) (Pos 1) = Some true.
   Proof. reflexivity. Qed.
@@ -174,4 +176,37 @@ Proof.
   - pose proof (H0 x). assert (In x (l_remove c l)).
     + simp l_remove. rewrite filter_In. intuition. now rewrite G.
     + apply H3 in H4. congruence. 
+Qed.
+
+Lemma f_eval_false_iff: forall (m: PA) (f: CNF),
+  f_eval m f = Some false <-> exists (c: Clause), In c f /\ Conflicting m c.
+Proof.
+  unfold Conflicting. intros. split.
+  - intros. funelim (f_eval m f); try congruence.
+    + rewrite H in Heqcall. apply Hind in Heqcall.
+      * destruct Heqcall as [c' G]. exists c'. auto with *.
+      * reflexivity.
+      * reflexivity.
+    + exists c. auto with *.
+    + apply Hind in Heq.
+      * destruct Heq as [c' G]. exists c'. auto with *.
+      * reflexivity.
+      * reflexivity.
+  - intros. funelim (f_eval m f); try congruence.
+    + now destruct H.
+    + destruct H as [c' [[<-|Hc_in_f] H]].
+      * congruence.
+      * assert (f_eval m f = Some false).
+        -- apply Hind. exists c'. intuition.
+        -- congruence.
+    + destruct H as [c' [[<-|Hc_in_f] H]].
+      * congruence.
+      * assert (f_eval m f = Some false).
+        -- apply Hind. exists c'. intuition.
+        -- congruence.
+    + destruct H as [c' [[<-|Hc_in_f] H]].
+      * congruence.
+      * assert (f_eval m f = Some false).
+        -- apply Hind. exists c'. intuition.
+        -- congruence.
 Qed.

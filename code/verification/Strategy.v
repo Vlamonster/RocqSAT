@@ -11,13 +11,25 @@ is_conflict m c with c_eval m c :=
 Equations find_conflict (m: PA) (f: CNF): option Clause :=
 find_conflict m f := find (is_conflict m) f.
 
-Lemma false_conflict_exists: forall (m: PA) (f: CNF),
-  f_eval m f = Some false -> exists (c: Clause), find_conflict m f = Some c.
+Lemma find_conflict_exists: forall (m: PA) (f: CNF) (c: Clause),
+  In c f -> Conflicting m c -> exists (c': Clause), find_conflict m f = Some c'.
 Proof.
-  intros. simp find_conflict. funelim (f_eval m f); try congruence.
-  - simpl. simp is_conflict. rewrite Heq. simpl. rewrite H in Heqcall. now apply Hind.
-  - exists c. simpl. simp is_conflict. now rewrite Heq.
-  - simpl. simp is_conflict. rewrite Heq0. simpl. now apply Hind.
+  unfold Conflicting. intros m f c Hin Hc. destruct (find_conflict m f) as [c'|] eqn:Hfind.
+  - now exists c'.
+  - simp find_conflict in Hfind. apply find_none with (x := c) in Hfind as contra.
+    + simp is_conflict in contra. now rewrite Hc in contra.
+    + assumption.
+Qed.
+
+Lemma find_conflict_c_in_f: forall (m: PA) (f: CNF) (c: Clause), 
+  find_conflict m f = Some c -> In c f.
+Proof. intros. simp find_conflict in H. now apply find_some in H. Qed.
+
+Lemma find_conflict_conflicting: forall (m: PA) (f: CNF) (c: Clause), 
+  find_conflict m f = Some c -> Conflicting m c.
+Proof. 
+  unfold Conflicting. intros. simp find_conflict in H. apply find_some in H as [_ H]. 
+  funelim (is_conflict m c); congruence.
 Qed.
 
 Equations split_last_decision (m: PA): option (PA * Lit) :=
@@ -253,17 +265,6 @@ next_state (state m f Hwf) :=
   | None           eqn:Heq => None
   end end end.
 
-Lemma find_conflict_c_in_f: forall (m: PA) (f: CNF) (c: Clause), 
-  find_conflict m f = Some c -> In c f.
-Proof. intros. simp find_conflict in H. now apply find_some in H. Qed.
-
-Lemma find_conflict_conflicting: forall (m: PA) (f: CNF) (c: Clause), 
-  find_conflict m f = Some c -> Conflicting m c.
-Proof. 
-  unfold Conflicting. intros. simp find_conflict in H. apply find_some in H as [_ H]. 
-  funelim (is_conflict m c); try congruence.
-Qed.
-
 Lemma no_split__no_decision: forall (m: PA), split_last_decision m = None -> NoDecisions m.
 Proof. 
   unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
@@ -351,15 +352,6 @@ Proof.
           ++ assumption.
           ++ now apply (find_undef_l_undef m c_decide l_decide).
         -- discriminate.
-Qed.
-
-Lemma find_conflict_exists: forall (m: PA) (f: CNF) (c: Clause),
-  In c f -> Conflicting m c -> exists (c': Clause), find_conflict m f = Some c'.
-Proof.
-  unfold Conflicting. intros m f c Hin Hc. destruct (find_conflict m f) as [c'|] eqn:Hfind.
-  - now exists c'.
-  - simp find_conflict in Hfind. pose proof (find_none (is_conflict m) f Hfind c Hin) as contra.
-    simp is_conflict in contra. rewrite Hc in contra. simpl in contra. discriminate.
 Qed.
 
 Lemma find_undef_l_exists : forall (m: PA) (c: Clause) (l: Lit),

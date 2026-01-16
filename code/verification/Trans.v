@@ -8,7 +8,6 @@ Inductive State: Type :=
 
 (* Propositions used in the transition relation `==>`. *)
 Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
-Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false.
 
 Inductive Trans: relation State :=
 (* Fail if all literals are assigned and there is a conflict. *)
