@@ -1,3 +1,21 @@
+# Requirements
+| Package                     | Version      |
+|-----------------------------|--------------|
+| rocq-stdlib                 | 9.0.0        |
+| rocq-prover                 | 9.0.0        |
+| rocq-core                   | 9.0.1        |
+| rocq-runtime                | 9.0.1        |
+| rocq-equations              | 1.3.1+9.0    |
+| vsrocq-language-server      | 2.3.3        |
+| dune                        | 3.20.2       |
+
+There are no guarantees that deviating from these versions will allow the project to build.
+
+# Usage
+You can build **RocqSAT** from the `/code` directory using:
+```bash
+dune build
+```
 You can run a problem from the `/code` directory using:
 ```bash
 cat ./problems/<problem>.cnf | dune exec ./runner/runner.exe
