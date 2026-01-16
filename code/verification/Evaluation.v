@@ -73,7 +73,7 @@ Module EvalExamples.
   Proof. reflexivity. Qed.
 End EvalExamples.
 
-Lemma undef__neg_undef: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
+Lemma undef_neg_iff: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
 Proof.
   unfold Undef. intros. funelim (l_eval m l).
   - intuition.

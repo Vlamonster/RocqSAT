@@ -40,7 +40,7 @@ Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
 Proof.
   unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
   - exfalso. rewrite eqb_eq in G2. subst l'. now rewrite self_neqb_neg in G1.
-  - exfalso. rewrite eqb_eq in G1. subst l. apply (undef__neg_undef m l') in H. congruence.
+  - exfalso. rewrite eqb_eq in G1. subst l. apply (undef_neg_iff m l') in H. congruence.
   - exfalso. rewrite eqb_eq in G2. subst l'. congruence.
   - assumption.
 Qed.
