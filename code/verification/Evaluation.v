@@ -139,24 +139,28 @@ Proof.
       * assumption.
 Qed.
 
-Lemma c_eval_false__l_eval_false: forall (m: PA) (c: Clause),
-  c_eval m c = Some false -> forall (l: Lit), In l c -> l_eval m l = Some false.
-Proof. 
-  induction c.
-  - intros. contradiction.
-  - intros. simp c_eval in H. destruct (l_eval m a) eqn:G1.
-    + destruct b.
-      * simpl in H. discriminate.
-      * simpl in H. destruct (c_eval m c) eqn:G2.
-        -- destruct b.
-          ++ discriminate.
-          ++ inversion H0.
-            ** subst. assumption.
-            ** apply (IHc H l H1).
-        -- discriminate.
-    + simpl in H. destruct (c_eval m c) eqn:G2.
-      * destruct b; discriminate.
-      * discriminate.
+Lemma c_eval_false_iff: forall (m: PA) (c: Clause),
+  c_eval m c = Some false <-> forall (l: Lit), In l c -> l_eval m l = Some false.
+Proof.
+  intros. split.
+  - intros. funelim (c_eval m c); try congruence.
+    + contradiction.
+    + destruct H0.
+      * congruence.
+      * apply (Hind m c); easy.
+  - intros. funelim (c_eval m c); try congruence.
+    + pose proof (H _ (in_eq _ _)). congruence.
+    + assert (c_eval m c = Some false).
+      * apply Hind. intros. apply H. now right.
+      * congruence.
+    + assert (c_eval m c = Some false).
+      * apply Hind. intros. apply H. now right.
+      * congruence.
+    + assert (c_eval m c = Some false).
+      * apply Hind. intros. apply H. now right.
+      * congruence.
+    + pose proof (H _ (in_eq _ _)). congruence.
+    + pose proof (H _ (in_eq _ _)). congruence.
 Qed.
 
 Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
@@ -164,12 +168,12 @@ Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
 Proof.
   unfold Undef. intros. 
   pose proof (c_eval_none__l_eval_none m c H).
-  pose proof (c_eval_false__l_eval_false m (l_remove c l) H0).
+  rewrite (c_eval_false_iff m (l_remove c l)) in H0.
   destruct H1. destruct H1. destruct (x =? l) eqn:G.
   - now apply eqb_eq in G as ->.
-  - pose proof (H2 x). assert (In x (l_remove c l)).
+  - pose proof (H0 x). assert (In x (l_remove c l)).
     + simp l_remove. rewrite filter_In. split.
       * assumption.
       * rewrite eqb_sym. now rewrite G.
-    + apply H4 in H5. congruence. 
+    + apply H3 in H4. congruence. 
 Qed.
