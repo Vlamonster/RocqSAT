@@ -210,10 +210,10 @@ Proof.
       * assert (In (l, dec) (m' ++d l)).
         -- now left.
         -- apply Hbounded in H as [c [Hc_in_f [Hl_in_c|Hnegl_in_c]]].
-          ++ intros l' a' Hin. inversion Hin.
+          ++ intros l' a' Hin. destruct Hin.
             ** injection H as <- <-. exists c. rewrite Neg.involutive. intuition.
             ** now apply Hbounded' in H.
-          ++ intros l' a' Hin. inversion Hin.
+          ++ intros l' a' Hin. destruct Hin.
             ** injection H as <- <-. exists c. intuition.
             ** now apply Hbounded' in H.
     + apply incl_appr. apply incl_refl.

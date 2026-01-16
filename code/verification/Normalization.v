@@ -147,11 +147,11 @@ Lemma c_totalize_all_def: forall (m: PA) (c: Clause) (l: Lit),
   In l c -> Def (c_totalize m c) l.
 Proof.
   unfold Def. intros m c. generalize dependent m. induction c as [|l' c IH].
-  - intros. inversion H.
+  - now intros.
   - intros. destruct (l_eval m l) eqn:Hl.
     + exists b. now apply c_totalize_l.
-    + inversion H.
-      * subst l'. simp c_totalize. rewrite Hl. simpl.
+    + destruct H as [->|H].
+      * simp c_totalize. rewrite Hl. simpl.
         exists true. apply c_totalize_l. simp l_eval.
         rewrite self_neqb_neg. now rewrite eqb_refl.
       * simp c_totalize. destruct (l_eval m l').
@@ -163,12 +163,12 @@ Lemma f_totalize_all_def: forall (m: PA) (f: CNF) (l: Lit),
   (exists (c: Clause), In l c /\ In c f) -> Def (f_totalize m f) l.
 Proof.
   unfold Def. intros m f. generalize dependent m. induction f as [|c f IH].
-  - intros. destruct H as [c [_ Hc_in_f]]. inversion Hc_in_f.
+  - intros. destruct H as [c [_ Hc_in_f]]. contradiction.
   - intros. destruct H as [c' [Hl_in_c Hc_in_f]].
     destruct (l_eval m l) eqn:Hl.
     + exists b. now apply f_totalize_l.
-    + inversion Hc_in_f.
-      * subst c'. simp f_totalize. apply (c_totalize_all_def m) in Hl_in_c.
+    + destruct Hc_in_f as [->|Hc_in_f].
+      * simp f_totalize. apply (c_totalize_all_def m) in Hl_in_c.
         destruct Hl_in_c as [b Hdef]. exists b. now apply f_totalize_l.
       * simp f_totalize. apply IH. now exists c'.
 Qed.
@@ -227,9 +227,9 @@ Lemma convert_prop_only_dec: forall (m: PA) (l: Lit) (a: Ann),
   In (l, a) (convert_prop m) -> a = dec.
 Proof.
   intros. funelim (convert_prop m).
-  - inversion H.
-  - simp convert_prop in H0. inversion H0.
-    + now injection H1 as <- <-.
+  - contradiction.
+  - simp convert_prop in H0. destruct H0.
+    + now injection H0 as <- <-.
     + now apply (H l0).
 Qed.
 
@@ -283,7 +283,7 @@ Qed.
 Lemma bound_bounded: forall (m: PA) (f: CNF), Bounded (bound m f) f.
 Proof.
   unfold Bounded. intros. funelim (bound m f).
-  - inversion H.
+  - contradiction.
   - simp bound in H0. rewrite Heq in H0. simpl in H0. destruct H0.
     + injection H0 as <- <-. apply l_in_f_iff in Heq as [c [Hx_in_c Hc_in_f]].
       exists c. intuition.
@@ -294,7 +294,7 @@ Qed.
 Lemma bound_incl: forall (m: PA) (f: CNF), incl (bound m f) m.
 Proof.
   unfold incl. intros m f [l a] Hin. funelim (bound m f).
-  - inversion Hin.
+  - contradiction.
   - simp bound in Hin. rewrite Heq in Hin. simpl in Hin. destruct Hin.
     + injection H0 as <- <-. now left.
     + right. now apply H.

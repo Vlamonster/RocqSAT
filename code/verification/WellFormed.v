@@ -107,10 +107,10 @@ Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
 Proof.
   unfold Bounded. intros m f l a Hbounded Hl_in_f l' a' Hin. 
   apply l_in_f_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
-  - inversion Hin.
+  - destruct Hin.
     + injection H as <- <-. exists c. intuition.
     + now apply Hbounded in H.
-  - inversion Hin.
+  - destruct Hin.
     + injection H as <- <-. exists c. intuition.
     + now apply Hbounded in H.
 Qed.

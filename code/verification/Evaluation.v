@@ -106,18 +106,18 @@ Proof.
       * exists a'. right. now right.
   - intros [a [H|H]].
     + funelim (l_eval m l).
-      * inversion H.
+      * contradiction.
       * now exists true.
       * now exists false.
-      * apply (H a0). inversion H0.
-        -- injection H1 as <- <-. now rewrite eqb_refl in Heq0.
+      * apply (H a0). destruct H0.
+        -- injection H0 as <- <-. now rewrite eqb_refl in Heq0.
         -- assumption.
     + funelim (l_eval m l).
-      * inversion H.
+      * contradiction.
       * now exists true.
       * now exists false.
-      * apply (H a0). inversion H0.
-        -- injection H1 as -> ->. rewrite involutive in Heq. now rewrite eqb_refl in Heq.
+      * apply (H a0). destruct H0.
+        -- injection H0 as -> ->. rewrite involutive in Heq. now rewrite eqb_refl in Heq.
         -- assumption.
 Qed.
 
