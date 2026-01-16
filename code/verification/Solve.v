@@ -19,13 +19,13 @@ Section Solve.
     clear solve_aux. destruct s.
     - inversion ns.
     - destruct (next_state_options m f0 Hwf) as [G|[G|G]].
-        + congruence.
-        + rewrite ns in G. injection G as ->. now constructor.
-        + rewrite ns in G. destruct G. destruct H0. injection H0 as ->.
+      + congruence.
+      + rewrite ns in G. injection G as ->. now constructor.
+      + rewrite ns in G. destruct G. destruct H0. injection H0 as ->.
         apply next_state_sound in ns. assert (state [] f (initial_wf f) ==>* state x f0 x0).
         * eapply rt_trans.
-            -- apply H.
-            -- now apply rt_step.
+          -- apply H.
+          -- now apply rt_step.
         * apply trans_clos_same_formula in H0. subst f0. now apply trans__state_lt.
   Qed.
 
