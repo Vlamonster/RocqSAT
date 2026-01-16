@@ -11,16 +11,6 @@ is_conflict m c with c_eval m c :=
 Equations find_conflict (m: PA) (f: CNF): option Clause :=
 find_conflict m f := find (is_conflict m) f.
 
-Lemma find_conflict_exists: forall (m: PA) (f: CNF) (c: Clause),
-  In c f -> Conflicting m c -> exists (c': Clause), find_conflict m f = Some c'.
-Proof.
-  unfold Conflicting. intros m f c Hin Hc. destruct (find_conflict m f) as [c'|] eqn:Hfind.
-  - now exists c'.
-  - simp find_conflict in Hfind. apply find_none with (x := c) in Hfind as contra.
-    + simp is_conflict in contra. now rewrite Hc in contra.
-    + assumption.
-Qed.
-
 Lemma find_conflict_c_in_f: forall (m: PA) (f: CNF) (c: Clause), 
   find_conflict m f = Some c -> In c f.
 Proof. intros. simp find_conflict in H. now apply find_some in H. Qed.
@@ -30,6 +20,20 @@ Lemma find_conflict_conflicting: forall (m: PA) (f: CNF) (c: Clause),
 Proof. 
   unfold Conflicting. intros. simp find_conflict in H. apply find_some in H as [_ H]. 
   funelim (is_conflict m c); congruence.
+Qed.
+
+Lemma find_conflict_exists_iff: forall (m: PA) (f: CNF),
+  (exists (c: Clause), In c f /\ Conflicting m c) <-> exists (c: Clause), find_conflict m f = Some c.
+Proof.
+  unfold Conflicting. intros. split.
+  - intros [c [Hin Hc]]. destruct (find_conflict m f) as [c'|] eqn:Hfind.
+    + now exists c'.
+    + simp find_conflict in Hfind. apply find_none with (x := c) in Hfind as contra.
+      * simp is_conflict in contra. now rewrite Hc in contra.
+      * assumption.
+  - intros [c Hfind]. exists c. split.
+    + now apply find_conflict_c_in_f in Hfind.
+    + now apply find_conflict_conflicting in Hfind.
 Qed.
 
 Equations split_last_decision (m: PA): option (PA * Lit) :=
@@ -391,7 +395,7 @@ Proof.
       * destruct (inspect (split_last_decision m)) as [[(m_split, l_split)|] Hsplit].
         -- now exists (state (m_split ++p (¬l_split)) f (wf_backtrack m m_split f l_split Hsplit Hwf)).
         -- now exists fail.
-      * destruct (find_conflict_exists m f c_conflict Hc_in_f Hconflict). congruence.
+      * destruct (proj1 (find_conflict_exists_iff _ _) (ex_intro _ _ (conj Hc_in_f Hconflict))). congruence.
   (* t_unit *)
   - funelim (next_state (state m f Hwf)).
     + discriminate.
@@ -433,7 +437,7 @@ Proof.
         -- now exists (state (m ++p l_unit') f (wf_unit m f c_unit' l_unit' Hfind_unit Hwf)).
         -- destruct (inspect (find_decision m f)) as [[l_decide'|] Hfind_dec].
           ++ now exists (state (m ++d l_decide') f (wf_decide m f l_decide' Hfind_dec Hwf)).
-          ++ destruct (find_conflict_exists m f c_conflict Hc_in_f Hconflict). congruence.
+          ++ destruct (proj1 (find_conflict_exists_iff _ _) (ex_intro _ _ (conj Hc_in_f Hconflict))). congruence.
 Qed.
 
 Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
