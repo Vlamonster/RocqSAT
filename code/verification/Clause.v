@@ -22,10 +22,6 @@ Proof.
     + apply existsb_exists in Hnegl_in_c as [l' [Hnegl_in_c Heq]].
       rewrite eqb_eq in Heq. subst l'. now right.
   - intros. simp l_in_c. apply orb_true_iff. destruct H as [Hl_in_c|Hnegl_in_c].
-    + left. apply existsb_exists. exists l. split.
-      * assumption.
-      * apply eqb_refl.
-    + right. apply existsb_exists. exists (¬l). split.
-      * assumption.
-      * apply eqb_refl.
+    + left. apply existsb_exists. exists l. intuition. apply eqb_refl.
+    + right. apply existsb_exists. exists (¬l). intuition. apply eqb_refl.
 Qed.

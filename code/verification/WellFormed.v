@@ -63,9 +63,7 @@ Proof.
   destruct (l_eval m l) eqn:G.
   - exfalso. apply H2. apply in_map_iff.
     destruct (proj1 (l_eval_some_iff m l) (ex_intro _ _ G)) as [a' [Hin|Hin]].
-    + exists l. split.
-      * reflexivity.
-      * apply in_map_iff. now exists (l, a').
+    + exists l. intuition. apply in_map_iff. now exists (l, a').
     + exists (¬l). split.
       * destruct l; reflexivity.
       * apply in_map_iff. now exists (¬l, a').

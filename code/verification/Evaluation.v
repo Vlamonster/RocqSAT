@@ -169,11 +169,9 @@ Proof.
   unfold Undef. intros. 
   pose proof (c_eval_none__l_eval_none m c H).
   rewrite (c_eval_false_iff m (l_remove c l)) in H0.
-  destruct H1. destruct H1. destruct (x =? l) eqn:G.
+  destruct H1. destruct H1. destruct (l =? x) eqn:G.
   - now apply eqb_eq in G as ->.
   - pose proof (H0 x). assert (In x (l_remove c l)).
-    + simp l_remove. rewrite filter_In. split.
-      * assumption.
-      * rewrite eqb_sym. now rewrite G.
+    + simp l_remove. rewrite filter_In. intuition. now rewrite G.
     + apply H3 in H4. congruence. 
 Qed.

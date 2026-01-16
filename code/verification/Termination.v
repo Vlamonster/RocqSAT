@@ -104,16 +104,8 @@ Proof.
       * slia.
   - intros. 
     + induction H.
-      * unfold bcll. split.
-        -- assumption.
-        -- split.
-          ++ assumption.
-          ++ now apply hd_less.
-      * unfold bcll. split.
-        -- assumption.
-        -- split.
-          ++ assumption.
-          ++ apply tl_less. destruct IHPrefixLt as [_ [_ H2]]. assumption.
+      * unfold bcll. intuition. now apply hd_less.
+      * unfold bcll. intuition. apply tl_less. now destruct IHPrefixLt.
 Qed.
 
 Definition list_to_sum (n: nat) (m: list nat): nat * list nat + unit :=

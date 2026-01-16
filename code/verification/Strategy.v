@@ -30,14 +30,11 @@ Lemma split_decomp: forall (m m': PA) (l': Lit),
 Proof.
   unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
   - discriminate.
-  - rewrite <- Heqcall in H. injection H as <- <-. exists []. split.
-    + reflexivity.
-    + intros. destruct H. destruct H.
-  - rewrite <- Heqcall in H0. destruct (H m' l' H0). destruct H1. rewrite H1. exists (x ++p l). split.
-    + reflexivity.
-    + intros. apply H2. destruct H3. destruct H3.
-      * discriminate.
-      * now exists x0.
+  - rewrite <- Heqcall in H. injection H as <- <-. exists []. intuition. now destruct H.
+  - rewrite <- Heqcall in H0. destruct (H m' l' H0). destruct H1. rewrite H1. exists (x ++p l).
+    intuition. apply H2. destruct H3. destruct H3.
+    + discriminate.
+    + now exists x0.
 Qed.
 
 Equations find_unit_l (m: PA) (c: Clause): option Lit :=
@@ -171,9 +168,7 @@ Proof.
     simp l_in_f. apply existsb_exists. exists c. split.
     + now left.
     + simp l_in_c. apply orb_true_iff. left. destruct Heqcall as [Hin _].
-      apply existsb_exists. exists l. split.
-      * assumption.
-      * apply eqb_refl.
+      apply existsb_exists. exists l. intuition. apply eqb_refl.
   - rewrite H in Heqcall. apply Hind in Heqcall. simp l_in_f in *.
     apply existsb_exists in Heqcall. destruct Heqcall. destruct H0.
     apply existsb_exists. exists x. split.
