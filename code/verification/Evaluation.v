@@ -93,16 +93,32 @@ Proof.
       apply H1. apply H.
 Qed.
 
-Lemma l_eval_some_in: forall (m: PA) (l: Lit) (b: bool), 
-  l_eval m l = Some b -> exists (a: Ann), In (l, a) m \/ In (¬l, a) m.
+Lemma l_eval_some_iff: forall (m: PA) (l: Lit), 
+  (exists (b: bool), l_eval m l = Some b) <-> exists (a: Ann), In (l, a) m \/ In (¬l, a) m.
 Proof. 
-  intros. funelim (l_eval m l).
-  - congruence.
-  - rewrite eqb_eq in Heq. subst l'. exists a. left. now left.
-  - rewrite eqb_eq in Heq. subst. exists a. right. rewrite Neg.involutive. now left.
-  - rewrite H0 in Heqcall. apply H in Heqcall; auto. destruct Heqcall. destruct H1.
-    + exists x. left. now right.
-    + exists x. right. now right.
+  intros. split.
+  - intros [b H]. funelim (l_eval m l).
+    + congruence.
+    + rewrite eqb_eq in Heq. subst l'. exists a. left. now left.
+    + rewrite eqb_eq in Heq. subst. exists a. right. rewrite involutive. now left.
+    + rewrite H0 in Heqcall. apply H in Heqcall as [a' [G|G]].
+      * exists a'. left. now right.
+      * exists a'. right. now right.
+  - intros [a [H|H]].
+    + funelim (l_eval m l).
+      * inversion H.
+      * now exists true.
+      * now exists false.
+      * apply (H a0). inversion H0.
+        -- injection H1 as <- <-. now rewrite eqb_refl in Heq0.
+        -- assumption.
+    + funelim (l_eval m l).
+      * inversion H.
+      * now exists true.
+      * now exists false.
+      * apply (H a0). inversion H0.
+        -- injection H1 as -> ->. rewrite involutive in Heq. now rewrite eqb_refl in Heq.
+        -- assumption.
 Qed.
 
 Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 

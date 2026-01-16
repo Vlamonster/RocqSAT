@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
 From Stdlib Require Import List Relations.
 Import ListNotations.
-From RocqSAT Require Import CNF Trans Termination Inspect Strategy.
+From RocqSAT Require Import CNF Evaluation WellFormed Trans Termination Inspect Strategy.
 
 (* Do not assume functional extensionality with Equations. *)
 Unset Equations With Funext.

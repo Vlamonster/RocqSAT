@@ -1,6 +1,6 @@
 From Equations Require Import Equations.
 From Stdlib Require Import List.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation.
+From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation.
 
 Definition NoDuplicates (m: PA): Prop := 
   NoDup (map extract (map fst m)).
@@ -61,14 +61,14 @@ Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
 Proof. 
   unfold NoDuplicates, Undef. intros. simpl in *. inversion H.
   destruct (l_eval m l) eqn:G.
-  - apply l_eval_some_in in G. exfalso. apply H2. 
-    apply in_map_iff. destruct G. destruct H4.
+  - exfalso. apply H2. apply in_map_iff.
+    destruct (proj1 (l_eval_some_iff m l) (ex_intro _ _ G)) as [a' [Hin|Hin]].
     + exists l. split.
       * reflexivity.
-      * apply in_map_iff. exists (l, x0). intuition.
+      * apply in_map_iff. now exists (l, a').
     + exists (¬l). split.
       * destruct l; reflexivity.
-      * apply in_map_iff. exists (¬l, x0). intuition.
+      * apply in_map_iff. now exists (¬l, a').
   - reflexivity.
 Qed.
 

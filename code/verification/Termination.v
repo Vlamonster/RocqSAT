@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
-From Stdlib Require Import Arith List Relations Wellfounded Lia.
+From Stdlib Require Import Nat Arith List Relations Wellfounded Lia.
 Import ListNotations.
-From RocqSAT Require Import Atom Lit Clause CNF Evaluation Trans WellFormed.
+From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation Trans WellFormed.
 
 Ltac slia := simpl in *; lia.
 
