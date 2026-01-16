@@ -147,7 +147,7 @@ Proof.
     + contradiction.
     + destruct H0.
       * congruence.
-      * apply (Hind m c); easy.
+      * now apply (Hind m c).
   - intros. funelim (c_eval m c); try congruence.
     + pose proof (H _ (in_eq _ _)). congruence.
     + assert (c_eval m c = Some false).

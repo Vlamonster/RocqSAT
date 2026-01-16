@@ -18,21 +18,9 @@ Lemma f_eval_cons: forall (m: PA) (f: CNF) (c: Clause),
   f_eval m f = Some true /\ c_eval m c = Some true.
 Proof.
   intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-  - split.
-    + assumption.
-    + reflexivity.
-  - split.
-    + discriminate.
-    + discriminate.
-  - split.
-    + destruct (f_eval m f) as [[|]|] eqn:Hf.
-      * reflexivity.
-      * discriminate.
-      * discriminate.
-    + destruct (f_eval m f) as [[|]|] eqn:Hf.
-      * discriminate.
-      * discriminate.
-      * discriminate.
+  - intuition.
+  - discriminate.
+  - now destruct (f_eval m f) as [[|]|].
 Qed.
 
 Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
@@ -59,10 +47,7 @@ Proof.
       * discriminate.
     + destruct (c_eval m c) as [[|]|] eqn:Hc.
       * simpl in H0. rewrite (IH l0 a b H H0). injection H0 as <-.
-        destruct (l_eval ((l0, a) :: m) l) as [[|]|].
-        -- reflexivity.
-        -- reflexivity.
-        -- reflexivity.
+        now destruct (l_eval ((l0, a) :: m) l) as [[|]|].
       * discriminate.
       * discriminate.
 Qed.
@@ -217,10 +202,7 @@ Proof.
     + simpl in H. apply convert_prop_c in Hc. simp f_eval.
       rewrite Hc. apply IH in H. rewrite H. reflexivity.
     + discriminate.
-    + simpl in H. destruct (f_eval m f) as [[|]|] eqn:Hf.
-      * discriminate.
-      * discriminate.
-      * discriminate.
+    + now destruct (f_eval m f) as [[|]|].
 Qed.
 
 Lemma convert_prop_only_dec: forall (m: PA) (l: Lit) (a: Ann),
@@ -274,10 +256,7 @@ Proof.
       * rewrite Hc. simpl. apply IH in H. now apply bound_cons.
       * now left.
     + discriminate.
-    + destruct (f_eval m f) as [[|]|] eqn:Hf.
-      * discriminate.
-      * discriminate.
-      * discriminate.
+    + now destruct (f_eval m f) as [[|]|].
 Qed.
 
 Lemma bound_bounded: forall (m: PA) (f: CNF), Bounded (bound m f) f.

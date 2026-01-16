@@ -108,7 +108,7 @@ Proof.
         -- assumption.
         -- split.
           ++ assumption.
-          ++ apply hd_less. assumption.
+          ++ now apply hd_less.
       * unfold bcll. split.
         -- assumption.
         -- split.
@@ -233,21 +233,11 @@ Proof.
   - contradiction.
   - inversion Hc_in_f.
     + subst c0. destruct l as [p|p].
-      * simp extract. apply Nat.max_le_iff. left. apply (max_atom_c_le c (Pos p) p).
-        -- assumption.
-        -- reflexivity.
-      * simp extract. apply Nat.max_le_iff. left. apply (max_atom_c_le c (Neg p) p).
-        -- assumption.
-        -- reflexivity.
+      * simp extract. apply Nat.max_le_iff. left. now apply (max_atom_c_le c (Pos p) p).
+      * simp extract. apply Nat.max_le_iff. left. now apply (max_atom_c_le c (Neg p) p).
     + destruct l as [p|p].
-      * apply Nat.max_le_iff. right. simp extract. apply (H c0 (Pos p) p).
-        -- assumption.
-        -- assumption.
-        -- reflexivity.
-      * apply Nat.max_le_iff. right. simp extract. apply (H c0 (Neg p) p).
-        -- assumption.
-        -- assumption.
-        -- reflexivity.
+      * apply Nat.max_le_iff. right. simp extract. now apply (H c0 (Pos p) p).
+      * apply Nat.max_le_iff. right. simp extract. now apply (H c0 (Neg p) p).
 Qed.
 
 Lemma wf_le: forall (m: PA) (f: CNF) (p: Atom),
@@ -259,23 +249,11 @@ Proof.
   apply in_map_iff in Hin as [(l', a) [Heq' Hin]]. simpl in Heq'. subst l'.
   destruct Hwf as [Hnodup Hbounded]. apply Hbounded in Hin as [c [Hc_in_f [Hl_in_c|Hnegl_in_c]]].
   - destruct l as [p'|p'].
-    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Pos p)).
-      * assumption.
-      * assumption.
-      * reflexivity.
-    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Neg p)).
-      * assumption.
-      * assumption.
-      * reflexivity.
+    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Pos p)).
+    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Neg p)).
   - destruct l as [p'|p'].
-    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Neg p)).
-      * assumption.
-      * assumption.
-      * reflexivity.
-    + simp extract in Heq. subst p'. apply (max_atom_f_le f c (Pos p)).
-      * assumption.
-      * assumption.
-      * reflexivity.
+    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Neg p)).
+    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Pos p)).
 Qed.
 
 Lemma pigeon: forall (l: list nat) (m: nat),
@@ -454,10 +432,7 @@ Proof.
   - intros m1 n x Hle Hlt. destruct m1.
     + inversion Hlt.
     + simpl. inversion Hlt.
-      * apply p_head.
-        -- assumption.
-        -- assumption.
-        -- assumption.
+      * now apply p_head.
       * apply p_tail.
         -- assumption.
         -- assumption.

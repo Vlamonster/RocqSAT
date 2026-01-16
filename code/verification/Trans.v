@@ -77,7 +77,5 @@ Proof.
   - intros. destruct y, z; try congruence.
     + inversion H.
     + subst. injection Heqs' as <- <-. apply trans_same_formula in H as <-.
-      apply IHclos_refl_trans_n1 with (Hwf':=Hwf0) (Hwf:=Hwf).
-      * reflexivity.
-      * reflexivity.
+      now apply IHclos_refl_trans_n1 with (Hwf':=Hwf0) (Hwf:=Hwf).
 Qed.
