@@ -24,10 +24,10 @@ Lemma eqb_refl: forall (l: Lit), l =? l = true.
 Proof. destruct l; simp eqb; apply eqb_refl. Qed.
 
 Lemma eqb_sym: forall (l1 l2: Lit), (l1 =? l2) = (l2 =? l1).
-Proof. destruct l1, l2; simp eqb; try reflexivity; try now apply eqb_sym. Qed.
+Proof. destruct l1, l2; simp eqb; try reflexivity; now apply eqb_sym. Qed.
 
 Lemma eqb_eq: forall (l1 l2: Lit), l1 =? l2 = true <-> l1 = l2.
-Proof. destruct l1, l2; split; try simp eqb; try rewrite eqb_eq; try congruence. Qed.
+Proof. destruct l1, l2; split; try simp eqb; try rewrite eqb_eq; congruence. Qed.
 
 Lemma eqb_neq: forall (l1 l2: Lit), l1 =? l2 = false <-> l1 <> l2.
 Proof. 

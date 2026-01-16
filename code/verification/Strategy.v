@@ -14,19 +14,10 @@ find_conflict m f := find (is_conflict m) f.
 Lemma false_conflict_exists: forall (m: PA) (f: CNF),
   f_eval m f = Some false -> exists (c: Clause), find_conflict m f = Some c.
 Proof.
-  intros. simp find_conflict. funelim (f_eval m f).
-  - discriminate.
-  - simpl. simp is_conflict. rewrite Heq. simpl. apply Hind.
-    + congruence.
-    + reflexivity.
-    + reflexivity.
+  intros. simp find_conflict. funelim (f_eval m f); try congruence.
+  - simpl. simp is_conflict. rewrite Heq. simpl. rewrite H in Heqcall. now apply Hind.
   - exists c. simpl. simp is_conflict. now rewrite Heq.
-  - congruence.
-  - simpl. simp is_conflict. rewrite Heq0. simpl. apply Hind.
-    + assumption.
-    + reflexivity.
-    + reflexivity.
-  - congruence.
+  - simpl. simp is_conflict. rewrite Heq0. simpl. now apply Hind.
 Qed.
 
 Equations split_last_decision (m: PA): option (PA * Lit) :=
@@ -274,10 +265,8 @@ Proof. intros. simp find_conflict in H. now apply find_some in H. Qed.
 Lemma find_conflict_conflicting: forall (m: PA) (f: CNF) (c: Clause), 
   find_conflict m f = Some c -> Conflicting m c.
 Proof. 
-  unfold Conflicting. intros. simp find_conflict in H. apply find_some in H as [_ H]. funelim (is_conflict m c).
-  - congruence.
-  - assumption.
-  - congruence.
+  unfold Conflicting. intros. simp find_conflict in H. apply find_some in H as [_ H]. 
+  funelim (is_conflict m c); try congruence.
 Qed.
 
 Lemma no_split__no_decision: forall (m: PA), split_last_decision m = None -> NoDecisions m.
@@ -301,10 +290,7 @@ Proof.
   - apply H. congruence.
   - rewrite H in Heqcall. injection Heqcall as <- <-.
     funelim (find_unit_l m c). rewrite Heq in Heqcall. apply find_some in Heqcall.
-    destruct Heqcall. funelim (is_conflict m (l_remove c l)).
-    + congruence.
-    + assumption.
-    + congruence.
+    destruct Heqcall. funelim (is_conflict m (l_remove c l)); congruence.
   - apply H. congruence.
 Qed.
 
@@ -333,9 +319,7 @@ Lemma find_undef_l_undef: forall (m: PA) (c: Clause) (l: Lit),
   find_undef_l m c = Some l -> Undef m l.
 Proof. 
   unfold Undef. intros. funelim (find_undef_l m c). rewrite H in Heqcall. 
-  apply find_some in Heqcall. destruct Heqcall. funelim (is_undefined_l m l).
-  - congruence.
-  - assumption.
+  apply find_some in Heqcall. destruct Heqcall. funelim (is_undefined_l m l); congruence.
 Qed.
 
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
