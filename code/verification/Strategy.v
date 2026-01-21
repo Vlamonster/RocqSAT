@@ -269,17 +269,22 @@ next_state (state m f Hwf) :=
   | None           eqn:Heq => None
   end end end.
 
-Lemma no_split__no_decision: forall (m: PA), split_last_decision m = None -> NoDecisions m.
+Lemma split_none_iff: forall (m: PA), split_last_decision m = None <-> NoDecisions m.
 Proof. 
-  unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
-  - destruct H0. destruct H0.
-  - discriminate.
-  - destruct H1. destruct H1.
+  unfold NoDecisions. unfold not. intros. split.
+  - intros. funelim (split_last_decision m).
+    + destruct H0. destruct H0.
     + discriminate.
-    + apply (H m H0).
-      * now exists x.
-      * reflexivity.
-      * reflexivity.
+    + destruct H1. destruct H1.
+      * discriminate.
+      * apply (H m H0).
+        -- now exists x.
+        -- reflexivity.
+        -- reflexivity.
+  - intros. funelim (split_last_decision m).
+    + reflexivity.
+    + exfalso. apply H. exists l. now left.
+    + apply H. intros. apply H0. destruct H1. exists x. now right.
 Qed.
 
 Lemma find_unit_conflicting: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
@@ -339,7 +344,7 @@ Proof.
       * injection Heqcall as <-. apply (t_fail m f c_conflict).
         -- now apply (find_conflict_c_in_f m f c_conflict).
         -- now apply (find_conflict_conflicting m f c_conflict).
-        -- now apply (no_split__no_decision m).
+        -- now apply (split_none_iff m).
     + destruct (inspect (find_unit m f)) as [[(c_unit, l_unit)|] find_unit].
       (* t_unit *)
       * injection Heqcall as <-. apply (t_unit m f c_unit l_unit).

@@ -44,7 +44,7 @@ Proof.
       * exists fail. apply (t_fail m f c_conflict).
         -- now apply find_conflict_c_in_f in Hfind_conflict.
         -- now apply find_conflict_conflicting in Hfind_conflict.
-        -- now apply no_split__no_decision.
+        -- now apply split_none_iff.
   (* t_decide *)
   - exfalso. apply H. apply undef_decision_exists in Heq as [l_decide Hfind_dec].
     exists (state (m ++d l_decide) f (wf_decide _ _ _ Hfind_dec Hwf)).
