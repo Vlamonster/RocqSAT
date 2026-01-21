@@ -395,7 +395,7 @@ Proof.
       * destruct (inspect (split_last_decision m)) as [[(m_split, l_split)|] Hsplit].
         -- now exists (state (m_split ++p (¬l_split)) f (wf_backtrack m m_split f l_split Hsplit Hwf)).
         -- now exists fail.
-      * destruct (proj2 (find_conflict_exists_iff _ _) (ex_intro _ _ (conj Hc_in_f Hconflict))). congruence.
+      * destruct (proj2 (find_conflict_exists_iff m f)). now exists c_conflict. congruence.
   (* t_unit *)
   - funelim (next_state (state m f Hwf)).
     + discriminate.
@@ -437,7 +437,7 @@ Proof.
         -- now exists (state (m ++p l_unit') f (wf_unit m f c_unit' l_unit' Hfind_unit Hwf)).
         -- destruct (inspect (find_decision m f)) as [[l_decide'|] Hfind_dec].
           ++ now exists (state (m ++d l_decide') f (wf_decide m f l_decide' Hfind_dec Hwf)).
-          ++ destruct (proj2 (find_conflict_exists_iff _ _) (ex_intro _ _ (conj Hc_in_f Hconflict))). congruence.
+          ++ destruct (proj2 (find_conflict_exists_iff m f)). now exists c_conflict. congruence.
 Qed.
 
 Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
