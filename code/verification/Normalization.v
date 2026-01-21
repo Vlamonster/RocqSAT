@@ -237,26 +237,58 @@ bound ((l, a) :: m) f with l_in_f f l :=
   | true  := (l, a) :: bound m f
   | false := bound m f.
 
-Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
-  In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
+Lemma c_eval_out_iff: forall (m: PA) (c: Clause) (l: Lit) (a: Ann),
+  ~ In l c -> c_eval m c = Some true <-> c_eval ((l, a) :: m) c = Some true.
 Admitted.
 
-Lemma bound_cons: forall (m: PA) (f: CNF) (c: Clause),
-  f_eval (bound m f) f = Some true -> f_eval (bound m (c :: f)) f = Some true.
+Lemma c_eval_in: forall (m: PA) (c: Clause) (l: Lit) (a: Ann),
+  In l c -> c_eval ((l, a) :: m) c = Some true.
 Admitted.
+
+Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
+  In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
+Proof.
+  intros. funelim (bound m f).
+  - assumption.
+  - destruct (existsb (eqb l) c) eqn:Hl_in_c.
+    + apply c_eval_in. apply existsb_exists in Hl_in_c as [l' [Hl_in_c Hl_is_l']].
+      rewrite eqb_eq in Hl_is_l'. now subst l'.
+    + apply c_eval_out_iff in H1.
+      * apply c_eval_out_iff.
+        -- admit.
+        -- apply H; easy.
+      * admit.
+  - apply H.
+    + assumption.
+    + apply c_eval_out_iff in H1.
+      * assumption.
+      * admit.
+    + reflexivity.
+    + reflexivity.
+Admitted.
+
+Lemma bound_f_aux: forall (m: PA) (f f': CNF),
+  incl f f' -> f_eval m f = Some true -> f_eval (bound m f') f = Some true.
+Proof.
+  intros. induction f as [|c f IH].
+  - assumption.
+  - assert (f_eval (bound m f') f = Some true).
+    + apply IH.
+      * unfold incl. intros. apply H. now right.
+      * now apply f_eval_cons in H0.
+    + assert (c_eval (bound m f') c = Some true).
+      * apply bound_c.
+        -- apply H. now left.
+        -- now apply f_eval_cons in H0.
+      * simp f_eval. rewrite H1. now rewrite H2.
+Qed.
 
 Lemma bound_f: forall (m: PA) (f: CNF),
   f_eval m f = Some true -> f_eval (bound m f) f = Some true.
-Proof.
-  intros. induction f as [|c f IH].
-  - reflexivity.
-  - simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-    + simpl in H. simp f_eval.
-      apply (bound_c _ (c :: f)) in Hc.
-      * rewrite Hc. simpl. apply IH in H. now apply bound_cons.
-      * now left.
-    + discriminate.
-    + now destruct (f_eval m f) as [[|]|].
+Proof. 
+  intros. apply bound_f_aux.
+  - apply incl_refl.
+  - assumption.
 Qed.
 
 Lemma bound_bounded: forall (m: PA) (f: CNF), Bounded (bound m f) f.
