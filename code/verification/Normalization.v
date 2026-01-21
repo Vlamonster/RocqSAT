@@ -237,10 +237,6 @@ bound ((l, a) :: m) f with l_in_f f l :=
   | true  := (l, a) :: bound m f
   | false := bound m f.
 
-Lemma c_eval_out_iff: forall (m: PA) (c: Clause) (l: Lit) (a: Ann),
-  ~ In l c -> c_eval m c = Some true <-> c_eval ((l, a) :: m) c = Some true.
-Admitted.
-
 Lemma c_eval_in: forall (m: PA) (c: Clause) (l: Lit) (a: Ann),
   In l c -> c_eval ((l, a) :: m) c = Some true.
 Proof.
@@ -252,36 +248,59 @@ Proof.
       now destruct (l_eval ((l, a0) :: m) a) as [[|]|].
 Qed.
 
+Lemma bound_l: forall (m: PA) (f: CNF) (l: Lit),
+  l_in_f f l = true -> l_eval m l = Some true -> l_eval (bound m f) l = Some true.
+Proof.
+  intros. funelim (l_eval m l); try congruence.
+  - rewrite eqb_eq in Heq. subst l'. simp bound. rewrite H. simpl. simp l_eval.
+    rewrite eqb_refl. now rewrite self_neqb_neg.
+  - simp bound. destruct (l_in_f f l').
+    + simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl. apply H.
+      * assumption.
+      * congruence.
+      * reflexivity.
+      * reflexivity.
+    + simpl. apply H.
+      * assumption.
+      * congruence.
+      * reflexivity.
+      * reflexivity.
+Qed.
+
+Lemma bound_c_aux: forall (m: PA) (f: CNF) (c c': Clause),
+  incl c c' -> In c' f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
+Proof.
+  intros. funelim (c_eval m c); try congruence.
+  - simp c_eval. assert (l_eval (bound m f) l = Some true).
+    + apply bound_l.
+      * apply l_in_f_true_iff. exists c'. auto with *.
+      * assumption.
+    + now rewrite H2.
+  - assert (c_eval (bound m f) c = Some true).
+    + apply (Hind _ _ _ c').
+      * unfold incl. intros. apply H. now right.
+      * assumption.
+      * simp c_eval in H1.
+      * reflexivity.
+      * reflexivity.
+    + simp c_eval. rewrite H2. now destruct (l_eval (bound m f) l) as [[|]|].
+  - assert (c_eval (bound m f) c = Some true).
+    + apply (Hind _ _ _ c').
+      * unfold incl. intros. apply H. now right.
+      * assumption.
+      * simp c_eval in H1.
+      * reflexivity.
+      * reflexivity.
+    + simp c_eval. rewrite H2. now destruct (l_eval (bound m f) l) as [[|]|].
+Qed.
+
 Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
   In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
 Proof.
-  intros. funelim (bound m f).
+  intros. apply (bound_c_aux _ _ _ c).
+  - apply incl_refl.
   - assumption.
-  - destruct (existsb (eqb l) c) eqn:Hl_in_c.
-    + apply c_eval_in. apply existsb_exists in Hl_in_c as [l' [Hl_in_c Hl_is_l']].
-      rewrite eqb_eq in Hl_is_l'. now subst l'.
-    + apply c_eval_out_iff in H1.
-      * apply c_eval_out_iff.
-        -- pose proof (existsb_exists (eqb l) c). apply not_iff_compat in H2.
-           rewrite not_true_iff_false in H2. apply H2 in Hl_in_c. unfold not. intros.
-           apply Hl_in_c. exists l. split.
-          ++ assumption.
-          ++ apply eqb_refl.
-        -- apply H; easy.
-      * pose proof (existsb_exists (eqb l) c). apply not_iff_compat in H3.
-        rewrite not_true_iff_false in H3. apply H3 in Hl_in_c. unfold not. intros.
-        apply Hl_in_c. exists l. split.
-        -- assumption.
-        -- apply eqb_refl.
-  - apply H.
-    + assumption.
-    + apply c_eval_out_iff in H1.
-      * assumption.
-      * rewrite l_in_f_false_iff in Heq. specialize (Heq c). destruct Heq.
-        -- intuition.
-        -- contradiction.
-    + reflexivity.
-    + reflexivity.
+  - assumption.
 Qed.
 
 Lemma bound_f_aux: forall (m: PA) (f f': CNF),
