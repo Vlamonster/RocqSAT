@@ -12,7 +12,7 @@ l_remove c l := filter (fun (l': Lit) => negb (l =? l')) c.
 Equations l_in_c (c: Clause) (l: Lit): bool :=
 l_in_c c l := existsb (eqb l) c || existsb (eqb (¬l)) c.
 
-Lemma l_in_c_iff: forall (c: Clause) (l: Lit),
+Lemma l_in_c_true_iff: forall (c: Clause) (l: Lit),
   l_in_c c l = true <-> In l c \/ In (¬l) c.
 Proof.
   intros. split.
@@ -24,4 +24,11 @@ Proof.
   - intros. simp l_in_c. apply orb_true_iff. destruct H as [Hl_in_c|Hnegl_in_c].
     + left. apply existsb_exists. exists l. intuition. apply eqb_refl.
     + right. apply existsb_exists. exists (¬l). intuition. apply eqb_refl.
+Qed.
+
+Lemma l_in_c_false_iff: forall (c: Clause) (l: Lit),
+  l_in_c c l = false <-> ~ In l c /\ ~ In (¬l) c.
+Proof.
+  intros. pose proof (l_in_c_true_iff c l). apply not_iff_compat in H. 
+  rewrite not_true_iff_false in H. intuition.
 Qed.

@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List.
+From Stdlib Require Import List Bool.
 Import ListNotations.
 From RocqSAT Require Import Lit Neg Clause CNF Evaluation Trans WellFormed.
 
@@ -243,7 +243,14 @@ Admitted.
 
 Lemma c_eval_in: forall (m: PA) (c: Clause) (l: Lit) (a: Ann),
   In l c -> c_eval ((l, a) :: m) c = Some true.
-Admitted.
+Proof.
+  intros m c. generalize dependent m. induction c.
+  - intros. destruct H.
+  - intros. destruct H.
+    + subst a. simp c_eval. simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+    + apply (IHc m l a0) in H. simp c_eval. rewrite H. 
+      now destruct (l_eval ((l, a0) :: m) a) as [[|]|].
+Qed.
 
 Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
   In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
@@ -255,17 +262,27 @@ Proof.
       rewrite eqb_eq in Hl_is_l'. now subst l'.
     + apply c_eval_out_iff in H1.
       * apply c_eval_out_iff.
-        -- admit.
+        -- pose proof (existsb_exists (eqb l) c). apply not_iff_compat in H2.
+           rewrite not_true_iff_false in H2. apply H2 in Hl_in_c. unfold not. intros.
+           apply Hl_in_c. exists l. split.
+          ++ assumption.
+          ++ apply eqb_refl.
         -- apply H; easy.
-      * admit.
+      * pose proof (existsb_exists (eqb l) c). apply not_iff_compat in H3.
+        rewrite not_true_iff_false in H3. apply H3 in Hl_in_c. unfold not. intros.
+        apply Hl_in_c. exists l. split.
+        -- assumption.
+        -- apply eqb_refl.
   - apply H.
     + assumption.
     + apply c_eval_out_iff in H1.
       * assumption.
-      * admit.
+      * rewrite l_in_f_false_iff in Heq. specialize (Heq c). destruct Heq.
+        -- intuition.
+        -- contradiction.
     + reflexivity.
     + reflexivity.
-Admitted.
+Qed.
 
 Lemma bound_f_aux: forall (m: PA) (f f': CNF),
   incl f f' -> f_eval m f = Some true -> f_eval (bound m f') f = Some true.
@@ -296,7 +313,7 @@ Proof.
   unfold Bounded. intros. funelim (bound m f).
   - contradiction.
   - simp bound in H0. rewrite Heq in H0. simpl in H0. destruct H0.
-    + injection H0 as <- <-. apply l_in_f_iff in Heq as [c [Hx_in_c Hc_in_f]].
+    + injection H0 as <- <-. apply l_in_f_true_iff in Heq as [c [Hx_in_c Hc_in_f]].
       exists c. intuition.
     + now apply H in H0.
   - simp bound in H0. rewrite Heq in H0. simpl in H0. now apply H in H0.
@@ -330,13 +347,13 @@ Proof.
     + assumption.
     + destruct H0 as [c [Hl_in_c Hc_in_f]].
       assert (l_in_f f l0 = true).
-      * apply l_in_f_iff. exists c. intuition.
+      * apply l_in_f_true_iff. exists c. intuition.
       * simp l_eval in H1. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
         -- simpl in H1. rewrite eqb_eq in G2. congruence.
         -- simpl in H1. rewrite eqb_eq in G1. subst l0.
-           apply l_in_f_iff in H0 as [c' [Hx_in_c' Hc_in_f']].
+           apply l_in_f_true_iff in H0 as [c' [Hx_in_c' Hc_in_f']].
            assert (l_in_f f l = true).
-          ++ apply l_in_f_iff. exists c'. rewrite involutive in Hx_in_c'. intuition.
+          ++ apply l_in_f_true_iff. exists c'. rewrite involutive in Hx_in_c'. intuition.
           ++ congruence.
         -- simpl in H1. rewrite eqb_eq in G2. congruence.
         -- assumption.
