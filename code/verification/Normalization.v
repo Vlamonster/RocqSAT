@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
 From Stdlib Require Import List Bool.
 Import ListNotations.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation Trans WellFormed.
+From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation Trans WellFormed Dedupe.
 
 Equations c_totalize (m: PA) (c: Clause): PA :=
 c_totalize m [] := m;
@@ -321,6 +321,11 @@ Proof.
   - simp bound in Hin. rewrite Heq in Hin. simpl in Hin. right. now apply H.
 Qed.
 
+Lemma bound_only_dec: forall (m: PA) (f: CNF),
+  (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) ->
+  (forall (l: Lit) (a: Ann), In (l, a) (bound m f) -> a = dec).
+Proof. intros. apply (H l). now apply bound_incl in H0. Qed.
+
 Lemma bound_all_def: forall (m: PA) (f: CNF) (l: Lit),
   (exists (c: Clause), In l c /\ In c f) -> 
   Def m l ->
@@ -349,4 +354,45 @@ Proof.
           ++ congruence.
         -- simpl in H1. rewrite eqb_eq in G2. congruence.
         -- assumption.
+Qed.
+
+Equations eqb_by_atom (la la': Lit * Ann): bool :=
+eqb_by_atom (l, _) (l', _) := Atom.eqb (extract l) (extract l'). 
+
+Equations dedupe (m: PA): PA :=
+dedupe m := dedupe_by eqb_by_atom m.
+
+Lemma dedupe_f: forall (m: PA) (f: CNF),
+  f_eval m f = Some true -> f_eval (dedupe m) f = Some true.
+Admitted.
+
+Lemma dedupe_all_def: forall (m: PA) (f: CNF) (l: Lit),
+  (exists (c: Clause), In l c /\ In c f) -> 
+  Def m l ->
+  Def (dedupe m) l.
+Admitted.
+
+Lemma dedupe_only_dec: forall (m: PA) (f: CNF),
+  (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) ->
+  (forall (l: Lit) (a: Ann), In (l, a) (dedupe m) -> a = dec).
+Proof. intros. apply (H l). simp dedupe in H0. now apply incl_dedupe in H0. Qed.
+
+Lemma dedupe_bounded: forall (m: PA) (f: CNF),
+  Bounded m f ->
+  Bounded (dedupe m) f.
+Proof. 
+  unfold Bounded. intros. apply (H l a). simp dedupe in H0. now apply incl_dedupe in H0.
+Qed.
+
+Lemma dedupe_no_duplicates: forall (m: PA), NoDuplicates (dedupe m).
+Proof.
+  unfold NoDuplicates. intros. simp dedupe. funelim (dedupe_by eqb_by_atom m).
+  - simpl. constructor.
+  - simpl. constructor.
+    + unfold not. intros. destruct l. apply in_map_iff in H0 as [x [Heq Hin]].
+      apply in_map_iff in Hin as [x' [Heq' Hin']]. simpl in Heq. 
+      apply incl_dedupe in Hin'. apply filter_In in Hin' as [_ G].
+      destruct x'. simp neqb_of in G. simp eqb_by_atom in G. subst x. simpl in Heq.
+      rewrite Heq in G. now rewrite Atom.eqb_refl in G.
+    + assumption.
 Qed.
