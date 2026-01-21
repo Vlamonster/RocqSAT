@@ -255,16 +255,8 @@ Proof.
   - rewrite eqb_eq in Heq. subst l'. simp bound. rewrite H. simpl. simp l_eval.
     rewrite eqb_refl. now rewrite self_neqb_neg.
   - simp bound. destruct (l_in_f f l').
-    + simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl. apply H.
-      * assumption.
-      * congruence.
-      * reflexivity.
-      * reflexivity.
-    + simpl. apply H.
-      * assumption.
-      * congruence.
-      * reflexivity.
-      * reflexivity.
+    + simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl. apply H; try easy. congruence.
+    + simpl. apply H; try easy. congruence.
 Qed.
 
 Lemma bound_c_aux: forall (m: PA) (f: CNF) (c c': Clause),
@@ -277,31 +269,16 @@ Proof.
       * assumption.
     + now rewrite H2.
   - assert (c_eval (bound m f) c = Some true).
-    + apply (Hind _ _ _ c').
-      * unfold incl. intros. apply H. now right.
-      * assumption.
-      * simp c_eval in H1.
-      * reflexivity.
-      * reflexivity.
+    + apply (Hind _ _ _ c'); try easy. unfold incl. intros. apply H. now right.
     + simp c_eval. rewrite H2. now destruct (l_eval (bound m f) l) as [[|]|].
   - assert (c_eval (bound m f) c = Some true).
-    + apply (Hind _ _ _ c').
-      * unfold incl. intros. apply H. now right.
-      * assumption.
-      * simp c_eval in H1.
-      * reflexivity.
-      * reflexivity.
+    + apply (Hind _ _ _ c'); try easy. unfold incl. intros. apply H. now right.
     + simp c_eval. rewrite H2. now destruct (l_eval (bound m f) l) as [[|]|].
 Qed.
 
 Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
   In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
-Proof.
-  intros. apply (bound_c_aux _ _ _ c).
-  - apply incl_refl.
-  - assumption.
-  - assumption.
-Qed.
+Proof. intros. apply (bound_c_aux _ _ _ c); easy. Qed.
 
 Lemma bound_f_aux: forall (m: PA) (f f': CNF),
   incl f f' -> f_eval m f = Some true -> f_eval (bound m f') f = Some true.
@@ -321,11 +298,7 @@ Qed.
 
 Lemma bound_f: forall (m: PA) (f: CNF),
   f_eval m f = Some true -> f_eval (bound m f) f = Some true.
-Proof. 
-  intros. apply bound_f_aux.
-  - apply incl_refl.
-  - assumption.
-Qed.
+Proof. intros. apply bound_f_aux; easy. Qed.
 
 Lemma bound_bounded: forall (m: PA) (f: CNF), Bounded (bound m f) f.
 Proof.
