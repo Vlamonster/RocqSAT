@@ -95,7 +95,9 @@ Proof.
           ++ apply Hall_def. now exists c_decide.
           ++ apply def_undef in H. now rewrite <- undef_neg_iff in H.
       (* t_backtrack *)
-      * admit.
+      * rewrite H in *. assert (f_eval m' f = Some false).
+        -- apply f_eval_false_iff. now exists c_conflict.
+        -- congruence.
 Admitted.
 
 Theorem final_unsat_refl: forall (f: CNF),
