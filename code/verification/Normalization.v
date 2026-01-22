@@ -394,7 +394,7 @@ Lemma dedupe_all_def: forall (m: PA) (f: CNF) (l: Lit),
   Def (dedupe m) l.
 Proof. unfold Def. intros. destruct H0. apply dedupe_l in H0. now exists x. Qed.
 
-Lemma dedupe_only_dec: forall (m: PA) (f: CNF),
+Lemma dedupe_only_dec: forall (m: PA),
   (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) ->
   (forall (l: Lit) (a: Ann), In (l, a) (dedupe m) -> a = dec).
 Proof. intros. apply (H l). simp dedupe in H0. now apply incl_dedupe in H0. Qed.
@@ -418,3 +418,43 @@ Proof.
       rewrite Heq in G. now rewrite Atom.eqb_refl in G.
     + assumption.
 Qed.
+
+Equations normalize (m: PA) (f: CNF): PA :=
+normalize m f := dedupe (bound (convert_prop (f_totalize m f)) f).
+
+Lemma normalize_f: forall (m: PA) (f: CNF),
+  f_eval m f = Some true -> f_eval (normalize m f) f = Some true.
+Proof.
+  intros. simp normalize. 
+  apply dedupe_f. apply bound_f. apply convert_prop_f. now apply f_totalize_f.
+Qed.
+
+Lemma normalize_all_def: forall (m: PA) (f: CNF) (l: Lit),
+  (exists (c: Clause), In l c /\ In c f) -> Def (normalize m f) l.
+Proof.
+  intros. simp normalize.
+  apply (dedupe_all_def _ f).
+  - assumption.
+  - apply bound_all_def.
+    + assumption.
+    + apply (convert_prop_all_def _ f).
+      * assumption.
+      * now apply f_totalize_all_def.
+Qed.
+
+Lemma normalize_only_dec: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
+  In (l, a) (normalize m f) -> a = dec.
+Proof.
+  intros. simp normalize in H. 
+  apply dedupe_only_dec in H.
+  - assumption.
+  - intros. apply bound_only_dec in H0.
+    + assumption.
+    + intros. now apply convert_prop_only_dec in H1.
+Qed.
+
+Lemma normalize_bounded: forall (m: PA) (f: CNF), Bounded (normalize m f) f.
+Proof. intros. simp normalize. apply dedupe_bounded. apply bound_bounded. Qed.
+
+Lemma normalize_no_duplicates: forall (m: PA) (f: CNF), NoDuplicates (normalize m f).
+Proof. intros. simp normalize. apply dedupe_no_duplicates. Qed.

@@ -2,6 +2,9 @@ From Equations Require Import Equations.
 From Stdlib Require Import Nat Arith List.
 Import ListNotations.
 
+(* Do not assume functional extensionality with Equations. *)
+Unset Equations With Funext.
+
 (* The following has to be wrapped in a section due to a bug in Equations. *)
 Section dedupe_by.
   Context {A: Type} (eq: A -> A -> bool).
