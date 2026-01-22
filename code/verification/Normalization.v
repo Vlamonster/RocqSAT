@@ -362,9 +362,46 @@ eqb_by_atom (l, _) (l', _) := Atom.eqb (extract l) (extract l').
 Equations dedupe (m: PA): PA :=
 dedupe m := dedupe_by eqb_by_atom m.
 
+Lemma extract_neqb_iff: forall (l l': Lit),
+  l =? l' = false ->
+  l =? ¬l' = false ->
+  Atom.eqb (extract l) (extract l') = false.
+Proof. intros. funelim (l =? l'); now simp extract. Qed.
+
+Lemma dedupe_l_aux: forall (m: PA) (l l': Lit) (a: Ann),
+  l =? l' = false ->
+  l =? ¬l' = false ->
+  l_eval m l = l_eval (filter (neqb_of eqb_by_atom (l', a)) m) l.
+Proof.
+  induction m as [|[l a] m IH].
+  - intros. reflexivity.
+  - intros. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
+    + rewrite eqb_eq in G1. subst l0. now rewrite self_neqb_neg in G2.
+    + rewrite eqb_eq in G1. subst l0. simpl. simp neqb_of.
+      simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
+      * rewrite Atom.eqb_sym. now apply extract_neqb_iff.
+      * rewrite H1. simpl. simp l_eval. rewrite eqb_refl. now rewrite self_neqb_neg.
+    + rewrite eqb_eq in G2. subst l0. simpl. simp neqb_of.
+      simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
+      * rewrite Atom.eqb_sym. rewrite <- eqb_compat in H0. rewrite eqb_compat in H. 
+        rewrite involutive in H. now apply extract_neqb_iff.
+      * rewrite H1. simpl. simp l_eval. rewrite eqb_refl. rewrite eqb_sym. now rewrite self_neqb_neg.
+    + simpl. simp neqb_of. simp eqb_by_atom. destruct (negb (Atom.eqb (extract l') (extract l))).
+      * simp l_eval. rewrite G1. rewrite G2. simpl. now apply IH.
+      * now apply IH.
+Qed.
+
 Lemma dedupe_l: forall (m: PA) (l: Lit) (v: option bool),
   l_eval m l = v -> l_eval (dedupe m) l = v.
-Admitted.
+Proof.
+  intros. simp dedupe. funelim (dedupe_by eqb_by_atom m).
+  - reflexivity.
+  - destruct l. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
+    + simpl. reflexivity.
+    + simpl. reflexivity.
+    + simpl. reflexivity.
+    + simpl. apply H. symmetry. now apply dedupe_l_aux.
+Qed.
 
 Lemma dedupe_c: forall (m: PA) (c: Clause),
   c_eval m c = Some true -> c_eval (dedupe m) c = Some true.
