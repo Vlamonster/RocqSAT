@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List Bool.
+From Stdlib Require Import List Bool Relations.
 Import ListNotations.
 From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation Trans WellFormed Dedupe.
 
@@ -464,4 +464,38 @@ Proof.
   unfold WellFormed. intros. split.
   - apply normalize_no_duplicates.
   - apply normalize_bounded.
+Qed.
+
+Lemma normalize_derivation_aux: forall (m: PA) (f: CNF),
+  WellFormed m f ->
+  (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) -> 
+  exists (Hwf': WellFormed m f), 
+    state [] f (initial_wf f) ==>* state m f Hwf'.
+Proof.
+  induction m as [|[l a] m IH].
+  - intros. exists (initial_wf f). apply rt_refl.
+  - intros. destruct a.
+    + apply wf_cons__wf in H as H'. apply IH in H' as [Hwf' Htrans].
+      * exists H. apply rt_trans with (y := state m f Hwf').
+        -- assumption.
+        -- apply rt_step. destruct H as [Hno_dup Hbounded].
+           unfold Bounded in Hbounded.
+           assert (In (l, dec) (m ++d l)).
+          ++ now left.
+          ++ apply Hbounded in H. destruct H as [c [Hc_in_f Hx_in_c]].
+             apply nodup_cons__undef in Hno_dup as Hundef.
+             apply (t_decide _ _ c _ _ _ Hx_in_c Hc_in_f Hundef).
+      * intros. apply (H0 l0). now right.
+    + assert (In (l, prop) (m ++p l)).
+      * now left.
+      * now apply H0 in H1.
+Qed.
+
+Lemma normalize_derivation: forall (m: PA) (f: CNF),
+  exists (Hwf: WellFormed (normalize m f) f), 
+    state [] f (initial_wf f) ==>* state (normalize m f) f Hwf.
+Proof.
+  intros. apply normalize_derivation_aux.
+  - apply normalize_wf.
+  - apply normalize_only_dec.
 Qed.

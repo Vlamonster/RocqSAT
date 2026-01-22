@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List.
+From Stdlib Require Import List Relations.
 Import ListNotations.
 From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Solve Strategy Normalization.
 
@@ -63,14 +63,14 @@ Proof.
   - intros [m [Hwf [Htrans Hfinal]]]. exists m. now apply final_model in Hfinal.
   - intros Hsat. unfold Sat in Hsat. unfold Model in Hsat. destruct Hsat as [m Heq].
     remember (normalize m f) as m' eqn:H.
-    pose proof (normalize_wf m f) as Hwf.
-    pose proof (normalize_bounded m f) as Hbounded.
     pose proof (normalize_only_dec m f) as Honly_dec.
     pose proof (normalize_all_def m f) as Hall_def.
+    pose proof (normalize_derivation m f) as Htrans.
     apply normalize_f in Heq.
     rewrite <- H in *. clear H. clear m.
+    destruct Htrans as [Hwf Htrans'].
     exists m', Hwf. split.
-    + admit.
+    + assumption.
     + unfold Final. unfold not. intros [s Htrans]. inversion Htrans as 
     [
       m f' c_conflict Hwf' Hc_in_f Hconflict Hno_dec |
@@ -98,7 +98,7 @@ Proof.
       * rewrite H in *. assert (f_eval m' f = Some false).
         -- apply f_eval_false_iff. now exists c_conflict.
         -- congruence.
-Admitted.
+Qed.
 
 Theorem final_unsat_refl: forall (f: CNF),
   state [] f (initial_wf f) ==>* fail /\ Final fail <-> Unsat f.
