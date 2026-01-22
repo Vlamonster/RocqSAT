@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
 From Stdlib Require Import List.
 Import ListNotations.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Solve Strategy.
+From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Solve Strategy Normalization.
 
 Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
 Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
@@ -61,7 +61,31 @@ Theorem final_sat_refl: forall (f: CNF),
 Proof.
   intros. split.
   - intros [m [Hwf [Htrans Hfinal]]]. exists m. now apply final_model in Hfinal.
-  - intros Hsat. unfold Sat in Hsat. unfold Model in Hsat. destruct Hsat as [m Heq]. admit.
+  - intros Hsat. unfold Sat in Hsat. unfold Model in Hsat. destruct Hsat as [m Heq].
+    remember (normalize m f) as m' eqn:H.
+    pose proof (normalize_wf m f) as Hwf.
+    pose proof (normalize_bounded m f) as Hbounded.
+    pose proof (normalize_only_dec m f) as Honly_dec.
+    pose proof (normalize_all_def m f) as Hall_def.
+    apply normalize_f in Heq.
+    rewrite <- H in *. clear H. clear m.
+    exists m', Hwf. split.
+    + admit.
+    + unfold Final. unfold not. intros [s Htrans]. inversion Htrans as 
+    [
+      m f' c_conflict Hwf' Hc_in_f Hconflict Hno_dec |
+      m f' c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef |
+      m f' c_decide l_decide ? Hwf' Hx_in_c Hc_in_f Hundef |
+      m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec
+    ]; subst s; try subst m; try subst f'.
+      (* t_fail *)
+      * admit.
+      (* t_unit *)
+      * admit.
+      (* t_decide *)
+      * admit.
+      (* t_backtrack *)
+      * admit.
 Admitted.
 
 Theorem final_unsat_refl: forall (f: CNF),
