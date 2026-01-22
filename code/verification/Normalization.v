@@ -458,3 +458,10 @@ Proof. intros. simp normalize. apply dedupe_bounded. apply bound_bounded. Qed.
 
 Lemma normalize_no_duplicates: forall (m: PA) (f: CNF), NoDuplicates (normalize m f).
 Proof. intros. simp normalize. apply dedupe_no_duplicates. Qed.
+
+Lemma normalize_wf: forall (m: PA) (f: CNF), WellFormed (normalize m f) f.
+Proof.
+  unfold WellFormed. intros. split.
+  - apply normalize_no_duplicates.
+  - apply normalize_bounded.
+Qed.
