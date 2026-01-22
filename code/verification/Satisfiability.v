@@ -87,7 +87,13 @@ Proof.
         -- apply Hall_def. now exists c_unit.
         -- now apply def_undef in H.
       (* t_decide *)
-      * admit.
+      * destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
+        -- assert (Def m' l_decide).
+          ++ apply Hall_def. now exists c_decide.
+          ++ now apply def_undef in H.
+        -- assert (Def m' (¬l_decide)).
+          ++ apply Hall_def. now exists c_decide.
+          ++ apply def_undef in H. now rewrite <- undef_neg_iff in H.
       (* t_backtrack *)
       * admit.
 Admitted.
