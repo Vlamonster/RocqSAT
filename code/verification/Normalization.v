@@ -392,7 +392,7 @@ Lemma dedupe_all_def: forall (m: PA) (f: CNF) (l: Lit),
   (exists (c: Clause), In l c /\ In c f) -> 
   Def m l ->
   Def (dedupe m) l.
-Admitted.
+Proof. unfold Def. intros. destruct H0. apply dedupe_l in H0. now exists x. Qed.
 
 Lemma dedupe_only_dec: forall (m: PA) (f: CNF),
   (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) ->
