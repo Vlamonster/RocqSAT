@@ -83,7 +83,9 @@ Proof.
         -- apply f_eval_false_iff. now exists c_conflict.
         -- congruence.
       (* t_unit *)
-      * admit.
+      * assert (Def m' l_unit).
+        -- apply Hall_def. now exists c_unit.
+        -- now apply def_undef in H.
       (* t_decide *)
       * admit.
       (* t_backtrack *)
