@@ -79,7 +79,9 @@ Proof.
       m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec
     ]; subst s; try subst m; try subst f'.
       (* t_fail *)
-      * admit.
+      * assert (f_eval m' f = Some false).
+        -- apply f_eval_false_iff. now exists c_conflict.
+        -- congruence.
       (* t_unit *)
       * admit.
       (* t_decide *)
