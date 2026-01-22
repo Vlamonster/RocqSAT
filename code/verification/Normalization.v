@@ -362,9 +362,31 @@ eqb_by_atom (l, _) (l', _) := Atom.eqb (extract l) (extract l').
 Equations dedupe (m: PA): PA :=
 dedupe m := dedupe_by eqb_by_atom m.
 
+Lemma dedupe_l: forall (m: PA) (l: Lit) (v: option bool),
+  l_eval m l = v -> l_eval (dedupe m) l = v.
+Admitted.
+
+Lemma dedupe_c: forall (m: PA) (c: Clause),
+  c_eval m c = Some true -> c_eval (dedupe m) c = Some true.
+Proof.
+  intros. induction c as [|l c IH].
+  - assumption.
+  - simp c_eval in H. destruct (l_eval m l) as [[|]|] eqn:Hl.
+    + apply dedupe_l in Hl. simp c_eval. now rewrite Hl.
+    + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc; try easy.
+      simp c_eval. apply dedupe_l in Hl. apply IH in H. rewrite Hl. now rewrite H.
+    + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc; try easy.
+      simp c_eval. apply dedupe_l in Hl. apply IH in H. rewrite Hl. now rewrite H.
+Qed.
+
 Lemma dedupe_f: forall (m: PA) (f: CNF),
   f_eval m f = Some true -> f_eval (dedupe m) f = Some true.
-Admitted.
+Proof.
+  intros. induction f as [|c f IH].
+  - assumption.
+  - apply f_eval_cons in H as [Hf Hc]. apply IH in Hf. apply dedupe_c in Hc.
+    simp f_eval. rewrite Hf. now rewrite Hc.
+Qed.
 
 Lemma dedupe_all_def: forall (m: PA) (f: CNF) (l: Lit),
   (exists (c: Clause), In l c /\ In c f) -> 
