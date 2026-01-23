@@ -96,6 +96,18 @@ Qed.
 
 Theorem final_unsat_refl: forall (f: CNF),
   state [] f (initial_wf f) ==>* fail /\ Final fail <-> Unsat f.
+Proof.
+  intros. split.
+  - admit.
+  - intros.
+    pose proof (final_sat_refl f) as Hsat_refl. 
+    apply not_iff_compat in Hsat_refl as [_ Hsat_refl_complete].
+    apply Hsat_refl_complete in H. clear Hsat_refl_complete.
+    pose proof (final_exists f) as [s [Hderivation Hfinal]].
+    destruct s.
+    + intuition.
+    + exfalso. apply H. apply derivation_same_formula in Hderivation as Heq.
+      subst f0. now exists m, Hwf.
 Admitted.
 
 Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
