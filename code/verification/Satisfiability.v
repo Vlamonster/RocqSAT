@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
 From Stdlib Require Import List Relations.
 Import ListNotations.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Solve Strategy Normalization.
+From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Solve Strategy Normalization Entails.
 
 Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
 Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
@@ -98,7 +98,18 @@ Theorem final_unsat_refl: forall (f: CNF),
   state [] f (initial_wf f) ==>* fail /\ Final fail <-> Unsat f.
 Proof.
   intros. split.
-  - admit.
+  - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [Hwf [Hderivation Htrans]]].
+    inversion Htrans; subst m0; subst f0; clear Hwf1; clear Hwf2.
+    apply derivation_entails in Hderivation.
+    + inversion Hderivation; subst f0; subst m.
+      * unfold Unsat. unfold Sat. unfold Model. unfold not. intros [m Hsat].
+        apply H in Hsat as G. apply (m_eval_transfer_c _ _ c) in G.
+        -- rewrite f_eval_true_iff in Hsat. apply Hsat in H1. congruence.
+        -- assumption.
+      * exfalso. apply H3. exists l. apply in_elt.
+    + constructor.
+      * intros. reflexivity.
+      * unfold NoDecisions. unfold not. intros. now destruct H. 
   - intros.
     pose proof (final_sat_refl f) as Hsat_refl. 
     apply not_iff_compat in Hsat_refl as [_ Hsat_refl_complete].
@@ -108,7 +119,7 @@ Proof.
     + intuition.
     + exfalso. apply H. apply derivation_same_formula in Hderivation as Heq.
       subst f0. now exists m, Hwf.
-Admitted.
+Qed.
 
 Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
 Proof.

@@ -220,6 +220,36 @@ Proof.
         -- congruence.
 Qed.
 
+Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
+  f_eval m f = Some true <-> forall (c: Clause), In c f -> c_eval m c = Some true.
+Proof.
+  intros. split.
+  - intros. funelim (f_eval m f); try congruence.
+    + contradiction.
+    + destruct H0.
+      * congruence.
+      * eapply Hind.
+        -- now rewrite Heqcall.
+        -- apply H0.
+        -- reflexivity.
+        -- reflexivity.
+  - intros. funelim (f_eval m f).
+    + reflexivity.
+    + apply Hind. intros. apply H. now right.
+    + assert (c_eval m c = Some true).
+      * apply H. now left.
+      * congruence.
+    + assert (c_eval m c = Some true).
+      * apply H. now left.
+      * congruence.
+    + assert (c_eval m c = Some true).
+      * apply H. now left.
+      * congruence.
+    + assert (c_eval m c = Some true).
+      * apply H. now left.
+      * congruence.
+Qed.
+
 Lemma m_eval_true_iff: forall (m m': PA),
   m_eval m m' = Some true <-> forall (l: Lit) (a: Ann), In (l, a) m' -> l_eval m l = Some true.
 Proof.
@@ -249,3 +279,7 @@ Proof.
       * apply (H _ a). now left.
       * congruence.
 Qed.
+
+Lemma m_eval_transfer_c: forall (m m': PA) (c: Clause),
+  m_eval m m' = Some true -> c_eval m' c = Some false -> c_eval m c = Some false.
+Admitted.

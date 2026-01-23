@@ -75,3 +75,9 @@ Proof.
     + subst. injection Heqs' as <- <-. apply trans_same_formula in H as <-.
       now apply IHclos_refl_trans_n1 with (Hwf':=Hwf0) (Hwf:=Hwf).
 Qed.
+
+Lemma fail_predecessor: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),
+  state m f Hwf ==>* fail -> 
+  exists (m': PA) (Hwf': WellFormed m' f), 
+    state m f Hwf ==>* state m' f Hwf' /\ state m' f Hwf' ==> fail.
+Admitted.
