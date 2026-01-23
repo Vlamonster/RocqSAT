@@ -80,4 +80,14 @@ Lemma fail_predecessor: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),
   state m f Hwf ==>* fail -> 
   exists (m': PA) (Hwf': WellFormed m' f), 
     state m f Hwf ==>* state m' f Hwf' /\ state m' f Hwf' ==> fail.
-Admitted.
+Proof.
+  intros. apply clos_rt_rtn1_iff in H.
+  remember (state m f Hwf) as s eqn:Heqs.
+  remember (fail) as s' eqn:Heqs'.
+  induction H.
+  - congruence.
+  - subst s; subst z. destruct y.
+    + now apply IHclos_refl_trans_n1.
+    + apply clos_rt_rtn1_iff in H0. apply derivation_same_formula in H0 as Heq.
+      subst f0. now exists m0, Hwf0.
+Qed.
