@@ -202,7 +202,7 @@ Proof.
     assert (Hnodup': NoDuplicates m').
     + now apply (nodup_cons__nodup) in Hnodup.
     + apply nodup_cons__undef in Hnodup as Hundef. 
-      apply undef_neg_iff in Hundef.
+      apply l_eval_neg_none_iff in Hundef.
       apply (nodup_cons _ _ _ Hnodup' Hundef).
   - destruct Hwf as [_ Hbounded]. apply (bounded_incl (m' ++d l)) in Hbounded.
     + assert (Hbounded': Bounded m' f).
@@ -428,7 +428,7 @@ Proof.
           ++ now exists (state (m ++d l_decide') f (wf_decide m f l_decide' Hfind_dec Hwf)).
           ++ destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
             ** destruct (find_decision_exists m f c_decide l_decide Hl_in_c Hc_in_f Hundef). congruence.
-            ** apply undef_neg_iff in Hundef.
+            ** apply l_eval_neg_none_iff in Hundef.
                destruct (find_decision_exists m f c_decide (¬l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
   (* t_backtrack *)
   - funelim (next_state (state (m_split ++d l_split ++a n_split) f Hwf)).

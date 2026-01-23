@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List.
+From Stdlib Require Import List Bool.
 Import ListNotations.
 From RocqSAT Require Import Lit Neg Clause CNF.
 
@@ -84,7 +84,7 @@ Module EvalExamples.
   Proof. reflexivity. Qed.
 End EvalExamples.
 
-Lemma undef_neg_iff: forall (m: PA) (l: Lit), Undef m l <-> Undef m (¬l).
+Lemma l_eval_neg_none_iff: forall (m: PA) (l: Lit), l_eval m l = None <-> l_eval m (¬l) = None.
 Proof.
   unfold Undef. intros. funelim (l_eval m l).
   - intuition.
@@ -102,6 +102,30 @@ Proof.
     + autorewrite with l_eval in H. rewrite <- Neg.eqb_compat in H. rewrite Heq0 in H.
       rewrite Neg.eqb_compat in Heq. rewrite Neg.involutive in Heq. rewrite Heq in H. simpl in H. 
       apply H1. apply H.
+Qed.
+
+Lemma l_eval_neg_some_iff: forall (m: PA) (l: Lit) (b: bool),
+  l_eval m l = Some b <-> l_eval m (¬l) = Some (negb b).
+Proof.
+  intros. split.
+  - intros. funelim (l_eval m l).
+    + congruence.
+    + rewrite eqb_eq in Heq. subst l'. rewrite H in Heqcall. injection Heqcall as <-.
+      simp l_eval. rewrite eqb_refl. rewrite eqb_compat. rewrite involutive. now rewrite self_neqb_neg.
+    + rewrite eqb_eq in Heq. subst l. rewrite H in Heqcall. injection Heqcall as <-.
+      rewrite involutive. simp l_eval. rewrite eqb_refl. now rewrite self_neqb_neg.
+    + simp l_eval. rewrite <- eqb_compat. rewrite Heq0. rewrite eqb_compat. rewrite involutive.
+      rewrite Heq. simpl. apply H. congruence.
+  - intros. funelim (l_eval m l).
+    + discriminate.
+    + rewrite eqb_eq in Heq. subst l'. simp l_eval in H. rewrite eqb_refl in H. rewrite eqb_compat in H.
+      rewrite involutive in H. rewrite self_neqb_neg in H. simpl in H. injection H. intros.
+      symmetry in H0. apply negb_false_iff in H0. congruence.
+    + rewrite eqb_eq in Heq. subst l. rewrite involutive in H. simp l_eval in H. rewrite eqb_refl in H.
+      rewrite self_neqb_neg in H. simpl in H. injection H. intros. symmetry in H0.
+      apply negb_true_iff in H0. congruence.
+    + apply H. simp l_eval in H0. rewrite <- eqb_compat in H0. rewrite Heq0 in H0.
+      rewrite eqb_compat in H0. rewrite involutive in H0. now rewrite Heq in H0.
 Qed.
 
 Lemma l_eval_some_iff: forall (m: PA) (l: Lit), 
@@ -280,6 +304,21 @@ Proof.
       * congruence.
 Qed.
 
+Lemma c_eval_nil: forall (c: Clause), c_eval [] c = Some false <-> c = [].
+Proof.
+  intros. split.
+  - intros. funelim (c_eval [] c); try congruence. discriminate.
+  - intros. now subst c.
+Qed.
+
 Lemma m_eval_transfer_c: forall (m m': PA) (c: Clause),
   m_eval m m' = Some true -> c_eval m' c = Some false -> c_eval m c = Some false.
+Proof.
+  intros. funelim (m_eval m m'); try congruence.
+  - now apply c_eval_nil in H0 as ->.
+  - apply (Hind _ m'); clear Hind.
+    + congruence.
+    + admit.
+    + reflexivity.
+    + reflexivity.
 Admitted.

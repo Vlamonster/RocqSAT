@@ -87,7 +87,7 @@ Proof.
           ++ now apply def_undef in H.
         -- assert (Def m' (¬l_decide)).
           ++ apply Hall_def. now exists c_decide.
-          ++ apply def_undef in H. now rewrite <- undef_neg_iff in H.
+          ++ apply def_undef in H. unfold Undef in H. now rewrite <- l_eval_neg_none_iff in H.
       (* t_backtrack *)
       * rewrite H in *. assert (f_eval m' f = Some false).
         -- apply f_eval_false_iff. now exists c_conflict.
