@@ -26,7 +26,7 @@ Section Solve.
         * eapply rt_trans.
           -- apply H.
           -- now apply rt_step.
-        * apply trans_clos_same_formula in H0. subst f0. now apply trans__state_lt.
+        * apply derivation_same_formula in H0. subst f0. now apply trans__state_lt.
   Qed.
 
   Definition solve: State := solve_aux (state [] f (initial_wf f)) (initial_refl f).

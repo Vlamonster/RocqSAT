@@ -64,7 +64,7 @@ Lemma trans_same_formula: forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (H
   state m f Hwf ==> state m' f' Hwf' -> f = f'.
 Proof. intros. inversion H; subst; reflexivity. Qed.
 
-Lemma trans_clos_same_formula: forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'), 
+Lemma derivation_same_formula: forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'), 
   state m f Hwf ==>* state m' f' Hwf' -> f = f'.
 Proof. 
   intros m m' f f' Hwf Hwf' H. apply clos_rt_rtn1_iff in H. 

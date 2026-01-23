@@ -103,6 +103,6 @@ Proof.
   intros. destruct (final_exists f) as [[|m f' Hwf] ].
   - right. now apply final_unsat_refl.
   - left. destruct H. assert (f = f').
-    + now apply (trans_clos_same_formula [] m f f' (initial_wf f) Hwf).
+    + now apply (derivation_same_formula [] m f f' (initial_wf f) Hwf).
     + subst f'. apply final_sat_refl. now exists m, Hwf.
 Qed.
