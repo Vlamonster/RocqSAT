@@ -6,9 +6,6 @@ Inductive State: Type :=
 | fail
 | state (m: PA) (f: CNF) (Hwf: WellFormed m f).
 
-(* Propositions used in the transition relation `==>`. *)
-Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
-
 Inductive Trans: relation State :=
 (* Fail if all literals are assigned and there is a conflict. *)
 | t_fail (m: PA) (f: CNF) (c: Clause) (Hwf: WellFormed m f):

@@ -41,6 +41,14 @@ f_eval m (c :: f) with c_eval m c, f_eval m f :=
   | _         , Some false := Some false
   | None      , _          := None.
 
+Equations m_eval (m m': PA): option bool :=
+m_eval m [] := Some true;
+m_eval m ((l, _) :: m') with l_eval m l, m_eval m m' :=
+  | Some true , r          := r
+  | Some false, _          := Some false
+  | _         , Some false := Some false
+  | None      , _          := None.
+
 Definition Def (m: PA) (l: Lit): Prop := exists (b: bool), l_eval m l = Some b.
 Definition Undef (m: PA) (l: Lit): Prop := l_eval m l = None.
 
@@ -53,6 +61,7 @@ Proof.
   - intuition. destruct H. discriminate.
 Qed.
 
+Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
 Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false.
 
 Module EvalExamples.
@@ -209,4 +218,34 @@ Proof.
       * assert (f_eval m f = Some false).
         -- apply Hind. exists c'. intuition.
         -- congruence.
+Qed.
+
+Lemma m_eval_true_iff: forall (m m': PA),
+  m_eval m m' = Some true <-> forall (l: Lit) (a: Ann), In (l, a) m' -> l_eval m l = Some true.
+Proof.
+  intros. split.
+  - intros. funelim (m_eval m m'); try congruence.
+    + contradiction.
+    + destruct H0.
+      * congruence.
+      * eapply Hind.
+        -- now rewrite Heqcall.
+        -- apply H0.
+        -- reflexivity.
+        -- reflexivity.
+  - intros. funelim (m_eval m m').
+    + reflexivity.
+    + apply Hind. intros. apply (H l0 a0). now right.
+    + assert (l_eval m l = Some true).
+      * apply (H _ a). now left.
+      * congruence.
+    + assert (l_eval m l = Some true).
+      * apply (H _ a). now left.
+      * congruence.
+    + assert (l_eval m l = Some true).
+      * apply (H _ a). now left.
+      * congruence.
+    + assert (l_eval m l = Some true).
+      * apply (H _ a). now left.
+      * congruence.
 Qed.
