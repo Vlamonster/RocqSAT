@@ -37,11 +37,11 @@ Inductive Trans: relation State :=
   Trans (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf').
 
 (* The following is the reflexive-transitive closure of `==>`. *)
-Definition TransRTC: relation State := clos_refl_trans State Trans.
+Definition Derivation: relation State := clos_refl_trans State Trans.
 
 Declare Scope trans_scope.
 Infix "==>" := Trans (at level 70): trans_scope.
-Infix "==>*" := TransRTC (at level 70): trans_scope.
+Infix "==>*" := Derivation (at level 70): trans_scope.
 Open Scope trans_scope.
 
 (* A state is final if there are no states that follow from it by `==>`. *)
