@@ -71,6 +71,10 @@ Proof.
       * discriminate.
 Qed.
 
+Lemma m_eval_extend_undef: forall (m m': PA) (l: Lit) (a: Ann) (b: bool),
+  Undef m l -> m_eval m m' = Some b -> m_eval ((l, a) :: m) m' = Some b.
+Admitted.
+
 Lemma c_totalize_l: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
   l_eval m l = Some b -> l_eval (c_totalize m c) l = Some b.
 Proof.
