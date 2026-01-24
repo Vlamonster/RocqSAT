@@ -156,6 +156,17 @@ Proof.
         -- assumption.
 Qed.
 
+Lemma l_eval_false_in: forall (m: PA) (l: Lit),
+  l_eval m l = Some false -> exists (a: Ann), In (¬l, a) m.
+Proof.
+  intros. funelim (l_eval m l); try congruence.
+  - rewrite eqb_eq in Heq. subst l. exists a. rewrite involutive. now left.
+  - rewrite H0 in Heqcall. apply H in Heqcall.
+    + destruct Heqcall as [a' Hin]. exists a'. now right.
+    + reflexivity.
+    + reflexivity.
+Qed.
+
 Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 
   c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
 Proof. 
@@ -311,14 +322,17 @@ Proof.
   - intros. now subst c.
 Qed.
 
+Lemma m_eval_transfer_l: forall (m m': PA) (l: Lit),
+  m_eval m m' = Some true -> l_eval m' l = Some false -> l_eval m l = Some false.
+Proof.
+  intros. apply l_eval_neg_some_iff. simpl. rewrite m_eval_true_iff in H.
+  apply l_eval_false_in in H0 as [a Hin]. now apply H in Hin.
+Qed.
+
 Lemma m_eval_transfer_c: forall (m m': PA) (c: Clause),
   m_eval m m' = Some true -> c_eval m' c = Some false -> c_eval m c = Some false.
 Proof.
-  intros. funelim (m_eval m m'); try congruence.
-  - now apply c_eval_nil in H0 as ->.
-  - apply (Hind _ m'); clear Hind.
-    + congruence.
-    + admit.
-    + reflexivity.
-    + reflexivity.
-Admitted.
+  intros. apply c_eval_false_iff. intros.
+  rewrite c_eval_false_iff in H0. apply H0 in H1. 
+  now apply (m_eval_transfer_l _ m').
+Qed.
