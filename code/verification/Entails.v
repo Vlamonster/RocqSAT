@@ -57,7 +57,33 @@ Proof.
         -- discriminate.
         -- apply Hno_dec. now exists l.
     + rewrite app_comm_cons. apply e_step.
-      * admit.
+      * intros m' [Hmodel_f [Hmodel_m'' Hmodel_l]].
+        assert (Hmodel_n: m_eval m' n = Some true).
+        -- now apply Hcons.
+        -- assert (Hmodel_m: m_eval m' (m'' ++d l_decide ++a n) = Some true).
+          ++ apply m_eval_true_iff. intros l a Hin. apply in_app_or in Hin as [Hin|Hin].
+            ** rewrite m_eval_true_iff in Hmodel_n. now apply (Hmodel_n _ a).
+            ** destruct Hin as [Hin|Hin].
+              --- congruence.
+              --- rewrite m_eval_true_iff in Hmodel_m''. now apply (Hmodel_m'' _ a).
+          ++ rewrite Hm in Hmodel_m. simp m_eval. rewrite Hmodel_n.
+             destruct (l_eval m' l_unit) as [[|]|] eqn:Hl.
+            ** reflexivity.
+            ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+              --- apply (m_eval_transfer_c _ m).
+                +++ assumption.
+                +++ assumption.
+              --- apply c_eval_remove_false_l in contra.
+                +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
+                +++ assumption.
+            ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+              --- apply (m_eval_transfer_c _ m).
+                +++ assumption.
+                +++ assumption.
+              --- apply c_eval_remove_none_l in contra.
+                +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
+                +++ assumption.
+                +++ assumption.
       * unfold NoDecisions. unfold not. intros [l [contra|Hin]].
         -- discriminate.
         -- apply Hno_dec. now exists l.
