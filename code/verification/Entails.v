@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
 From Stdlib Require Import List Relations.
 Import ListNotations.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans.
+From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Normalization.
 
 Inductive Entails: CNF -> PA -> Prop :=
 | e_intro (f: CNF) (n: PA):
@@ -146,13 +146,26 @@ Proof.
                   *** rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                   *** congruence.
           ++ apply l_eval_neg_some_iff in Hl. rewrite Hl. now rewrite (Hcons' _ Hmodel_f).
-          ++ exfalso. 
-             assert (Hmodel_f': f_eval (m' ++p l_split) f = Some true). admit.
-             assert (Hmodel_n_split: m_eval (m' ++p l_split) n_split = Some true). admit.
-             assert (Hmodel_m: m_eval (m' ++p l_split) m = Some true). admit.
-             apply (m_eval_transfer_c _ _ c_conflict) in Hmodel_m.
-            ** rewrite f_eval_true_iff in Hmodel_f'. apply Hmodel_f' in Hc_in_f. congruence.
-            ** congruence.
+          ++ exfalso. assert (Hmodel_f': f_eval (m' ++p l_split) f = Some true).
+            ** apply f_eval_extend_undef.
+              --- assumption.
+              --- assumption.
+            ** assert (Hmodel_m_split: m_eval (m' ++p l_split) m_split = Some true).
+              --- now apply Hcons'.
+              --- assert (Hmodel_l_split: l_eval (m' ++p l_split) l_split = Some true).
+                +++ simp l_eval. rewrite eqb_refl. now rewrite self_neqb_neg.
+                +++ assert (Hmodel_n_split: m_eval (m' ++p l_split) n_split = Some true).
+                  *** now apply Hcons.
+                  *** assert (Hmodel_m: m_eval (m' ++p l_split) m = Some true).
+                    ---- apply m_eval_true_iff. intros. rewrite <- Hm in H. apply in_app_or in H.
+                         destruct H.
+                      ++++ rewrite m_eval_true_iff in Hmodel_n_split. now apply (Hmodel_n_split _ a).
+                      ++++ destruct H.
+                        **** congruence.
+                        **** rewrite m_eval_true_iff in Hmodel_m_split. now apply (Hmodel_m_split _ a).
+                    ---- apply (m_eval_transfer_c _ _ c_conflict) in Hmodel_m.
+                      ++++ rewrite f_eval_true_iff in Hmodel_f'. apply Hmodel_f' in Hc_in_f. congruence.
+                      ++++ congruence.
         -- unfold NoDecisions. unfold not. intros [l [contra|Hin]].
           ++ discriminate.
           ++ apply Hno_dec. now exists l.
@@ -181,7 +194,7 @@ Proof.
                     ---- rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                     ---- congruence.
               --- apply l_eval_neg_some_iff in Hl. simp m_eval. rewrite Hl. now rewrite Hmodel_n.
-              --- assert (Hmodel_f': f_eval (m' ++p l_split) f = Some true). admit.
+              --- exfalso. assert (Hmodel_f': f_eval (m' ++p l_split) f = Some true). admit.
                   assert (Hmodel_m_split': m_eval (m' ++p l_split) m_split = Some true). admit.
                   assert (Hmodel_m: m_eval (m' ++p l_split) m = Some true). admit.
                   apply (m_eval_transfer_c _ _ c_conflict) in Hmodel_m.
