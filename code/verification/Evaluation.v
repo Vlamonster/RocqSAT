@@ -167,24 +167,6 @@ Proof.
     + reflexivity.
 Qed.
 
-Lemma c_eval_none__l_eval_none: forall (m: PA) (c: Clause), 
-  c_eval m c = None -> exists (l: Lit), In l c /\ l_eval m l = None.
-Proof. 
-  induction c. intros.
-  - discriminate.
-  - intros. destruct (l_eval m a) eqn:G1.
-    + destruct b.
-      * simp c_eval in H. rewrite G1 in H. simpl in H. discriminate.
-      * simp c_eval in H. rewrite G1 in H. simpl in H. destruct (c_eval m c) eqn:G2.
-        -- destruct b; discriminate.
-        -- apply IHc in H. destruct H. destruct H. exists x. split.
-          ++ now right.
-          ++ assumption.
-    + exists a. split.
-      * now left.
-      * assumption.
-Qed.
-
 Lemma c_eval_true_iff: forall (m: PA) (c: Clause),
   c_eval m c = Some true <-> exists (l: Lit), In l c /\ l_eval m l = Some true.
 Proof.
@@ -308,13 +290,13 @@ Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
   c_eval m c = None -> c_eval m (l_remove c l) = Some false -> Undef m l.
 Proof.
   unfold Undef. intros. 
-  pose proof (c_eval_none__l_eval_none m c H).
+  apply c_eval_none_iff in H as [_ [l' [Hin' Hl']]].
   rewrite (c_eval_false_iff m (l_remove c l)) in H0.
-  destruct H1. destruct H1. destruct (l =? x) eqn:G.
-  - now apply eqb_eq in G as ->.
-  - pose proof (H0 x). assert (In x (l_remove c l)).
-    + simp l_remove. rewrite filter_In. intuition. now rewrite G.
-    + apply H3 in H4. congruence. 
+  destruct (l =? l') eqn:G.
+  - rewrite eqb_eq in G. congruence.
+  - assert (In l' (l_remove c l)).
+    + rewrite eqb_neq in G. now apply l_remove_in_iff.
+    + apply H0 in H. congruence.
 Qed.
 
 Lemma c_eval_remove_false_l: forall (m: PA) (c: Clause) (l: Lit),
