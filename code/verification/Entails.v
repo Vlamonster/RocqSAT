@@ -1,6 +1,6 @@
 From Stdlib Require Import List Relations.
 Import ListNotations.
-From RocqSAT Require Import Lit CNF Evaluation WellFormed Trans.
+From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans.
 
 Inductive Entails: CNF -> PA -> Prop :=
 | e_intro (f: CNF) (n: PA):
