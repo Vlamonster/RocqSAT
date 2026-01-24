@@ -185,6 +185,50 @@ Proof.
       * assumption.
 Qed.
 
+Lemma c_eval_true_iff: forall (m: PA) (c: Clause),
+  c_eval m c = Some true <-> exists (l: Lit), In l c /\ l_eval m l = Some true.
+Proof.
+  intros. split.
+  - intros. funelim (c_eval m c); try congruence.
+    + exists l. split.
+      * now left.
+      * assumption.
+    + apply Hind in Heq as [l' [Hin' Hl']].
+      * exists l'. split.
+        -- now right.
+        -- assumption.
+      * reflexivity.
+      * reflexivity.
+    + apply Hind in Heq as [l' [Hin' Hl']].
+      * exists l'. split.
+        -- now right.
+        -- assumption.
+      * reflexivity.
+      * reflexivity.
+  - intros. funelim (c_eval m c); try congruence.
+    + now destruct H.
+    + destruct H as [l' [[Heq'|Hin'] Hl']].
+      * congruence.
+      * assert (c_eval m c = Some true).
+        -- apply Hind. now exists l'.
+        -- congruence.
+    + destruct H as [l' [[Heq'|Hin'] Hl']].
+      * congruence.
+      * assert (c_eval m c = Some true).
+        -- apply Hind. now exists l'.
+        -- congruence.
+    + destruct H as [l' [[Heq'|Hin'] Hl']].
+      * congruence.
+      * assert (c_eval m c = Some true).
+        -- apply Hind. now exists l'.
+        -- congruence.
+    + destruct H as [l' [[Heq'|Hin'] Hl']].
+      * congruence.
+      * assert (c_eval m c = Some true).
+        -- apply Hind. now exists l'.
+        -- congruence.
+Qed.
+
 Lemma c_eval_false_iff: forall (m: PA) (c: Clause),
   c_eval m c = Some false <-> forall (l: Lit), In l c -> l_eval m l = Some false.
 Proof.
@@ -209,6 +253,57 @@ Proof.
     + pose proof (H _ (in_eq _ _)). congruence.
 Qed.
 
+Lemma c_eval_none_iff: forall (m: PA) (c: Clause),
+  c_eval m c = None <-> 
+    (~ exists (l: Lit), In l c /\ l_eval m l = Some true) /\
+       exists (l: Lit), In l c /\ l_eval m l = None.
+Proof.
+  unfold not. intros. induction c as [|l c IH].
+  - split.
+    + intros. discriminate.
+    + intros [H H']. now destruct H'.
+  - split.
+    + intros Hc. split.
+      * intros [l' [[Heq|Hin'] Hl']].
+        -- subst l'. assert (c_eval m (l :: c) = Some true).
+          ++ apply c_eval_true_iff. exists l. split.
+            ** now left.
+            ** assumption.
+          ++ congruence.
+        -- assert (c_eval m (l :: c) = Some true).
+          ++ apply c_eval_true_iff. exists l'. split.
+            ** now right.
+            ** assumption.
+          ++ congruence.
+      * simp c_eval in Hc. destruct (l_eval m l) as [[|]|] eqn:Hl.
+        -- discriminate.
+        -- destruct (c_eval m c) as [[|]|] eqn:Hc'; try easy.
+           simpl in Hc. apply IH in Hc as [_ [l' [Hin' Hl']]].
+           exists l'. split.
+          ++ now right.
+          ++ assumption.
+        -- exists l. split.
+          ++ now left.
+          ++ assumption.
+    + intros [H H']. destruct (l_eval m l) as [[|]|] eqn:Hl.
+      * exfalso. apply H. exists l. split.
+        -- now left.
+        -- assumption.
+      * simp c_eval. rewrite Hl. simpl. destruct (c_eval m c) as [[|]|] eqn:Hc'; try easy.
+        -- rewrite c_eval_true_iff in Hc'. destruct Hc' as [l' [Hin' Hl']].
+           exfalso. apply H. exists l'. split.
+          ++ now right.
+          ++ assumption.
+        -- rewrite c_eval_false_iff in Hc'. destruct H' as [l' [[Heq|Hin'] Hl']].
+          ++ congruence.
+          ++ apply Hc' in Hin'. congruence.
+      * simp c_eval. rewrite Hl. simpl. destruct (c_eval m c) as [[|]|] eqn:Hc'; try easy.
+        rewrite c_eval_true_iff in Hc'. destruct Hc' as [l' [Hin' Hl']].
+        exfalso. apply H. exists l'. split.
+        -- now right.
+        -- assumption.
+Qed.
+
 Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
   c_eval m c = None -> c_eval m (l_remove c l) = Some false -> Undef m l.
 Proof.
@@ -220,6 +315,27 @@ Proof.
   - pose proof (H0 x). assert (In x (l_remove c l)).
     + simp l_remove. rewrite filter_In. intuition. now rewrite G.
     + apply H3 in H4. congruence. 
+Qed.
+
+Lemma c_eval_remove_false_l: forall (m: PA) (c: Clause) (l: Lit),
+  c_eval m (l_remove c l) = Some false -> l_eval m l = Some false -> c_eval m c = Some false.
+Proof.
+  intros m c l Hc Hl. apply c_eval_false_iff. intros l' Hin. rewrite c_eval_false_iff in Hc.
+  destruct (l =? l') eqn:Heq.
+  - rewrite eqb_eq in Heq. congruence.
+  - rewrite eqb_neq in Heq. apply Hc. now apply l_remove_in_iff.
+Qed.
+
+Lemma c_eval_remove_none_l: forall (m: PA) (c: Clause) (l: Lit),
+  In l c -> c_eval m (l_remove c l) = Some false -> l_eval m l = None -> c_eval m c = None.
+Proof.
+  intros m c l Hin Hc Hl. rewrite c_eval_false_iff in Hc. apply c_eval_none_iff. split.
+  - unfold not. intros [l' [Hin' Hl']]. destruct (l =? l') eqn:Heq.
+    + rewrite eqb_eq in Heq. congruence.
+    + rewrite eqb_neq in Heq. assert (In l' (l_remove c l)).
+      * now apply l_remove_in_iff.
+      * apply Hc in H. congruence.
+  - now exists l.
 Qed.
 
 Lemma f_eval_false_iff: forall (m: PA) (f: CNF),

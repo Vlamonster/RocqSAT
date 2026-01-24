@@ -9,6 +9,16 @@ Definition Clause: Type := list Lit.
 Equations l_remove (c: Clause) (l: Lit): Clause :=
 l_remove c l := filter (fun (l': Lit) => negb (l =? l')) c.
 
+Lemma l_remove_in_iff: forall (c: Clause) (l l': Lit),
+  In l' (l_remove c l) <-> In l' c /\ l <> l'.
+Proof.
+  intros. split.
+  - intros. simp l_remove in H. apply filter_In in H.
+    rewrite negb_true_iff in H. now rewrite eqb_neq in H.
+  - intros. simp l_remove. apply filter_In.
+    rewrite negb_true_iff. now rewrite eqb_neq.
+Qed.
+
 Equations l_in_c (c: Clause) (l: Lit): bool :=
 l_in_c c l := existsb (eqb l) c || existsb (eqb (¬l)) c.
 
