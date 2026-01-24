@@ -56,7 +56,12 @@ Proof.
       * unfold NoDecisions. unfold not. intros [l [contra|Hin]].
         -- discriminate.
         -- apply Hno_dec. now exists l.
-    + admit.
+    + rewrite app_comm_cons. apply e_step.
+      * admit.
+      * unfold NoDecisions. unfold not. intros [l [contra|Hin]].
+        -- discriminate.
+        -- apply Hno_dec. now exists l.
+      * assumption.
   (* t_decide *)
   - rewrite <- app_nil_l. apply e_step.
     + intros. reflexivity.
