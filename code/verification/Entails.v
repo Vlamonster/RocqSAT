@@ -20,7 +20,7 @@ Inductive Entails: CNF -> PA -> Prop :=
 Lemma trans_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==> state m' f Hwf' -> Entails f m -> Entails f m'.
 Proof.
-  intros. inversion H as
+  intros m m' f Hwf Hwf' Htrans Hentails. inversion Htrans as
   [
       m'' f' c_conflict Hwf'' Hc_in_f Hconflict Hno_dec |
       m'' f' c_unit l_unit ? Hwf'' Hl_in_c Hc_in_f Hconflict Hundef |
@@ -32,7 +32,7 @@ Proof.
   (* t_decide *)
   - rewrite <- app_nil_l. apply e_step.
     + intros. reflexivity.
-    + unfold NoDecisions. unfold not. intros. now destruct H1.
+    + unfold NoDecisions. unfold not. intros. now destruct H.
     + assumption.
   (* t_backtrack *)
   - admit.
