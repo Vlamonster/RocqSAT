@@ -94,7 +94,33 @@ Proof.
     + unfold NoDecisions. unfold not. intros. now destruct H.
     + assumption.
   (* t_backtrack *)
-  - admit.
+  - unfold Conflicting in Hconflict. inversion Hentails as
+    [
+      f' m'' Hcons Hno_dec' Hf Hm |
+      f' m'' n l_decide Hcons Hno_dec' Hentails' Hf Hm
+    ]; clear Htrans; clear Hwf; clear Hwf'; subst f'; try subst m''; subst m'.
+    + apply e_intro.
+      * intros m' Hmodel_f. assert (Hmodel_m: m_eval m' m = Some true).
+        -- now apply Hcons.
+        -- assert (Hmodel_m_split: m_eval m' m_split = Some true).
+          ++ rewrite m_eval_true_iff in Hmodel_m. apply m_eval_true_iff.
+             intros l a Hin. apply (Hmodel_m _ a). rewrite <- H. apply in_or_app.
+             right. now right.
+          ++ simp m_eval. rewrite Hmodel_m_split. 
+             destruct (l_eval m' (¬l_split)) as [[|]|] eqn:Hl.
+            ** reflexivity.
+            ** exfalso. apply (m_eval_transfer_c _ _ c_conflict) in Hmodel_m.
+              --- rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
+              --- congruence.
+            ** exfalso. rewrite l_eval_neg_none_iff in Hl. rewrite involutive in Hl.
+               assert (contra: l_eval m' l_split = Some true).
+              --- rewrite m_eval_true_iff in Hmodel_m. apply (Hmodel_m _ dec).
+                  rewrite <- H. apply in_or_app. right. now left.
+              --- congruence.
+      * unfold NoDecisions. unfold not. intros [l [contra|Hin]].
+        -- discriminate.
+        -- apply Hno_dec'. exists l. rewrite <- H. apply in_or_app. right. now right.
+    + admit.
 Admitted.
 
 Lemma derivation_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
