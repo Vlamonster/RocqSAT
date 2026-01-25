@@ -20,7 +20,22 @@ Inductive Entails: CNF -> PA -> Prop :=
 
 Lemma no_decisions_tail: forall (m m' n n': PA) (l l': Lit),
   NoDecisions n -> NoDecisions n' -> m ++d l ++a n = m' ++d l' ++a n' -> n = n'.
-Admitted.
+Proof. 
+  intros. generalize dependent n'. induction n.
+  - intros. simpl in H1. destruct n'.
+    + reflexivity.
+    + exfalso. injection H1. intros. destruct p. injection H3 as <- <-.
+      apply H0. exists l. now left.
+  - intros. destruct n'.
+    + exfalso. simpl in H1. injection H1. intros. destruct a. injection H3 as -> ->.
+      apply H. exists l'. now left.
+    + injection H1. intros. f_equal.
+      * assumption.
+      * apply IHn.
+        -- unfold NoDecisions. unfold not. intros. apply H. destruct H4. exists x. now right.
+        -- unfold NoDecisions. unfold not. intros. apply H0. destruct H4. exists x. now right.
+        -- assumption.
+Qed.
 
 Lemma trans_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==> state m' f Hwf' -> Entails f m -> Entails f m'.
