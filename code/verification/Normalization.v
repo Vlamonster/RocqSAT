@@ -71,9 +71,17 @@ Proof.
       * discriminate.
 Qed.
 
-Lemma m_eval_extend_undef: forall (m m': PA) (l: Lit) (a: Ann) (b: bool),
-  Undef m l -> m_eval m m' = Some b -> m_eval ((l, a) :: m) m' = Some b.
-Admitted.
+Lemma m_eval_extend_undef: forall (m m': PA) (l: Lit) (a: Ann),
+  Undef m l -> m_eval m m' = Some true -> m_eval ((l, a) :: m) m' = Some true.
+Proof.
+  unfold Undef. intros. apply m_eval_true_iff. intros.
+  simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
+  - reflexivity.
+  - reflexivity.
+  - simpl. rewrite eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
+    apply H0 in H1. apply l_eval_neg_some_iff in H1. rewrite involutive in H1. congruence.
+  - simpl. rewrite m_eval_true_iff in H0. now apply H0 in H1.
+Qed.
 
 Lemma c_totalize_l: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
   l_eval m l = Some b -> l_eval (c_totalize m c) l = Some b.
