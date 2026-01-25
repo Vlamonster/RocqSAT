@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set-up OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5
+          
+      - name: Install dependencies and build
+        run: |
+          cd code
+          opam repo add rocq-released https://coq.inria.fr/opam/released
+          opam install . --deps-only -y
+          opam exec -- dune build
