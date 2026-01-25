@@ -9,9 +9,6 @@ Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
 Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
 Definition Unsat (f: CNF): Prop := ~ Sat f.
 
-Definition Entails (f f': CNF): Prop := forall (m: PA), Model m f -> Model m f'.
-Definition Equivalent (f f': CNF): Prop := Entails f f' /\ Entails f' f.
-
 Theorem final_exists: forall (f: CNF),
   exists (s: State), state [] f (initial_wf f) ==>* s /\ Final s.
 Proof.
