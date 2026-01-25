@@ -5,6 +5,8 @@
 
 (package
  (name rocqsat)
+ (synopsis "A formal verification of an abstract SAT solving transition system.")
+ (maintainers "Julia Dijkstra <juliadijkstra97@gmail.com>")
  (depends
   (rocq-stdlib (= 9.0.0))
   (rocq-prover (= 9.0.0))
