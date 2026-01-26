@@ -5,7 +5,7 @@ From RocqSAT Require Import Lit Neg Clause CNF Evaluation Trans Inspect WellForm
 
 Definition Strategy (next: State -> option State): Prop :=
   (next fail = None) /\
-  (forall (s: State), next s = None -> Final s) /\
+  (forall (s: State), next s = None -> FinalB s) /\
   (forall (s s': State), next s = Some s' -> s ==> s').
 
 Lemma strategy_trans: forall (f: CNF) (s s': State) (next: State -> option State) (Hstrat: Strategy next),
@@ -474,6 +474,6 @@ Proof.
   unfold Strategy. split.
   - reflexivity.
   - split.
-    + apply next_state_final_refl.
+    + intros. apply final__final_b. now apply next_state_final_refl in H.
     + apply next_state_sound.
 Qed.

@@ -27,5 +27,11 @@ Section Solve.
 
   Theorem solve_final_derivation: forall (s s': State) (H: state [] f (initial_wf f) ==>* s),
     solve_aux s H = s' -> state [] f (initial_wf f) ==>* s' /\ Final s'.
-  Proof. intros. funelim (solve_aux s H); auto with *. Qed.
+  Proof. 
+    intros. funelim (solve_aux s H).
+    - now apply H0.
+    - split.
+      + assumption.
+      + apply final__final_b. now apply Hstrat.
+  Qed.
 End Solve.
