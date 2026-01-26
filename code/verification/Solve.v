@@ -7,43 +7,25 @@ From RocqSAT Require Import CNF Evaluation WellFormed Trans Termination Inspect 
 Unset Equations With Funext.
 
 Section Solve.
-  Context (f: CNF). 
+  Context (f: CNF) (next: State -> option State) (Hstrat: Strategy next).
 
   Instance wf_state_lt_f: WellFounded (StateLt f) := wf_state_lt f.
 
   Equations solve_aux (s: State) (H: state [] f (initial_wf f) ==>* s): State by wf s (StateLt f) :=
-  solve_aux s H with inspect (next_state s) :=
-    | Some s' eqn:ns := solve_aux s' (next_state_trans f s s' ns H)
+  solve_aux s H with inspect (next s) :=
+    | Some s' eqn:ns := solve_aux s' (strategy_trans f s s' next Hstrat ns H)
     | None    eqn:ns := s.
   Next Obligation. 
     clear solve_aux. destruct s.
-    - inversion ns.
-    - destruct (next_state_options m f0 Hwf) as [G|[G|G]].
-      + congruence.
-      + rewrite ns in G. injection G as ->. now constructor.
-      + rewrite ns in G. destruct G. destruct H0. injection H0 as ->.
-        apply next_state_sound in ns. assert (state [] f (initial_wf f) ==>* state x f0 x0).
-        * eapply rt_trans.
-          -- apply H.
-          -- now apply rt_step.
-        * apply derivation_same_formula in H0. subst f0. now apply trans__state_lt.
+    - assert (next fail = None) by apply Hstrat. congruence.
+    - apply derivation_same_formula in H as Heq. subst f0. destruct s'.
+      + apply trans__state_lt. now apply Hstrat.
+      + apply trans__state_lt. now apply Hstrat.
   Qed.
 
   Definition solve: State := solve_aux (state [] f (initial_wf f)) (initial_refl f).
+
+  Theorem solve_final_derivation: forall (s s': State) (H: state [] f (initial_wf f) ==>* s),
+    solve_aux s H = s' -> state [] f (initial_wf f) ==>* s' /\ Final s'.
+  Proof. intros. funelim (solve_aux s H); auto with *. Qed.
 End Solve.
-
-Lemma solve_aux_trans: forall (f: CNF) (s s': State) (H: state [] f (initial_wf f) ==>* s),
-  solve_aux f s H = s' -> state [] f (initial_wf f) ==>* s'.
-Proof.
-  intros. funelim (solve_aux f s H).
-  - now apply H0.
-  - assumption.
-Qed.
-
-Lemma solve_aux_final: forall (f: CNF) (s s': State) (H: state [] f (initial_wf f) ==>* s),
-  solve_aux f s H = s' -> Final s'.
-Proof.
-  intros. apply next_state_final_refl. funelim (solve_aux f s H).
-  - now apply H0.
-  - assumption.
-Qed.

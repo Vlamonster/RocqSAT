@@ -12,13 +12,9 @@ Definition Unsat (f: CNF): Prop := ~ Sat f.
 Theorem final_exists: forall (f: CNF),
   exists (s: State), state [] f (initial_wf f) ==>* s /\ Final s.
 Proof.
-  intros. destruct (solve f) as [|m' f' Hwf'] eqn:H.
-  - exists fail. split.
-    + now apply solve_aux_trans in H.
-    + now apply solve_aux_final in H.
-  - exists (state m' f' Hwf'). split.
-    + now apply solve_aux_trans in H.
-    + now apply solve_aux_final in H.
+  intros. destruct (solve f next_state next_state_strategy) as [|m' f' Hwf'] eqn:H.
+  - exists fail. now apply solve_final_derivation in H.
+  - exists (state m' f' Hwf'). now apply solve_final_derivation in H.
 Qed.
 
 Theorem final_model: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),

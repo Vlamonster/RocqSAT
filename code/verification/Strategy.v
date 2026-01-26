@@ -3,6 +3,21 @@ From Stdlib Require Import Bool List Relations.
 Import ListNotations.
 From RocqSAT Require Import Lit Neg Clause CNF Evaluation Trans Inspect WellFormed Termination.
 
+Definition Strategy (next: State -> option State): Prop :=
+  (next fail = None) /\
+  (forall (s: State), next s = None -> Final s) /\
+  (forall (s s': State), next s = Some s' -> s ==> s').
+
+Lemma strategy_trans: forall (f: CNF) (s s': State) (next: State -> option State) (Hstrat: Strategy next),
+  next s = Some s' ->
+  state [] f (initial_wf f) ==>* s ->
+  state [] f (initial_wf f) ==>* s'.
+Proof.
+  intros f s s' next Hstrat ns H. eapply rt_trans.
+  - apply H.
+  - apply rt_step. now apply Hstrat.
+Qed.
+
 Equations is_conflict (m: PA) (c: Clause): bool :=
 is_conflict m c with c_eval m c :=
   | Some false := true
@@ -454,34 +469,11 @@ Proof.
     + reflexivity.
 Qed.
 
-Lemma next_state_trans: forall (f: CNF) (s s': State),
-  next_state s = Some s' ->
-  state [] f (initial_wf f) ==>* s ->
-  state [] f (initial_wf f) ==>* s'.
+Lemma next_state_strategy: Strategy (next_state).
 Proof.
-  intros f s s' ns H. eapply rt_trans.
-  - apply H.
-  - apply rt_step. now apply next_state_sound.
+  unfold Strategy. split.
+  - reflexivity.
+  - split.
+    + apply next_state_final_refl.
+    + apply next_state_sound.
 Qed.
-
-Lemma next_state_options: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),
-  next_state (state m f Hwf) = None \/
-  next_state (state m f Hwf) = Some fail \/ 
-  exists (m': PA) (Hwf': WellFormed m' f), next_state (state m f Hwf) = Some (state m' f Hwf').
-Proof.
-  intros. funelim (next_state (state m f Hwf)).
-  - left. reflexivity.
-  - injection eqargs as <- <-. rewrite Heqcall. destruct (find_conflict m f).
-    + destruct (inspect (split_last_decision m)) as [[(m_split, l_split)|] Hsplit].
-      -- right. right. now exists (m_split ++p ¬l_split), ((wf_backtrack m m_split f l_split Hsplit Hwf)).
-      -- right. now left.
-    + destruct (inspect (find_unit m f)) as [[(c_unit, l_unit)|] Hfind_unit].
-      * right. right. now exists (m ++p l_unit), (wf_unit m f c_unit l_unit Hfind_unit Hwf).
-      * destruct (inspect (find_decision m f)) as [[l_dec|] Hfind_dec].
-        -- right. right. now exists (m ++d l_dec), (wf_decide m f l_dec Hfind_dec Hwf).
-        -- now left.
-Qed.
-
-Lemma next_state__state_lt: forall (m: PA) (f: CNF) (Hwf: WellFormed m f) (s': State), 
-  next_state (state m f Hwf) = Some s' -> state m f Hwf >>[f] s'.
-Proof. intros. apply trans__state_lt. now apply next_state_sound. Qed.
