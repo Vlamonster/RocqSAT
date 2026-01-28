@@ -53,13 +53,14 @@ Inductive TransB: relation State :=
   NoDecisions n ->
   TransB (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf').
 
-(* The following is the reflexive-transitive closure of `==>`. *)
 Definition Derivation: relation State := clos_refl_trans State Trans.
+Definition DerivationStrict: relation State := clos_trans State Trans.
 
 Declare Scope trans_scope.
 Infix "==>" := Trans (at level 70): trans_scope.
 Infix "==>b" := TransB (at level 70): trans_scope.
 Infix "==>*" := Derivation (at level 70): trans_scope.
+Infix "==>+" := DerivationStrict (at level 70): trans_scope.
 Open Scope trans_scope.
 
 (* A state is final if there are no states that follow from it by `==>`. *)
@@ -118,6 +119,21 @@ Proof. intros. apply rt_refl. Qed.
 Lemma trans_same_formula: forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'), 
   state m f Hwf ==> state m' f' Hwf' -> f = f'.
 Proof. intros. inversion H; subst; reflexivity. Qed.
+
+Lemma derivation_strict_same_formula: forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'), 
+  state m f Hwf ==>+ state m' f' Hwf' -> f = f'.
+Proof. 
+  intros m m' f f' Hwf Hwf' H. apply clos_trans_tn1_iff in H. 
+  remember (state m f Hwf) as s eqn:Heqs.
+  remember (state m' f' Hwf') as s' eqn:Heqs'.
+  generalize dependent m. generalize dependent m'.
+  induction H.
+  - intros. subst s; subst y. now apply trans_same_formula in H.
+  - intros. destruct y, z; try congruence.
+    + inversion H.
+    + subst. injection Heqs' as <- <-. apply trans_same_formula in H as <-.
+      now apply IHclos_trans_n1 with (Hwf':=Hwf0) (Hwf:=Hwf).
+Qed.
 
 Lemma derivation_same_formula: forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'), 
   state m f Hwf ==>* state m' f' Hwf' -> f = f'.

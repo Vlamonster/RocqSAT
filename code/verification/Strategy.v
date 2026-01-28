@@ -6,7 +6,7 @@ From RocqSAT Require Import Lit Neg Clause CNF Evaluation Trans Inspect WellForm
 Definition Strategy (next: State -> option State): Prop :=
   (next fail = None) /\
   (forall (s: State), next s = None -> FinalB s) /\
-  (forall (s s': State), next s = Some s' -> s ==> s').
+  (forall (s s': State), next s = Some s' -> s ==>+ s').
 
 Lemma strategy_trans: forall (f: CNF) (s s': State) (next: State -> option State) (Hstrat: Strategy next),
   next s = Some s' ->
@@ -15,7 +15,7 @@ Lemma strategy_trans: forall (f: CNF) (s s': State) (next: State -> option State
 Proof.
   intros f s s' next Hstrat ns H. eapply rt_trans.
   - apply H.
-  - apply rt_step. now apply Hstrat.
+  - apply Hstrat in ns. now apply clos_t_clos_rt in ns.
 Qed.
 
 Equations is_conflict (m: PA) (c: Clause): bool :=
@@ -475,5 +475,5 @@ Proof.
   - reflexivity.
   - split.
     + intros. apply final__final_b. now apply next_state_final_refl in H.
-    + apply next_state_sound.
+    + intros. apply t_step. now apply next_state_sound.
 Qed.

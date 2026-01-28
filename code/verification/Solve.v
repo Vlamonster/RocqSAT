@@ -9,18 +9,18 @@ Unset Equations With Funext.
 Section Solve.
   Context (f: CNF) (next: State -> option State) (Hstrat: Strategy next).
 
-  Instance wf_state_lt_f: WellFounded (StateLt f) := wf_state_lt f.
+  Instance wf_state_lt_f: WellFounded (StateLtTransClos f) := wf_state_lt_trans_clos f.
 
-  Equations solve_aux (s: State) (H: state [] f (initial_wf f) ==>* s): State by wf s (StateLt f) :=
+  Equations solve_aux (s: State) (H: state [] f (initial_wf f) ==>* s): State by wf s (StateLtTransClos f) :=
   solve_aux s H with inspect (next s) :=
     | Some s' eqn:ns := solve_aux s' (strategy_trans f s s' next Hstrat ns H)
     | None    eqn:ns := s.
   Next Obligation. 
     clear solve_aux. destruct s.
     - assert (next fail = None) by apply Hstrat. congruence.
-    - apply derivation_same_formula in H as Heq. subst f0. destruct s'.
-      + apply trans__state_lt. now apply Hstrat.
-      + apply trans__state_lt. now apply Hstrat.
+    - apply derivation_same_formula in H as Heq. subst f0.
+      apply derivation_strict__state_lt_trans_clos.
+      now apply Hstrat in ns.
   Qed.
 
   Definition solve: State := solve_aux (state [] f (initial_wf f)) (initial_refl f).

@@ -171,6 +171,10 @@ state_measure fail          := ([]       , 0              );
 state_measure (state m f _) := (score m f, score_total m f).
 
 Definition StateLt (f: CNF): relation State := union _ FailLt (MR (StateLexLt f) state_measure).
+Definition StateLtTransClos (f: CNF): relation State := clos_trans _ (StateLt f).
+
+Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40, format "s '/ ' '[' >>[ ']' f ] '/ ' s'").
+Notation "s '>>+[' f ']' s'" := (StateLtTransClos f s' s) (at level 40, format "s '/ ' '[' >>+[ ']' f ] '/ ' s'").
 
 Lemma wf_state_lt: forall (f: CNF), well_founded (StateLt f).
 Proof.
@@ -185,8 +189,9 @@ Proof.
   - apply wf_fail_lt.
   - apply wf_MR. apply wf_state_lex_lt.
 Qed.
-  
-Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40, format "s '/ ' '[' >>[ ']' f ] '/ ' s'").
+
+Theorem wf_state_lt_trans_clos (f: CNF): well_founded (StateLtTransClos f).
+Proof. unfold well_founded. intros. constructor. apply wf_clos_trans. apply wf_state_lt. Qed.
 
 Lemma max_atom_c_le: forall (c: Clause) (l: Lit) (p: Atom),
   In l c ->
@@ -534,4 +539,17 @@ Proof.
     apply prefix_app.
     + assumption.
     + now rewrite H0.
+Qed.
+
+Lemma derivation_strict__state_lt_trans_clos: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
+  state m f Hwf ==>+ s' -> state m f Hwf >>+[f] s'.
+Proof.
+  intros. apply clos_trans_tn1_iff in H. induction H.
+  - apply t_step. now apply trans__state_lt.
+  - destruct y.
+    + inversion H.
+    + apply clos_trans_tn1_iff in H0. apply derivation_strict_same_formula in H0. subst f0.
+      eapply t_trans.
+      * apply t_step. apply trans__state_lt. apply H.
+      * apply IHclos_trans_n1.
 Qed.
