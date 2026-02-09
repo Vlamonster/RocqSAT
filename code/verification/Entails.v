@@ -24,6 +24,7 @@ Inductive Entails: CNF -> PA -> Prop :=
     f_eval m' f = Some true /\
     m_eval m' m = Some true /\
     l_eval m' l = Some true -> m_eval m' n = Some true) ->
+  NoDecisions n ->
   Entails f m ->
   Entails f (m ++p l ++a n).
 
@@ -41,7 +42,7 @@ Proof.
       * unfold NoDecisions. unfold not. intros [l' Hin']. apply Hno_dec.
         exists l'. apply in_or_app. right. now right. 
       * assumption.
-    + apply H in H1. assert (m_eval (m' ++a m ++p l) n = Some true).
+    + apply H in H2. assert (m_eval (m' ++a m ++p l) n = Some true).
       * apply H0. split.
         -- assumption.
         -- split.
@@ -84,7 +85,7 @@ Proof.
     [
       f' m'' Hcons Hno_dec Hf Hm |
       f' m'' n l_decide Hcons Hno_dec Hentails' Hf Hm |
-      f' m'' n l_irrel Hirrel Hcons Hentails' Hf Hm
+      f' m'' n l_irrel Hirrel Hcons Hno_dec Hentails' Hf Hm
     ]; clear Htrans; clear Hwf; clear Hwf'; subst f'; try subst m''; subst m'.
     + apply e_intro.
       * intros m' Hmodel. simp m_eval. rewrite (Hcons _ Hmodel). 
@@ -169,18 +170,21 @@ Proof.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                 +++ assumption.
                 +++ assumption.
+      * unfold NoDecisions. unfold not. intros [l [Hin|Hin]].
+        -- discriminate.
+        -- apply Hno_dec. now exists l.
       * assumption.
   (* t_decide *)
   - rewrite <- app_nil_l. apply e_decide.
     + intros. reflexivity.
     + unfold NoDecisions. unfold not. intros. now destruct H.
     + assumption.
-Admitted.
-  (* t_backtrack
+  (* t_backtrack *)
   - unfold Conflicting in Hconflict. inversion Hentails as
     [
       f' m'' Hcons Hno_dec' Hf Hm |
-      f' m'' n l_decide Hcons Hno_dec' Hentails' Hf Hm
+      f' m'' n l_decide Hcons Hno_dec' Hentails' Hf Hm |
+      f' m'' n l_irrel Hirrel Hcons Hentails' Hf Hm
     ]; clear Htrans; clear Hwf; clear Hwf'; subst f'; try subst m''; subst m'.
     + apply e_intro.
       * intros m' Hmodel_f. assert (Hmodel_m: m_eval m' m = Some true).
@@ -210,7 +214,8 @@ Admitted.
         inversion Hentails' as
         [
           f' m'' Hcons' Hno_dec Hf Hm' |
-          f' m'' n l_decide Hcons' Hno_dec Hentails Hf Hm'
+          f' m'' n l_decide Hcons' Hno_dec Hentails Hf Hm' |
+          f' m'' n l_irrel Hirrel Hcons' Hno_dec Hentails Hf Hm'
         ]; try subst f'; try subst m''.
         -- apply e_intro.
           ++ intros m' Hmodel_f. simp m_eval.
@@ -253,7 +258,7 @@ Admitted.
           ++ unfold NoDecisions. unfold not. intros [l [contra|Hin]].
             ** discriminate.
             ** apply Hno_dec. now exists l.
-        -- rewrite app_comm_cons. apply e_step.
+        -- rewrite app_comm_cons. apply e_decide.
           ++ intros m' [Hmodel_f [Hmodel_m'' Hmodel_l]].
              assert (Hmodel_n: m_eval m' n = Some true).
             ** now apply Hcons'.
@@ -301,7 +306,63 @@ Admitted.
             ** discriminate.
             ** apply Hno_dec. now exists l.
           ++ assumption.
-Qed. *)
+        -- rewrite app_comm_cons. apply e_irrelevant.
+          ++ assumption.
+          ++ intros m' [Hmodel_f [Hmodel_m'' Hmodel_l]].
+             assert (Hmodel_n: m_eval m' n = Some true).
+            ** now apply Hcons'.
+            ** assert (Hmodel_m_split: m_eval m' m_split = Some true).
+              --- apply m_eval_true_iff. intros. rewrite <- Hm' in H. apply in_app_or in H.
+                  destruct H.
+                +++ rewrite m_eval_true_iff in Hmodel_n. now apply (Hmodel_n _ a).
+                +++ destruct H.
+                  *** congruence.
+                  *** rewrite m_eval_true_iff in Hmodel_m''. now apply (Hmodel_m'' _ a).
+              --- destruct (l_eval m' l_split) as [[|]|] eqn:Hl.
+                +++ exfalso. assert (Hmodel_n_split: m_eval m' n_split = Some true).
+                  *** now apply Hcons.
+                  *** assert (Hmodel_m: m_eval m' m = Some true).
+                    ---- apply m_eval_true_iff. intros. rewrite <- Hm in H. apply in_app_or in H.
+                         destruct H.
+                      ++++ rewrite m_eval_true_iff in Hmodel_n_split. now apply (Hmodel_n_split _ a).
+                      ++++ destruct H.
+                        **** congruence.
+                        **** rewrite m_eval_true_iff in Hmodel_m_split. now apply (Hmodel_m_split _ a).
+                    ---- apply (m_eval_transfer_c _ _ c_conflict) in Hmodel_m.
+                      ++++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
+                      ++++ congruence.
+                +++ apply l_eval_neg_some_iff in Hl. simp m_eval. rewrite Hl. now rewrite Hmodel_n.
+                +++ exfalso. 
+                    assert (Hmodel_f': f_eval (m' ++p l_split) f = Some true) 
+                      by now apply f_eval_extend_undef.
+                    assert (Hmodel_m_split': m_eval (m' ++p l_split) m_split = Some true) 
+                      by now apply m_eval_extend_undef.
+                    assert (Hmodel_l_split': l_eval (m' ++p l_split) l_split = Some true).
+                  *** simp l_eval. rewrite eqb_refl. now rewrite self_neqb_neg.
+                  *** assert (Hmodel_n_split': m_eval (m' ++p l_split) n_split = Some true).
+                    ---- now apply Hcons.
+                    ---- assert (Hmodel_m: m_eval (m' ++p l_split) m = Some true).
+                      ++++ apply m_eval_true_iff. intros. rewrite <- Hm in H. apply in_app_or in H.
+                           destruct H.
+                        **** rewrite m_eval_true_iff in Hmodel_n_split'. now apply (Hmodel_n_split' _ a).
+                        **** destruct H.
+                          ----- congruence.
+                          ----- rewrite m_eval_true_iff in Hmodel_m_split'. now apply (Hmodel_m_split' _ a).
+                      ++++ apply (m_eval_transfer_c _ _ c_conflict) in Hmodel_m.
+                        **** rewrite f_eval_true_iff in Hmodel_f'. apply Hmodel_f' in Hc_in_f. congruence.
+                        **** congruence.
+          ++ unfold NoDecisions. unfold not. intros [l [Hin|Hin]].
+            ** discriminate.
+            ** apply Hno_dec. now exists l. 
+          ++ assumption.
+    + assert (m'' = m_split ++d l_split). admit. rewrite H0 in Hf. inversion Hf.
+      * exfalso. apply H3. exists l_split. now left.
+      * admit. (* actual stuff *)
+      * destruct n0 as [|[l' [|]] n0].
+        -- discriminate.
+        -- exfalso. apply H5. exists l'. now left.
+        -- discriminate.
+Admitted.
 
 Lemma derivation_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==>* state m' f Hwf' -> Entails f m -> Entails f m'.
