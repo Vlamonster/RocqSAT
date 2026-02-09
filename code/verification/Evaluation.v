@@ -320,6 +320,29 @@ Proof.
   - now exists l.
 Qed.
 
+Lemma l_eval_false_extend: forall (m m': PA) (l: Lit),
+  l_eval m l = Some false -> l_eval (m' ++a m) l = Some false.
+Proof.
+  intros. funelim (l_eval m l); try congruence.
+  - simpl. simp l_eval. rewrite Heq. now rewrite Heq0.
+  - simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl.
+    apply H.
+    + congruence.
+    + reflexivity.
+    + reflexivity.
+Qed.
+
+Lemma c_eval_false_extend: forall (m m': PA) (c: Clause),
+  c_eval m c = Some false -> c_eval (m' ++a m) c = Some false.
+Proof.
+  intros. funelim (c_eval m c); try congruence.
+  - reflexivity.
+  - assert (c_eval (m' ++a m) c = Some false).
+    + now apply Hind.
+    + simp c_eval. apply (l_eval_false_extend _ m') in Heq0.
+      rewrite H0. now rewrite Heq0.
+Qed.
+
 Lemma f_eval_false_iff: forall (m: PA) (f: CNF),
   f_eval m f = Some false <-> exists (c: Clause), In c f /\ Conflicting m c.
 Proof.
@@ -433,4 +456,48 @@ Proof.
   intros. apply c_eval_false_iff. intros.
   rewrite c_eval_false_iff in H0. apply H0 in H1. 
   now apply (m_eval_transfer_l _ m').
+Qed.
+
+Lemma l_eval_true_extend: forall (m m': PA) (l: Lit),
+  l_eval m' l = Some true -> m_eval m' m = Some true -> l_eval (m' ++a m) l = Some true.
+Proof.
+  induction m as [|[l a] m IH].
+  - intros. assumption.
+  - intros. simpl. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
+    + reflexivity.
+    + reflexivity.
+    + simpl. rewrite eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
+      assert (l_eval m' l = Some true).
+      * apply (H0 _ a). now left.
+      * apply l_eval_neg_some_iff in H1. simpl in H1. congruence.
+    + simpl. apply IH.
+      * assumption.
+      * apply m_eval_true_iff. intros. rewrite m_eval_true_iff in H0. apply (H0 _ a0). now right.
+Qed.
+
+Lemma c_eval_true_extend: forall (m m': PA) (c: Clause),
+  c_eval m' c = Some true -> m_eval m' m = Some true -> c_eval (m' ++a m) c = Some true.
+Proof.
+  intros. funelim (c_eval m' c); try congruence.
+  - simp c_eval. apply (l_eval_true_extend m0) in Heq.
+    + now rewrite Heq.
+    + assumption.
+  - assert (c_eval (m ++a m0) c = Some true).
+    + apply Hind; congruence.
+    + simp c_eval. rewrite H1. now destruct (l_eval (m ++a m0) l) as [[|]|].
+  - assert (c_eval (m ++a m0) c = Some true).
+    + apply Hind; congruence.
+    + simp c_eval. rewrite H1. now destruct (l_eval (m ++a m0) l) as [[|]|].
+Qed.
+
+Lemma f_eval_true_extend: forall (m m': PA) (f: CNF),
+  f_eval m' f = Some true -> m_eval m' m = Some true -> f_eval (m' ++a m) f = Some true.
+Proof.
+  intros. funelim (f_eval m' f); try congruence.
+  - reflexivity.
+  - simp f_eval. apply (c_eval_true_extend m0) in Heq.
+    + rewrite Heq. assert (f_eval (m ++a m0) f = Some true).
+      * apply Hind; congruence.
+      * now rewrite H1.
+    + assumption.
 Qed.

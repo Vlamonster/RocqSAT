@@ -9,14 +9,46 @@ Inductive Entails: CNF -> PA -> Prop :=
     f_eval m f = Some true -> m_eval m n = Some true) ->
   NoDecisions n ->
   Entails f n
-| e_step (f: CNF) (m n: PA) (l: Lit):
+| e_decide (f: CNF) (m n: PA) (l: Lit):
   (forall (m': PA), 
     f_eval m' f = Some true /\
     m_eval m' m = Some true /\
     l_eval m' l = Some true -> m_eval m' n = Some true) ->
   NoDecisions n ->
   Entails f m ->
-  Entails f (m ++d l ++a n).
+  Entails f (m ++d l ++a n)
+| e_irrelevant (f: CNF) (m n: PA) (l: Lit):
+  (forall (m': PA),
+    f_eval m' f = Some true -> f_eval (m' ++p l) f = Some true) ->
+  (forall (m': PA), 
+    f_eval m' f = Some true /\
+    m_eval m' m = Some true /\
+    l_eval m' l = Some true -> m_eval m' n = Some true) ->
+  Entails f m ->
+  Entails f (m ++p l ++a n).
+
+Lemma entailment: forall (m m': PA) (f: CNF),
+  Entails f m -> WellFormed m f -> NoDecisions m -> f_eval m' f = Some true -> f_eval (m' ++a m) f = Some true.
+Proof.
+  intros m m' f Hentails Hwf Hno_dec Hmodel. induction Hentails.
+  - apply f_eval_true_extend.
+    + assumption.
+    + now apply H.
+  - exfalso. apply Hno_dec. exists l. apply in_elt.
+  - assert (f_eval (m' ++a m) f = Some true).
+    + apply IHHentails.
+      * apply wf_app__wf in Hwf. now apply wf_cons__wf in Hwf.
+      * unfold NoDecisions. unfold not. intros [l' Hin']. apply Hno_dec.
+        exists l'. apply in_or_app. right. now right. 
+      * assumption.
+    + apply H in H1. assert (m_eval (m' ++a m ++p l) n = Some true).
+      * apply H0. split.
+        -- assumption.
+        -- split.
+          ++ admit.
+          ++ simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+      * rewrite <- app_assoc. simpl. now apply f_eval_true_extend.
+Admitted.
 
 Lemma no_decisions_tail: forall (m m' n n': PA) (l l': Lit),
   NoDecisions n -> NoDecisions n' -> m ++d l ++a n = m' ++d l' ++a n' -> n = n'.
@@ -51,7 +83,8 @@ Proof.
   - unfold Conflicting in Hconflict. inversion Hentails as
     [
       f' m'' Hcons Hno_dec Hf Hm |
-      f' m'' n l_decide Hcons Hno_dec Hentails' Hf Hm
+      f' m'' n l_decide Hcons Hno_dec Hentails' Hf Hm |
+      f' m'' n l_irrel Hirrel Hcons Hentails' Hf Hm
     ]; clear Htrans; clear Hwf; clear Hwf'; subst f'; try subst m''; subst m'.
     + apply e_intro.
       * intros m' Hmodel. simp m_eval. rewrite (Hcons _ Hmodel). 
@@ -75,7 +108,7 @@ Proof.
       * unfold NoDecisions. unfold not. intros [l [contra|Hin]].
         -- discriminate.
         -- apply Hno_dec. now exists l.
-    + rewrite app_comm_cons. apply e_step.
+    + rewrite app_comm_cons. apply e_decide.
       * intros m' [Hmodel_f [Hmodel_m'' Hmodel_l]].
         assert (Hmodel_n: m_eval m' n = Some true).
         -- now apply Hcons.
@@ -107,12 +140,17 @@ Proof.
         -- discriminate.
         -- apply Hno_dec. now exists l.
       * assumption.
+    + rewrite app_comm_cons. apply e_irrelevant.
+      * assumption.
+      * intros. admit.
+      * assumption.
   (* t_decide *)
-  - rewrite <- app_nil_l. apply e_step.
+  - rewrite <- app_nil_l. apply e_decide.
     + intros. reflexivity.
     + unfold NoDecisions. unfold not. intros. now destruct H.
     + assumption.
-  (* t_backtrack *)
+Admitted.
+  (* t_backtrack
   - unfold Conflicting in Hconflict. inversion Hentails as
     [
       f' m'' Hcons Hno_dec' Hf Hm |
@@ -237,7 +275,7 @@ Proof.
             ** discriminate.
             ** apply Hno_dec. now exists l.
           ++ assumption.
-Qed.
+Qed. *)
 
 Lemma derivation_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==>* state m' f Hwf' -> Entails f m -> Entails f m'.

@@ -100,12 +100,10 @@ Proof.
   - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [Hwf [Hderivation Htrans]]].
     inversion Htrans; subst m0; subst f0; clear Hwf1; clear Hwf2.
     apply derivation_entails in Hderivation.
-    + inversion Hderivation; subst f0; subst m.
-      * unfold Unsat. unfold Sat. unfold Model. unfold not. intros [m Hsat].
-        apply H in Hsat as G. apply (m_eval_transfer_c _ _ c) in G.
-        -- rewrite f_eval_true_iff in Hsat. apply Hsat in H1. congruence.
-        -- assumption.
-      * exfalso. apply H3. exists l. apply in_elt.
+    + unfold Unsat. unfold Sat. unfold Model. unfold not. intros [m' Hsat].
+      assert (f_eval (m' ++a m) f = Some true) by now apply entailment.
+      rewrite f_eval_true_iff in H. apply H in H1. unfold Conflicting in H2.
+      apply (c_eval_false_extend _ m') in H2. congruence.
     + constructor.
       * intros. reflexivity.
       * unfold NoDecisions. unfold not. intros. now destruct H. 
