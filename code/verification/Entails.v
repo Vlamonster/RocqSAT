@@ -137,16 +137,12 @@ Proof.
              destruct (l_eval m' l_unit) as [[|]|] eqn:Hl.
             ** reflexivity.
             ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
-              --- apply (m_eval_transfer_c _ m).
-                +++ assumption.
-                +++ assumption.
+              --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_false_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                 +++ assumption.
             ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
-              --- apply (m_eval_transfer_c _ m).
-                +++ assumption.
-                +++ assumption.
+              --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_none_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                 +++ assumption.
@@ -170,16 +166,12 @@ Proof.
              destruct (l_eval m' l_unit) as [[|]|] eqn:Hl.
             ** reflexivity.
             ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
-              --- apply (m_eval_transfer_c _ m).
-                +++ assumption.
-                +++ assumption.
+              --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_false_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                 +++ assumption.
             ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
-              --- apply (m_eval_transfer_c _ m).
-                +++ assumption.
-                +++ assumption.
+              --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_none_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                 +++ assumption.
@@ -250,9 +242,7 @@ Proof.
                     ---- congruence.
             ** apply l_eval_neg_some_iff in Hl. rewrite Hl. now rewrite (Hcons' _ Hmodel_f).
             ** exfalso. assert (Hmodel_f': f_eval (m' ++p l_split) f = Some true).
-              --- apply f_eval_extend_undef.
-                +++ assumption.
-                +++ assumption.
+              --- now apply f_eval_extend_undef.
               --- assert (Hmodel_m_split: m_eval (m' ++p l_split) m_split = Some true).
                 +++ now apply Hcons'.
                 +++ assert (Hmodel_l_split: l_eval (m' ++p l_split) l_split = Some true).
