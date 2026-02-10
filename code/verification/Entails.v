@@ -28,6 +28,17 @@ Inductive Entails: CNF -> PA -> Prop :=
   Entails f m ->
   Entails f (m ++p l ++a n).
 
+Lemma m_eval_nodup_refl: forall (m: PA),
+  NoDuplicates m -> m_eval m m = Some true.
+Proof.
+  induction m as [|[l a] m IH].
+  - intros. reflexivity.
+  - intros. simp m_eval. simp l_eval. rewrite eqb_refl. rewrite self_neqb_neg. simpl.
+    apply m_eval_extend_undef.
+    + now apply nodup_cons__undef in H.
+    + apply IH. now apply nodup_cons__nodup in H.
+Qed.
+
 Lemma entailment: forall (m m': PA) (f: CNF),
   Entails f m -> WellFormed m f -> NoDecisions m -> f_eval m' f = Some true -> f_eval (m' ++a m) f = Some true.
 Proof.
@@ -46,10 +57,13 @@ Proof.
       * apply H0. split.
         -- assumption.
         -- split.
-          ++ admit.
+          ++ apply m_eval_head_refl.
+            ** apply (nodup_cons__undef _ _ prop). apply (nodup_app__nodup _ n). apply Hwf.
+            ** apply m_eval_nodup_refl. apply (nodup_cons__nodup _ l prop).
+               apply (nodup_app__nodup _ n). apply Hwf.
           ++ simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
       * rewrite <- app_assoc. simpl. now apply f_eval_true_extend.
-Admitted.
+Qed.
 
 Lemma no_decisions_tail: forall (m m' n n': PA) (l l': Lit),
   NoDecisions n -> NoDecisions n' -> m ++d l ++a n = m' ++d l' ++a n' -> n = n'.

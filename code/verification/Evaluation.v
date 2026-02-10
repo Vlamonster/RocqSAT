@@ -501,3 +501,32 @@ Proof.
       * now rewrite H1.
     + assumption.
 Qed.
+
+Lemma l_eval_head: forall (m m': PA) (l: Lit),
+  l_eval m l = Some true -> l_eval (m' ++a m) l = Some true.
+Proof.
+  induction m as [|[l' a] m IH].
+  - intros. discriminate.
+  - intros. simpl. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2; simpl.
+    + reflexivity.
+    + rewrite eqb_eq in G1. subst l. simp l_eval in H.
+      rewrite eqb_refl in H. rewrite eqb_compat in H. rewrite involutive in H.
+      rewrite self_neqb_neg in H. discriminate.
+    + reflexivity.
+    + apply IH. simp l_eval in H. rewrite G1 in H. now rewrite G2 in H.
+Qed.
+
+Lemma m_eval_head_refl: forall (m m' m'': PA) (l: Lit),
+  Undef m l -> m_eval m m'' = Some true -> m_eval (m' ++a m ++p l) m'' = Some true.
+Proof.
+  intros. funelim (m_eval m m''); try congruence.
+  - reflexivity.
+  - apply (Hind m m'0 m') in H as G; try congruence.
+    simp m_eval. rewrite G. simp l_eval.
+    destruct (l =? ¬l0) eqn:G1, (l =? l0) eqn:G2; simpl.
+    + reflexivity.
+    + rewrite eqb_eq in G1. subst l. apply l_eval_neg_some_iff in Heq.
+      rewrite involutive in Heq. simpl in Heq. congruence.
+    + reflexivity.
+    + apply (l_eval_head _ m'0) in Heq. now rewrite Heq.
+Qed.
