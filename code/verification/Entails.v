@@ -143,7 +143,7 @@ Proof.
     + symmetry in H3. assert (m0 ++p l0 ++a n0 = m0 ++a ([] ++p l0 ++a n0)).
       * now rewrite <- app_assoc.
       * rewrite H9 in H3. apply no_decisions_tail' in H3.
-        -- destruct H3.  rewrite <- app_assoc in H3. simpl in H3. now exists x.
+        -- destruct H3. rewrite <- app_assoc in H3. simpl in H3. now exists x.
         -- assumption.
         -- unfold NoDecisions. unfold not. intros. destruct H10.
            apply in_app_or in H10. destruct H10.
