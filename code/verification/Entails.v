@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List Relations.
+From Stdlib Require Import Arith List Relations Lia.
 Import ListNotations.
 From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Normalization.
 
@@ -83,6 +83,59 @@ Proof.
         -- unfold NoDecisions. unfold not. intros. apply H0. destruct H4. exists x. now right.
         -- assumption.
 Qed.
+
+Lemma entails_clip: forall (m n: PA) (f: CNF) (l: Lit),
+  Entails f (m ++d l ++a n) -> 
+  NoDecisions n ->
+  0 < length n -> 
+  exists (n': PA), 
+    Entails f (m ++d l ++a n') /\ 
+    (forall (m': PA), 
+      f_eval m' f = Some true /\
+      m_eval m' m = Some true /\
+      l_eval m' l = Some true /\
+      m_eval m' n' = Some true -> f_eval (m' ++a m ++d l ++a n) f = Some true) /\
+    length n' < length n.
+Proof.
+  intros. inversion H.
+  - exfalso. apply H3. intros. exists l. apply in_or_app. right. now left.
+  - exists []. simpl. assert (n0 = n) by now apply no_decisions_tail in H2. subst n0. split.
+    + rewrite <- app_nil_l. apply e_decide.
+      * intros. reflexivity.
+      * unfold NoDecisions. unfold not. intros. destruct H7. contradiction.
+      * apply app_inv_head in H2. now injection H2 as -> ->.
+    + split.
+      * intros. apply app_inv_head in H2. injection H2 as -> ->.
+        rewrite app_comm_cons. rewrite app_assoc.
+        apply f_eval_true_extend.
+        -- intuition.
+        -- apply m_eval_true_iff. intros. apply in_app_or in H2.
+           destruct H2.
+          ++ assert (m_eval m' n = Some true) by intuition.
+             rewrite m_eval_true_iff in H8. now apply (H8 _ a).
+          ++ destruct H2.
+            ** injection H2 as <- <-. intuition.
+            ** assert (m_eval m' m = Some true) by intuition.
+               rewrite m_eval_true_iff in H8. now apply (H8 _ a).
+      * assumption.
+  - assert (exists (n': PA), n' ++p l0 ++a n0 = n). admit.
+    destruct H8 as [n' Heq]. exists n'. rewrite <- Heq in H2.
+    rewrite <- app_assoc in H2. rewrite <- app_comm_cons in H2.
+    apply app_inv_head in H2. injection H2. intros. split.
+    + congruence.
+    + split.
+      * intros. admit.
+      * rewrite <- Heq. rewrite length_app. simpl. lia.
+Admitted.
+
+Lemma bla': forall (m n: PA) (f: CNF) (l: Lit),
+  Entails f (m ++d l ++a n) -> 
+  Entails f (m ++d l) /\
+  (forall (m': PA), 
+    f_eval m' f = Some true /\
+    m_eval m' m = Some true /\
+    l_eval m' l = Some true -> f_eval (m' ++a m ++d l ++a n) f = Some true).
+Proof. Admitted.
 
 Lemma trans_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==> state m' f Hwf' -> Entails f m -> Entails f m'.
@@ -359,13 +412,15 @@ Proof.
             ** discriminate.
             ** apply Hno_dec. now exists l. 
           ++ assumption.
-    + assert (m'' = m_split ++d l_split). admit. rewrite H0 in Hf. inversion Hf.
-      * exfalso. apply H3. exists l_split. now left.
-      * admit. (* actual stuff *)
-      * destruct n0 as [|[l' [|]] n0].
-        -- discriminate.
-        -- exfalso. apply H5. exists l'. now left.
-        -- discriminate.
+    + rewrite <- H in Hentails. apply bla' in Hentails as [Hentails Hcons']. inversion Hentails.
+      * exfalso. apply H1. exists l_split. now left.
+      * assert (m0 = m_split). admit. subst m0. inversion H5.
+        -- apply e_intro.
+          ++ admit.
+          ++ admit.
+        -- admit.
+        -- admit.
+      * admit.
 Admitted.
 
 Lemma derivation_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
