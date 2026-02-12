@@ -84,6 +84,26 @@ Proof.
         -- assumption.
 Qed.
 
+Lemma no_decisions_tail': forall (m m' n n': PA) (l: Lit),
+  NoDecisions n -> NoDecisions n' -> m ++d l ++a n = m' ++a n' -> exists (n'': PA), n'' ++a n' = n.
+Proof.
+  intros. generalize dependent n. induction n'.
+  - intros. exists n. reflexivity.
+  - intros. destruct a. destruct a.
+    + exfalso. apply H0. exists l0. now left.
+    + destruct n.
+      * simpl in H1. injection H1. intros. discriminate.
+      * destruct p. destruct a.
+        -- exfalso. apply H. exists l1. now left.
+        -- simpl in H1. injection H1. intros. subst l1.
+           assert (exists n'': PA, n'' ++a n' = n).
+          ++ apply IHn'.
+            ** unfold NoDecisions. unfold not. intros. apply H0. destruct H3. exists x. now right.
+            ** unfold NoDecisions. unfold not. intros. apply H. destruct H3. exists x. now right.
+            ** assumption.
+          ++ destruct H3. exists x. simpl. now f_equal.
+Qed.
+
 Lemma entails_clip_aux: forall (m n: PA) (f: CNF) (l: Lit),
   Entails f (m ++d l ++a n) -> 
   WellFormed (m ++d l ++a n) f ->
@@ -119,25 +139,36 @@ Proof.
             ** assert (m_eval m' m = Some true) by intuition.
                rewrite m_eval_true_iff in H9. now apply (H9 _ a).
       * assumption.
-  - assert (exists (n': PA), n' ++p l0 ++a n0 = n). admit.
-    destruct H9 as [n' Heq]. exists n'. rewrite <- Heq in H3.
-    rewrite <- app_assoc in H3. rewrite <- app_comm_cons in H3.
-    apply app_inv_head in H3. injection H3. intros. split.
-    + congruence.
-    + split.
-      * intros m' [Hmodel_f [Hmodel_m [Hmodel_l Hmodel_n']]].
-        assert (f_eval (m' ++a m ++d l ++a n') f = Some true).
-        -- rewrite app_comm_cons. rewrite app_assoc. apply f_eval_true_extend.
-          ++ assumption.
-          ++ apply m_eval_true_iff. intros. apply in_app_or in H10. destruct H10.
-            ** rewrite m_eval_true_iff in Hmodel_n'. now apply (Hmodel_n' _ a).
-            ** destruct H10.
-              --- now injection H10 as <- <-.
-              --- rewrite m_eval_true_iff in Hmodel_m. now apply (Hmodel_m _ a).
-        -- apply H4 in H10. repeat rewrite app_comm_cons in H10. rewrite app_assoc in H10.
-           rewrite <- app_comm_cons in H10. rewrite <- H3 in H10. simpl in H10.
-           rewrite <- Heq. rewrite <- app_assoc. simpl. admit.
-      * rewrite <- Heq. rewrite length_app. simpl. lia.
+  - assert (exists (n': PA), n' ++p l0 ++a n0 = n).
+    + symmetry in H3. assert (m0 ++p l0 ++a n0 = m0 ++a ([] ++p l0 ++a n0)).
+      * now rewrite <- app_assoc.
+      * rewrite H9 in H3. apply no_decisions_tail' in H3.
+        -- destruct H3.  rewrite <- app_assoc in H3. simpl in H3. now exists x.
+        -- assumption.
+        -- unfold NoDecisions. unfold not. intros. destruct H10.
+           apply in_app_or in H10. destruct H10.
+          ++ apply H6. now exists x.
+          ++ destruct H10.
+            ** discriminate.
+            ** contradiction.
+    + destruct H9 as [n' Heq]. exists n'. rewrite <- Heq in H3.
+      rewrite <- app_assoc in H3. rewrite <- app_comm_cons in H3.
+      apply app_inv_head in H3. injection H3. intros. split.
+      * congruence.
+      * split.
+        -- intros m' [Hmodel_f [Hmodel_m [Hmodel_l Hmodel_n']]].
+          assert (f_eval (m' ++a m ++d l ++a n') f = Some true).
+          ++ rewrite app_comm_cons. rewrite app_assoc. apply f_eval_true_extend.
+            ** assumption.
+            ** apply m_eval_true_iff. intros. apply in_app_or in H10. destruct H10.
+              --- rewrite m_eval_true_iff in Hmodel_n'. now apply (Hmodel_n' _ a).
+              --- destruct H10.
+                +++ now injection H10 as <- <-.
+                +++ rewrite m_eval_true_iff in Hmodel_m. now apply (Hmodel_m _ a).
+          ++ apply H4 in H10. repeat rewrite app_comm_cons in H10. rewrite app_assoc in H10.
+             rewrite <- app_comm_cons in H10. rewrite <- H3 in H10. simpl in H10.
+             rewrite <- Heq. rewrite <- app_assoc. simpl. admit.
+        -- rewrite <- Heq. rewrite length_app. simpl. lia.
 Admitted.
 
 
