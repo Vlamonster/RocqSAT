@@ -60,6 +60,21 @@ Proof.
     + apply nodup_cons__nodup in H. apply (IH []) in H. now rewrite app_nil_r in H.
 Qed.
 
+Lemma l_eval_nodup_extend: forall (m m': PA) (l: Lit) (a: Ann),
+  NoDuplicates (([(l, a)]) ++a m') -> l_eval (((l, a) :: m) ++a m') l = Some true.
+Proof.
+  induction m' as [|[l' a'] m' IH].
+  - intros. simpl. simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+  - intros. simpl. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2; simpl.
+    + reflexivity.
+    + rewrite eqb_eq in G1. subst l. simpl in H. apply nodup_cons__undef in H.
+      destruct (proj2 (l_eval_some_iff ([(¬l', a)] ++a m') l')).
+      * exists a. right. apply in_or_app. right. apply in_eq.
+      * congruence.
+    + reflexivity.
+    + apply IH. simpl in H. now apply nodup_cons__nodup in H.
+Qed.
+
 Lemma entailment: forall (m m': PA) (f: CNF),
   Entails f m -> WellFormed m f -> NoDecisions m -> f_eval m' f = Some true -> f_eval (m' ++a m) f = Some true.
 Proof.
@@ -256,7 +271,10 @@ Proof.
                       ++++ now rewrite <- app_assoc.
                       ++++ rewrite H11. apply m_eval_nodup_extend'.
                            rewrite <- app_assoc. simpl. apply H3.
-                    ---- admit.
+                    ---- apply l_eval_nodup_extend.
+                         destruct H3. assert (m ++d l ++a x = m ++a ([] ++d l ++a x)).
+                      ++++ now rewrite <- app_assoc.
+                      ++++ rewrite H12 in H3. now apply nodup_app__nodup' in H3.
                     ---- apply m_eval_nodup_extend. destruct H3. now apply nodup_app__nodup' in H3.
                 +++ now exists (m'' ++a m ++d l ++a x).
           ++ assumption.
@@ -265,7 +283,7 @@ Proof.
         -- assumption.
         -- assumption.
         -- simpl. lia.
-Admitted.
+Qed.
 
 Lemma entails_clip: forall (m n: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l ++a n) f ->
