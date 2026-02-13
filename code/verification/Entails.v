@@ -50,6 +50,16 @@ Proof.
     + apply m_eval_nodup_refl. now apply nodup_cons__nodup in H.
 Qed.
 
+Lemma m_eval_nodup_extend': forall (m m' m'': PA),
+  NoDuplicates (m ++a m') -> m_eval (m'' ++a m ++a m') m = Some true.
+Proof.
+  induction m' as [|[l a] m' IH].
+  - intros. simpl in *. now apply m_eval_nodup_extend.
+  - intros. simpl in *. rewrite app_assoc. apply m_eval_head_refl.
+    + now apply nodup_cons__undef in H.
+    + apply nodup_cons__nodup in H. apply (IH []) in H. now rewrite app_nil_r in H.
+Qed.
+
 Lemma entailment: forall (m m': PA) (f: CNF),
   Entails f m -> WellFormed m f -> NoDecisions m -> f_eval m' f = Some true -> f_eval (m' ++a m) f = Some true.
 Proof.
@@ -242,7 +252,10 @@ Proof.
                 +++ apply H5.
                   *** repeat split.
                     ---- assumption.
-                    ---- admit.
+                    ---- assert (m'' ++a m ++d l ++a x = m'' ++a m ++a ([] ++d l ++a x)).
+                      ++++ now rewrite <- app_assoc.
+                      ++++ rewrite H11. apply m_eval_nodup_extend'.
+                           rewrite <- app_assoc. simpl. apply H3.
                     ---- admit.
                     ---- apply m_eval_nodup_extend. destruct H3. now apply nodup_app__nodup' in H3.
                 +++ now exists (m'' ++a m ++d l ++a x).
