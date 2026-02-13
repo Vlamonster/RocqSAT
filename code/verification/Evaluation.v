@@ -519,8 +519,6 @@ Proof.
     + assumption.
 Qed.
 
-
-
 Lemma l_eval_head: forall (m m': PA) (l: Lit),
   l_eval m l = Some true -> l_eval (m' ++a m) l = Some true.
 Proof.
