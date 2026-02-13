@@ -167,10 +167,21 @@ Proof.
                 +++ rewrite m_eval_true_iff in Hmodel_m. now apply (Hmodel_m _ a).
           ++ apply H4 in H10. repeat rewrite app_comm_cons in H10. rewrite app_assoc in H10.
              rewrite <- app_comm_cons in H10. rewrite <- H3 in H10. simpl in H10.
-             rewrite <- Heq. rewrite <- app_assoc. simpl. admit.
+             rewrite <- Heq. rewrite <- app_assoc. simpl.
+             assert (m' ++a m ++d l ++a n' ++p l0 ++a n0 = m' ++a (m ++d l ++a n') ++p l0 ++a n0).
+            ** now rewrite <- app_assoc.
+            ** rewrite H11. rewrite <- H9. apply f_eval_true_extend.
+              --- assumption.
+              --- apply H5. split.
+                +++ assumption.
+                +++ split.
+                  *** rewrite <- Heq in H0. rewrite <- app_assoc in H0. simpl in H0.
+                      rewrite <- H9 in H0. apply wf_app__wf in H0. apply m_eval_head_refl.
+                    ---- apply (nodup_cons__undef _ _ prop). apply H0.
+                    ---- apply m_eval_nodup_refl. apply wf_cons__wf in H0. apply H0.
+                  *** simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
         -- rewrite <- Heq. rewrite length_app. simpl. lia.
-Admitted.
-
+Qed.
 
 Lemma entails_clip: forall (m n: PA) (f: CNF) (l: Lit),
   WellFormed (m ++d l ++a n) f ->
