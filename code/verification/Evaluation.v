@@ -533,12 +533,12 @@ Proof.
     + apply IH. simp l_eval in H. rewrite G1 in H. now rewrite G2 in H.
 Qed.
 
-Lemma m_eval_head_refl: forall (m m' m'': PA) (l: Lit),
-  Undef m l -> m_eval m m'' = Some true -> m_eval (m' ++a m ++p l) m'' = Some true.
+Lemma m_eval_head_refl: forall (m m' m'': PA) (l: Lit) (a: Ann),
+  Undef m l -> m_eval m m'' = Some true -> m_eval ((l, a) :: m' ++a m) m'' = Some true.
 Proof.
   intros. funelim (m_eval m m''); try congruence.
   - reflexivity.
-  - apply (Hind m m'0 m') in H as G; try congruence.
+  - apply (Hind m m'0 m' l0 a0) in H as G; try congruence.
     simp m_eval. rewrite G. simp l_eval.
     destruct (l =? ¬l0) eqn:G1, (l =? l0) eqn:G2; simpl.
     + reflexivity.

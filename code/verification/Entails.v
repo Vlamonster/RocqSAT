@@ -39,6 +39,17 @@ Proof.
     + apply IH. now apply nodup_cons__nodup in H.
 Qed.
 
+Lemma m_eval_nodup_extend: forall (m m': PA),
+  NoDuplicates m' -> m_eval (m ++a m') m' = Some true.
+Proof.
+  intros. induction m' as [|[l a] m' IH].
+  - reflexivity.
+  - simpl. simp m_eval. simp l_eval. rewrite self_neqb_neg. rewrite eqb_refl. simpl.
+    apply m_eval_head_refl.
+    + now apply nodup_cons__undef in H.
+    + apply m_eval_nodup_refl. now apply nodup_cons__nodup in H.
+Qed.
+
 Lemma entailment: forall (m m': PA) (f: CNF),
   Entails f m -> WellFormed m f -> NoDecisions m -> f_eval m' f = Some true -> f_eval (m' ++a m) f = Some true.
 Proof.
@@ -233,7 +244,7 @@ Proof.
                     ---- assumption.
                     ---- admit.
                     ---- admit.
-                    ---- admit.
+                    ---- apply m_eval_nodup_extend. destruct H3. now apply nodup_app__nodup' in H3.
                 +++ now exists (m'' ++a m ++d l ++a x).
           ++ assumption.
           ++ assumption.
