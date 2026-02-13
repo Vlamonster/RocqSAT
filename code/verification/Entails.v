@@ -549,11 +549,20 @@ Proof.
     + assumption.
   (* t_pure *)
   - rewrite <- app_nil_l. apply e_irrelevant.
-    + intros m'' Hmodel_f. admit.
+    + intros m'' Hmodel_f. apply f_eval_true_iff. intros. apply c_eval_true_iff.
+      rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in H as G.
+      rewrite c_eval_true_iff in G. destruct G as [l [Hin Hl]].
+      exists l. split.
+      * assumption.
+      * simp l_eval. destruct (l =? ¬l_pure) eqn:G1, (l =? l_pure) eqn:G2; simpl.
+        -- reflexivity.
+        -- exfalso. apply eqb_eq in G1. subst l. now apply (Hpure c).
+        -- reflexivity.
+        -- assumption.
     + intros. reflexivity.
     + unfold NoDecisions. unfold not. intros. destruct H. contradiction.
     + assumption.
-Admitted.
+Qed.
 
 Lemma derivation_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==>* state m' f Hwf' -> Entails f m -> Entails f m'.
