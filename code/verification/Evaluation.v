@@ -353,6 +353,46 @@ Proof.
         -- congruence.
 Qed.
 
+Lemma l_eval_false_extend: forall (m m': PA) (l: Lit),
+  l_eval m l = Some false -> l_eval (m' ++a m) l = Some false.
+Proof.
+  intros. funelim (l_eval m l); try congruence.
+  - simpl. simp l_eval. rewrite Heq. now rewrite Heq0.
+  - simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl.
+    apply H.
+    + congruence.
+    + reflexivity.
+    + reflexivity.
+Qed.
+
+Lemma c_eval_false_extend: forall (m m': PA) (c: Clause),
+  c_eval m c = Some false -> c_eval (m' ++a m) c = Some false.
+Proof.
+  intros. funelim (c_eval m c); try congruence.
+  - reflexivity.
+  - assert (c_eval (m' ++a m) c = Some false).
+    + now apply Hind.
+    + simp c_eval. apply (l_eval_false_extend _ m') in Heq0.
+      rewrite H0. now rewrite Heq0.
+Qed.
+
+Lemma f_eval_false_extend: forall (m m': PA) (f: CNF),
+  f_eval m f = Some false -> f_eval (m' ++a m) f = Some false.
+Proof.
+  intros. funelim (f_eval m f); try congruence.
+  - assert (f_eval (m' ++a m) f = Some false).
+    + apply Hind; congruence.
+    + simp f_eval. rewrite H0. now destruct (c_eval (m' ++a m) c) as [[|]|].
+  - simp f_eval. apply (c_eval_false_extend _ m') in Heq. now rewrite Heq.
+  - apply f_eval_false_iff in H. destruct H. destruct H. destruct H.
+    + congruence.
+    + assert (f_eval m f = Some false).
+      * apply f_eval_false_iff. now exists x.
+      * assert (f_eval (m' ++a m) f = Some false).
+        -- apply Hind; congruence.
+        -- simp f_eval. rewrite H2. now destruct (c_eval (m' ++a m) c) as [[|]|].
+Qed.
+
 Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
   f_eval m f = Some true <-> forall (c: Clause), In c f -> c_eval m c = Some true.
 Proof.
@@ -433,4 +473,77 @@ Proof.
   intros. apply c_eval_false_iff. intros.
   rewrite c_eval_false_iff in H0. apply H0 in H1. 
   now apply (m_eval_transfer_l _ m').
+Qed.
+
+Lemma l_eval_true_extend: forall (m m': PA) (l: Lit),
+  l_eval m' l = Some true -> m_eval m' m = Some true -> l_eval (m' ++a m) l = Some true.
+Proof.
+  induction m as [|[l a] m IH].
+  - intros. assumption.
+  - intros. simpl. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
+    + reflexivity.
+    + reflexivity.
+    + simpl. rewrite eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
+      assert (l_eval m' l = Some true).
+      * apply (H0 _ a). now left.
+      * apply l_eval_neg_some_iff in H1. simpl in H1. congruence.
+    + simpl. apply IH.
+      * assumption.
+      * apply m_eval_true_iff. intros. rewrite m_eval_true_iff in H0. apply (H0 _ a0). now right.
+Qed.
+
+Lemma c_eval_true_extend: forall (m m': PA) (c: Clause),
+  c_eval m' c = Some true -> m_eval m' m = Some true -> c_eval (m' ++a m) c = Some true.
+Proof.
+  intros. funelim (c_eval m' c); try congruence.
+  - simp c_eval. apply (l_eval_true_extend m0) in Heq.
+    + now rewrite Heq.
+    + assumption.
+  - assert (c_eval (m ++a m0) c = Some true).
+    + apply Hind; congruence.
+    + simp c_eval. rewrite H1. now destruct (l_eval (m ++a m0) l) as [[|]|].
+  - assert (c_eval (m ++a m0) c = Some true).
+    + apply Hind; congruence.
+    + simp c_eval. rewrite H1. now destruct (l_eval (m ++a m0) l) as [[|]|].
+Qed.
+
+Lemma f_eval_true_extend: forall (m m': PA) (f: CNF),
+  f_eval m' f = Some true -> m_eval m' m = Some true -> f_eval (m' ++a m) f = Some true.
+Proof.
+  intros. funelim (f_eval m' f); try congruence.
+  - reflexivity.
+  - simp f_eval. apply (c_eval_true_extend m0) in Heq.
+    + rewrite Heq. assert (f_eval (m ++a m0) f = Some true).
+      * apply Hind; congruence.
+      * now rewrite H1.
+    + assumption.
+Qed.
+
+Lemma l_eval_head: forall (m m': PA) (l: Lit),
+  l_eval m l = Some true -> l_eval (m' ++a m) l = Some true.
+Proof.
+  induction m as [|[l' a] m IH].
+  - intros. discriminate.
+  - intros. simpl. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2; simpl.
+    + reflexivity.
+    + rewrite eqb_eq in G1. subst l. simp l_eval in H.
+      rewrite eqb_refl in H. rewrite eqb_compat in H. rewrite involutive in H.
+      rewrite self_neqb_neg in H. discriminate.
+    + reflexivity.
+    + apply IH. simp l_eval in H. rewrite G1 in H. now rewrite G2 in H.
+Qed.
+
+Lemma m_eval_head_refl: forall (m m' m'': PA) (l: Lit) (a: Ann),
+  Undef m l -> m_eval m m'' = Some true -> m_eval ((l, a) :: m' ++a m) m'' = Some true.
+Proof.
+  intros. funelim (m_eval m m''); try congruence.
+  - reflexivity.
+  - apply (Hind m m'0 m' l0 a0) in H as G; try congruence.
+    simp m_eval. rewrite G. simp l_eval.
+    destruct (l =? ¬l0) eqn:G1, (l =? l0) eqn:G2; simpl.
+    + reflexivity.
+    + rewrite eqb_eq in G1. subst l. apply l_eval_neg_some_iff in Heq.
+      rewrite involutive in Heq. simpl in Heq. congruence.
+    + reflexivity.
+    + apply (l_eval_head _ m'0) in Heq. now rewrite Heq.
 Qed.

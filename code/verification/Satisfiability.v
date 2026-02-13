@@ -69,7 +69,8 @@ Proof.
       m f' c_conflict Hwf' Hc_in_f Hconflict Hno_dec |
       m f' c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef |
       m f' c_decide l_decide ? Hwf' Hx_in_c Hc_in_f Hundef |
-      m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec
+      m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec |
+      m f' c_pure l_pure ? Hwf' Hl_in_c Hc_in_f Hpure Hundef
     ]; subst s; try subst m; try subst f'.
       (* t_fail *)
       * assert (f_eval m' f = Some false).
@@ -91,6 +92,10 @@ Proof.
       * rewrite H in *. assert (f_eval m' f = Some false).
         -- apply f_eval_false_iff. now exists c_conflict.
         -- congruence.
+      (* t_pure *)
+      * assert (Def m' l_pure).
+        -- apply Hall_def. now exists c_pure.
+        -- now apply def_undef in H.
 Qed.
 
 Theorem final_unsat_refl: forall (f: CNF),
@@ -100,12 +105,10 @@ Proof.
   - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [Hwf [Hderivation Htrans]]].
     inversion Htrans; subst m0; subst f0; clear Hwf1; clear Hwf2.
     apply derivation_entails in Hderivation.
-    + inversion Hderivation; subst f0; subst m.
-      * unfold Unsat. unfold Sat. unfold Model. unfold not. intros [m Hsat].
-        apply H in Hsat as G. apply (m_eval_transfer_c _ _ c) in G.
-        -- rewrite f_eval_true_iff in Hsat. apply Hsat in H1. congruence.
-        -- assumption.
-      * exfalso. apply H3. exists l. apply in_elt.
+    + unfold Unsat. unfold Sat. unfold Model. unfold not. intros [m' Hsat].
+      assert (f_eval (m' ++a m) f = Some true) by now apply entailment.
+      rewrite f_eval_true_iff in H. apply H in H1. unfold Conflicting in H2.
+      apply (c_eval_false_extend _ m') in H2. congruence.
     + constructor.
       * intros. reflexivity.
       * unfold NoDecisions. unfold not. intros. now destruct H. 
