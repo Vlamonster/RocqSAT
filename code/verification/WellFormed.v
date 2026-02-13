@@ -1,5 +1,6 @@
 From Equations Require Import Equations.
 From Stdlib Require Import List.
+Import ListNotations.
 From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation.
 
 Definition NoDuplicates (m: PA): Prop := 
@@ -16,6 +17,15 @@ Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> NoDuplicates m.
 Proof. intros. now inversion H. Qed.
 
+Lemma nodup_cons__nodup': forall (m: PA) (l: Lit) (a: Ann),
+  NoDuplicates ([(l, a)] ++a m) -> NoDuplicates m.
+Proof.
+  intros. apply NoDup_rev in H. repeat rewrite <- map_rev in H.
+  rewrite rev_app_distr in H. simpl in H. inversion H.
+  subst x l0. apply NoDup_rev in H3. repeat rewrite <- map_rev in H3.
+  now rewrite rev_involutive in H3.
+Qed.
+
 Lemma nodup_app__nodup: forall (m n: PA),
   NoDuplicates (m ++a n) -> NoDuplicates m.
 Proof.
@@ -24,6 +34,15 @@ Proof.
   - intros. simpl in H. apply nodup_cons__nodup in H.
     + now apply IHn.
     + apply dec.
+Qed.
+
+Lemma nodup_app__nodup': forall (m n: PA),
+  NoDuplicates (m ++a n) -> NoDuplicates n.
+Proof.
+  induction m as [|[l a] m IH].
+  - intros. now rewrite app_nil_r in H.
+  - intros. assert (((l, a) :: m) ++a n = m ++a ((l, a) :: []) ++a n) by reflexivity.
+    rewrite H0 in H. rewrite app_assoc in H. apply IH in H. now apply nodup_cons__nodup' in H.
 Qed.
 
 Lemma bounded_cons__bounded: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
