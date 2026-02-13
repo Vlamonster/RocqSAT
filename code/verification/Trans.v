@@ -31,7 +31,14 @@ Inductive Trans: relation State :=
   In c f ->
   Conflicting (m ++d l ++a n) c ->
   NoDecisions n ->
-  Trans (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf').
+  Trans (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf')
+(* Adds a literal that only occurs positively. *)
+| t_pure (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
+  In l c ->
+  In c f ->
+  (forall (c': Clause), In c' f -> ~ In (¬l) c') ->
+  Undef m l ->
+  Trans (state m f Hwf) (state (m ++p l) f Hwf').
 
 Inductive TransB: relation State :=
 (* Fail if all literals are assigned and there is a conflict. *)
@@ -84,7 +91,8 @@ Proof.
       m f c_conflict Hwf' Hc_in_f Hconflict Hno_dec |
       m f c_unit l_unit Hwf Hwf' Hl_in_c Hc_in_f Hconflict Hundef |
       m f c_decide l_decide Hwf Hwf' Hx_in_c Hc_in_f Hundef |
-      m_split n_split f c_conflict l_split Hwf Hwf' Hc_in_f Hconflict Hno_dec
+      m_split n_split f c_conflict l_split Hwf Hwf' Hc_in_f Hconflict Hno_dec |
+      m f c_pure l_pure Hwf Hwf' Hl_in_c Hc_in_f Hpure Hundef
     ]; subst s; subst s'.
     + exists fail. now apply (tb_fail _ _ c_conflict).
     + assert (Hwf'': WellFormed (m ++d l_unit) f).
@@ -101,6 +109,18 @@ Proof.
         -- assumption.
     + exists (state (m ++d l_decide) f Hwf'). now apply (tb_decide _ _ c_decide).
     + exists (state (m_split ++p (¬l_split)) f Hwf'). now apply (tb_backtrack _ _ _ c_conflict).
+    + assert (Hwf'': WellFormed (m ++d l_pure) f).
+      * unfold WellFormed. split.
+        -- apply nodup_cons.
+          ++ apply Hwf.
+          ++ assumption.
+        -- apply bounded_cons.
+          ++ apply Hwf.
+          ++ apply l_in_f_true_iff. exists c_pure. intuition.
+      * exists (state (m ++d l_pure) f Hwf''). apply (tb_decide _ _ c_pure).
+        -- intuition.
+        -- assumption.
+        -- assumption.
 Qed.
 
 Lemma fail_final: Final fail.

@@ -397,13 +397,12 @@ Proof.
     destruct (find_undef_l_exists m c0 l H H1). congruence.
 Qed.
 
-(* The rhs is weaker because there could be multiple { s': State | s ==> s' }. *)
-Lemma next_state_exists: forall (s s': State), s ==> s' -> exists (s'': State), next_state s = Some s''.
+(* The rhs is weaker because there could be multiple { s': State | s ==>b s' }. *)
+Lemma next_state_exists: forall (s s': State), s ==>b s' -> exists (s'': State), next_state s = Some s''.
 Proof.
   intros. inversion H as 
     [
       m f c_conflict Hwf Hc_in_f Hconflict Hno_dec |
-      m f c_unit l_unit Hwf Hwf' Hl_in_c Hc_in_f Hconflict Hundef |
       m f c_decide l_decide Hwf Hwf' Hx_in_c Hc_in_f Hundef |
       m_split n_split f c_conflict l_split Hwf Hwf' Hc_in_f Hconflict Hno_dec
     ]; subst s s'.
@@ -416,19 +415,6 @@ Proof.
         -- now exists (state (m_split ++p (¬l_split)) f (wf_backtrack m m_split f l_split Hsplit Hwf)).
         -- now exists fail.
       * destruct (proj2 (find_conflict_exists_iff m f)). now exists c_conflict. congruence.
-  (* t_unit *)
-  - funelim (next_state (state m f Hwf)).
-    + discriminate.
-    + injection eqargs as <- <-.
-      destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind_conflict.
-      * destruct (inspect (split_last_decision m)) as [[(m_split, l_split)|] Hsplit].
-        -- now exists (state (m_split ++p (¬l_split)) f (wf_backtrack m m_split f l_split Hsplit Hwf)).
-        -- now exists fail.
-      * destruct (inspect (find_unit m f)) as [[(c_unit', l_unit')|] Hfind_unit].
-        -- now exists (state (m ++p l_unit') f (wf_unit m f c_unit' l_unit' Hfind_unit Hwf)).
-        -- destruct (inspect (find_decision m f)) as [[l_decide|] Hfind_dec].
-          ++ now exists (state (m ++d l_decide) f (wf_decide m f l_decide Hfind_dec Hwf)).
-          ++ destruct (find_decision_exists m f c_unit l_unit Hl_in_c Hc_in_f Hundef). congruence.
   (* t_decide *)
   - funelim (next_state (state m f Hwf)).
     + discriminate.
@@ -460,20 +446,12 @@ Proof.
           ++ destruct (proj2 (find_conflict_exists_iff m f)). now exists c_conflict. congruence.
 Qed.
 
-Lemma next_state_final_refl: forall (s: State), next_state s = None <-> Final s.
-Proof.
-  unfold Final. unfold not. intros. split.
-  - intros. destruct H0. apply next_state_exists in H0. destruct H0. congruence.
-  - intros. destruct (next_state s) eqn:G.
-    + apply next_state_sound in G. exfalso. apply H. now exists s0.
-    + reflexivity.
-Qed.
-
 Lemma next_state_strategy: Strategy (next_state).
 Proof.
   unfold Strategy. split.
   - reflexivity.
   - split.
-    + intros. apply final__final_b. now apply next_state_final_refl in H.
+    + intros. unfold FinalB. unfold not. intros. destruct H0. 
+      apply next_state_exists in H0. destruct H0. congruence.
     + intros. apply t_step. now apply next_state_sound.
 Qed.

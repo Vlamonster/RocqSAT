@@ -310,7 +310,8 @@ Proof.
     m'' f' c_conflict Hwf'' Hc_in_f Hconflict Hno_dec |
     m'' f' c_unit l_unit ? Hwf'' Hl_in_c Hc_in_f Hconflict Hundef |
     m'' f' c_decide l_decide ? Hwf'' Hx_in_c Hc_in_f Hundef |
-    m_split n_split f' c_conflict l_split ? Hwf'' Hc_in_f Hconflict Hno_dec
+    m_split n_split f' c_conflict l_split ? Hwf'' Hc_in_f Hconflict Hno_dec |
+    m'' f' c_pure l_pure ? Hwf'' Hl_in_c Hc_in_f Hpure Hundef
   ]; try subst m''; try subst f'.
   (* t_unit *)
   - unfold Conflicting in Hconflict. inversion Hentails as
@@ -546,7 +547,13 @@ Proof.
           ++ discriminate.
     + assumption.
     + assumption.
-Qed.
+  (* t_pure *)
+  - rewrite <- app_nil_l. apply e_irrelevant.
+    + intros m'' Hmodel_f. admit.
+    + intros. reflexivity.
+    + unfold NoDecisions. unfold not. intros. destruct H. contradiction.
+    + assumption.
+Admitted.
 
 Lemma derivation_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==>* state m' f Hwf' -> Entails f m -> Entails f m'.

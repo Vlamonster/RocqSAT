@@ -69,7 +69,8 @@ Proof.
       m f' c_conflict Hwf' Hc_in_f Hconflict Hno_dec |
       m f' c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef |
       m f' c_decide l_decide ? Hwf' Hx_in_c Hc_in_f Hundef |
-      m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec
+      m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec |
+      m f' c_pure l_pure ? Hwf' Hl_in_c Hc_in_f Hpure Hundef
     ]; subst s; try subst m; try subst f'.
       (* t_fail *)
       * assert (f_eval m' f = Some false).
@@ -91,6 +92,10 @@ Proof.
       * rewrite H in *. assert (f_eval m' f = Some false).
         -- apply f_eval_false_iff. now exists c_conflict.
         -- congruence.
+      (* t_pure *)
+      * assert (Def m' l_pure).
+        -- apply Hall_def. now exists c_pure.
+        -- now apply def_undef in H.
 Qed.
 
 Theorem final_unsat_refl: forall (f: CNF),

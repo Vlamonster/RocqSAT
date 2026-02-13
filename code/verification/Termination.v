@@ -523,7 +523,8 @@ Proof.
       m' f' c_conflict Hwf' Hc_in_f Hconflict Hno_dec |
       m' f' c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef |
       m' f' c_decide l_decide ? Hwf' Hx_in_c Hc_in_f Hundef |
-      m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec
+      m_split n_split f' c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec |
+      m' f' c_pure l_pure ? Hwf' Hl_in_c Hc_in_f Hpure Hundef
     ]; subst s'; try subst m'; try subst f'.
   (* t_fail *)
   - unfold StateLt. now left.
@@ -539,6 +540,9 @@ Proof.
     apply prefix_app.
     + assumption.
     + now rewrite H0.
+  (* t_pure *)
+  - unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
+    now apply prefix_prop.
 Qed.
 
 Lemma derivation_strict__state_lt_trans_clos: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
