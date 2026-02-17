@@ -557,3 +557,169 @@ Proof.
       * apply t_step. apply trans__state_lt. apply H.
       * apply IHclos_trans_n1.
 Qed.
+
+(* Thanks to Gaetan Gilbert *)
+Require Import Relation_Definitions Relation_Operators Transitive_Closure.
+
+Lemma clos_refl_trans_flip A R x y : clos_refl_trans A (fun a b => R b a) x y -> clos_refl_trans A R y x.
+Proof.
+  induction 1;econstructor;solve [eauto].
+Qed.
+
+Section WfInclusion.
+  Variable A : Type.
+  Variables R1 R2 : A -> A -> Prop.
+
+  Lemma Acc_incl' : forall z : A, (forall x y, clos_refl_trans _ R1 y z -> R1 x y -> R2 x y) -> Acc R2 z -> Acc R1 z.
+  Proof.
+    intros z H.
+    induction 1 as [z Hz IH].
+    apply Acc_intro.
+    intros y Hy.
+    apply IH.
+    - apply H. 2:assumption.
+      constructor 2.
+    - intros x z' Hz' HR.
+      apply H; only 2: exact HR.
+      apply rt_trans with y.
+      + assumption.
+      + apply rt_step;assumption.
+  Qed.
+End WfInclusion.
+
+Equations cnf (s: State): option CNF :=
+cnf fail          := None;
+cnf (state _ f _) := Some f.
+
+Lemma to_statelt s s' :
+  Trans s s' ->
+  match cnf s with
+  | None => False
+  | Some f =>
+      (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s
+  end.
+Proof.
+  intros. funelim (cnf s).
+  - inversion H.
+  - split.
+    + destruct s'.
+      * now left.
+      * right. apply trans_same_formula in H. now subst.
+    + now apply trans__state_lt.
+Qed.
+
+Lemma to_statelt' s s' :
+  Trans s s' ->
+  match cnf s' with
+  | None => forall f, cnf s = Some f -> StateLt f s' s
+  | Some f => cnf s = Some f /\ StateLt f s' s
+  end.
+Proof.
+  intros H.
+  apply to_statelt in H.
+  destruct (cnf s').
+  - destruct (cnf s).
+    + destruct H as [[e|[=]] H];subst;auto.
+      discriminate e.
+    + contradiction H.
+  - intros f Hf;rewrite Hf in H.
+    destruct H;auto.
+Qed.
+
+Lemma to_statelt0 s s' f : cnf s' = Some f -> Trans s s' -> cnf s = Some f /\ StateLt f s' s.
+Proof.
+  intros H H'.
+  apply to_statelt in H'.
+  rewrite H in H'.
+  destruct (cnf s).
+  - destruct H' as [[e|[=]] H']; try discriminate e.
+    subst;auto.
+  - contradiction H'.
+Qed.
+
+Lemma to_statelt0' s s' f : cnf s = Some f -> Trans s s' -> (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s.
+Proof.
+  intros H H'.
+  apply to_statelt in H'. rewrite H in H'. assumption.
+Qed.
+
+Lemma clos_nf s s' f : cnf s' = Some f -> clos_refl_trans _ Trans s s' -> cnf s = Some f.
+Proof.
+  intros Hf H.
+  induction H as [s s' H| s | y v x _ IHyv _ IHzy].
+  - apply (to_statelt0 _ _ _ Hf) in H.
+    destruct H as [H _]; exact H.
+  - assumption.
+  - auto.
+Qed.
+
+Lemma clos_nf0 s s' : cnf s = None -> clos_refl_trans _ Trans s s' -> s = s'.
+Proof.
+  intros Hf H.
+  induction H as [s s' H| s | y v x Hyv IHyv Hzy IHzy].
+  - apply to_statelt in H. rewrite Hf in H. contradiction H.
+  - reflexivity.
+  - firstorder. subst. auto.
+Qed.
+
+Lemma clos_nf' s s' f : cnf s = Some f -> clos_refl_trans _ Trans s s' -> cnf s' = None \/ cnf s' = Some f.
+Proof.
+  intros Hf H.
+  induction H as [s s' H| s | y v x Hyv IHyv Hzy IHzy].
+  - apply (to_statelt0' _ _ _ Hf) in H.
+    destruct H as [H _]; exact H.
+  - right;assumption.
+  - specialize (IHyv Hf). destruct IHyv.
+    + apply (clos_nf0 _ _ H) in Hzy. subst. left;assumption.
+    + specialize (IHzy H). assumption.
+Qed.
+
+Lemma statelt_incl x f :
+  cnf x = Some f ->
+  forall z y,
+  clos_refl_trans _ Trans x y ->
+  Trans y z ->
+  StateLt f z y.
+Proof.
+  intros Hx z; induction 1 as [y x Hyx| x | y v x Hyv Hzv Hvx Hzx].
+  - intros Hxz.
+    apply (to_statelt0' _ _ _ Hx) in Hyx.
+    destruct Hyx as [[e|e] Hxy].
+    + apply to_statelt in Hxz. rewrite e in Hxz. contradiction Hxz.
+    + apply (to_statelt0' _ _ _ e) in Hxz.
+      destruct Hxz as [_ Hxz].
+      assumption.
+  - intros Hxz.
+    apply to_statelt in Hxz. rewrite Hx in Hxz.
+    destruct Hxz as [_ Hxz].
+    assumption.
+  - intros Hxz.
+    apply Hzx. 2:assumption.
+    destruct (cnf v) as [f'|] eqn:Hv.
+    + pose proof (clos_nf _ _ _ Hv Hyv) as Hy.
+      congruence.
+    + pose proof (clos_nf0 _ _ Hv Hvx). subst.
+      apply to_statelt in Hxz.
+      rewrite Hv in Hxz. contradiction Hxz.
+Qed.
+
+Lemma wf_trans0 : forall x f, cnf x = Some f -> Acc (fun a b => Trans b a) x.
+Proof.
+  intros x f Hx.
+  apply Acc_incl' with (R2:=StateLt f).
+  2:apply wf_state_lt.
+  intros z y Hxy Hyz.
+  apply clos_refl_trans_flip in Hxy.
+  apply (statelt_incl _ _ Hx); assumption.
+Qed.
+
+Lemma wf_trans: well_founded (fun a b => Trans b a).
+Proof.
+  intros x.
+  destruct (cnf x) eqn:Hx.
+  - (* cnf x = Some *) eapply wf_trans0;eassumption.
+  - (* cnf x = None *)
+    constructor;intros y H.
+    apply to_statelt in H. rewrite Hx in H.
+    contradiction H.
+Qed.
