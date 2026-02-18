@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List Relations.
+From Stdlib Require Import Basics List Relations.
 Import ListNotations.
 From RocqSAT Require Import CNF Evaluation WellFormed Trans Termination Inspect Strategy.
 
@@ -9,19 +9,13 @@ Unset Equations With Funext.
 Section Solve.
   Context (f: CNF) (next: State -> option State) (Hstrat: Strategy next).
 
-  Instance wf_state_lt_f: WellFounded (StateLtTransClos f) := wf_state_lt_trans_clos f.
+  Instance wf_strict_derivation: WellFounded (flip DerivationStrict) := wf_strict_derivation.
 
-  Equations solve_aux (s: State) (H: state [] f (initial_wf f) ==>* s): State by wf s (StateLtTransClos f) :=
+  Equations solve_aux (s: State) (H: state [] f (initial_wf f) ==>* s): State by wf s (flip DerivationStrict) :=
   solve_aux s H with inspect (next s) :=
     | Some s' eqn:ns := solve_aux s' (strategy_trans f s s' next Hstrat ns H)
     | None    eqn:ns := s.
-  Next Obligation. 
-    clear solve_aux. destruct s.
-    - assert (next fail = None) by apply Hstrat. congruence.
-    - apply derivation_same_formula in H as Heq. subst f0.
-      apply derivation_strict__state_lt_trans_clos.
-      now apply Hstrat in ns.
-  Qed.
+  Next Obligation. clear solve_aux. now apply Hstrat in ns. Qed.
 
   Definition solve: State := solve_aux (state [] f (initial_wf f)) (initial_refl f).
 

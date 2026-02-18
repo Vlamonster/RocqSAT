@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import Nat Arith List Relations Wellfounded Lia.
+From Stdlib Require Import Basics Nat Arith List Relations Wellfounded Lia.
 Import ListNotations.
 From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation Trans WellFormed.
 
@@ -559,8 +559,6 @@ Proof.
 Qed.
 
 (* Thanks to Gaetan Gilbert *)
-Require Import Relation_Definitions Relation_Operators Transitive_Closure.
-
 Lemma clos_refl_trans_flip A R x y : clos_refl_trans A (fun a b => R b a) x y -> clos_refl_trans A R y x.
 Proof.
   induction 1;econstructor;solve [eauto].
@@ -703,7 +701,7 @@ Proof.
       rewrite Hv in Hxz. contradiction Hxz.
 Qed.
 
-Lemma wf_trans0 : forall x f, cnf x = Some f -> Acc (fun a b => Trans b a) x.
+Lemma wf_trans0 : forall x f, cnf x = Some f -> Acc (flip Trans) x.
 Proof.
   intros x f Hx.
   apply Acc_incl' with (R2:=StateLt f).
@@ -713,13 +711,35 @@ Proof.
   apply (statelt_incl _ _ Hx); assumption.
 Qed.
 
-Lemma wf_trans: well_founded (fun a b => Trans b a).
+Lemma wf_trans: well_founded (flip Trans).
 Proof.
   intros x.
   destruct (cnf x) eqn:Hx.
-  - (* cnf x = Some *) eapply wf_trans0;eassumption.
-  - (* cnf x = None *)
-    constructor;intros y H.
+  - eapply wf_trans0;eassumption.
+  - constructor;intros y H.
     apply to_statelt in H. rewrite Hx in H.
     contradiction H.
+Qed.
+
+Lemma clos_trans_flip: forall {A: Type} (R: relation A) (a b: A),
+  flip (clos_trans _ R) a b <-> clos_trans _ (flip R) a b.
+Proof.
+  split.
+  - intros. unfold flip in H. apply clos_trans_tn1_iff in H. induction H.
+    + now apply t_step.
+    + eapply t_trans.
+      * apply t_step. apply H.
+      * assumption.
+  - intros. apply clos_trans_tn1_iff in H. induction H.
+    + now apply t_step.
+    + eapply t_trans.
+      * apply t_step. apply H.
+      * assumption.
+Qed.
+
+Lemma wf_strict_derivation: well_founded (flip DerivationStrict).
+Proof. 
+  apply (wf_incl _ _ (clos_trans _ (flip Trans))).
+  - unfold inclusion. intros. now apply clos_trans_flip.
+  - apply wf_clos_trans. apply wf_trans.
 Qed.
