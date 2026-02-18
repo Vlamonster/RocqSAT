@@ -559,9 +559,36 @@ Proof.
 Qed.
 
 (* Thanks to Gaetan Gilbert *)
-Lemma clos_refl_trans_flip A R x y : clos_refl_trans A (fun a b => R b a) x y -> clos_refl_trans A R y x.
+Lemma clos_trans_flip: forall {A: Type} (R: relation A) (a b: A),
+  flip (clos_trans _ R) a b <-> clos_trans _ (flip R) a b.
 Proof.
-  induction 1;econstructor;solve [eauto].
+  split.
+  - intros. apply clos_trans_tn1_iff in H. induction H.
+    + now apply t_step.
+    + eapply t_trans.
+      * apply t_step. apply H.
+      * assumption.
+  - intros. apply clos_trans_tn1_iff in H. induction H.
+    + now apply t_step.
+    + eapply t_trans.
+      * apply t_step. apply H.
+      * assumption.
+Qed.
+
+Lemma clos_refl_trans_flip: forall {A: Type} (R: relation A) (a b: A),
+  flip (clos_refl_trans _ R) a b <-> clos_refl_trans _ (flip R) a b.
+Proof.
+  split.
+  - intros. apply clos_rt_rtn1_iff in H. induction H.
+    + apply rt_refl.
+    + eapply rt_trans.
+      * apply rt_step. apply H.
+      * assumption.
+  - intros. apply clos_rt_rtn1_iff in H. induction H.
+    + apply rt_refl.
+    + eapply rt_trans.
+      * apply rt_step. apply H.
+      * assumption.
 Qed.
 
 Section WfInclusion.
@@ -701,40 +728,20 @@ Proof.
       rewrite Hv in Hxz. contradiction Hxz.
 Qed.
 
-Lemma wf_trans0 : forall x f, cnf x = Some f -> Acc (flip Trans) x.
+Lemma wf_trans0 : forall s f, cnf s = Some f -> Acc (flip Trans) s.
 Proof.
-  intros x f Hx.
-  apply Acc_incl' with (R2:=StateLt f).
+  intros s f Hs. apply Acc_incl' with (R2:=StateLt f).
   2:apply wf_state_lt.
   intros z y Hxy Hyz.
   apply clos_refl_trans_flip in Hxy.
-  apply (statelt_incl _ _ Hx); assumption.
+  apply (statelt_incl _ _ Hs); assumption.
 Qed.
 
 Lemma wf_trans: well_founded (flip Trans).
 Proof.
-  intros x.
-  destruct (cnf x) eqn:Hx.
-  - eapply wf_trans0;eassumption.
-  - constructor;intros y H.
-    apply to_statelt in H. rewrite Hx in H.
-    contradiction H.
-Qed.
-
-Lemma clos_trans_flip: forall {A: Type} (R: relation A) (a b: A),
-  flip (clos_trans _ R) a b <-> clos_trans _ (flip R) a b.
-Proof.
-  split.
-  - intros. unfold flip in H. apply clos_trans_tn1_iff in H. induction H.
-    + now apply t_step.
-    + eapply t_trans.
-      * apply t_step. apply H.
-      * assumption.
-  - intros. apply clos_trans_tn1_iff in H. induction H.
-    + now apply t_step.
-    + eapply t_trans.
-      * apply t_step. apply H.
-      * assumption.
+  intros s. destruct (cnf s) eqn:Hs.
+  - now apply wf_trans0 in Hs.
+  - constructor. intros s' H. apply to_statelt in H. now rewrite Hs in H.
 Qed.
 
 Lemma wf_strict_derivation: well_founded (flip DerivationStrict).
