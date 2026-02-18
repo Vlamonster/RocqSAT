@@ -563,32 +563,34 @@ Lemma clos_trans_flip: forall {A: Type} (R: relation A) (a b: A),
   flip (clos_trans _ R) a b <-> clos_trans _ (flip R) a b.
 Proof.
   split.
-  - intros. apply clos_trans_tn1_iff in H. induction H.
+  - intros. induction H.
     + now apply t_step.
     + eapply t_trans.
-      * apply t_step. apply H.
-      * assumption.
-  - intros. apply clos_trans_tn1_iff in H. induction H.
+      * apply IHclos_trans2.
+      * apply IHclos_trans1.
+  - intros. induction H.
     + now apply t_step.
     + eapply t_trans.
-      * apply t_step. apply H.
-      * assumption.
+      * apply IHclos_trans2.
+      * apply IHclos_trans1.
 Qed.
 
 Lemma clos_refl_trans_flip: forall {A: Type} (R: relation A) (a b: A),
   flip (clos_refl_trans _ R) a b <-> clos_refl_trans _ (flip R) a b.
 Proof.
   split.
-  - intros. apply clos_rt_rtn1_iff in H. induction H.
+  - intros. induction H.
+    + now apply rt_step.
     + apply rt_refl.
     + eapply rt_trans.
-      * apply rt_step. apply H.
-      * assumption.
-  - intros. apply clos_rt_rtn1_iff in H. induction H.
+      * apply IHclos_refl_trans2.
+      * apply IHclos_refl_trans1.
+  - intros. induction H.
+    + now apply rt_step.
     + apply rt_refl.
     + eapply rt_trans.
-      * apply rt_step. apply H.
-      * assumption.
+      * apply IHclos_refl_trans2.
+      * apply IHclos_refl_trans1.
 Qed.
 
 Section WfInclusion.
