@@ -3,7 +3,7 @@ name: CI
 on:
   push:
   pull_request:
-  
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,20 +16,24 @@ jobs:
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 5
-          
-      - name: Install dependencies and build
+
+      - name: Install dependencies
         run: |
           cd code
           opam repo add rocq-released https://coq.inria.fr/opam/released
-          opam install . --deps-only && echo "Dependencies installed"
-          opam exec -- dune build && echo "Dune build succeeded."
+          opam install . --deps-only
+
+      - name: Build project
+        run: |
+          cd code
+          opam exec -- dune build
 
       - name: Generate documentation
         if: github.ref == 'refs/heads/master'
         run: |
           cd code
           mkdir ../doc
-          opam exec -- rocq doc _build/default/verification/*.v -d ../doc
+          opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v -d doc
 
       - name: Upload documentation artifact
         if: github.ref == 'refs/heads/master'
