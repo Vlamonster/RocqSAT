@@ -33,7 +33,7 @@ jobs:
         run: |
           cd code
           mkdir ../doc
-          opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v -d doc
+          opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v -d ../doc -toc
 
       - name: Upload documentation artifact
         if: github.ref == 'refs/heads/master'
