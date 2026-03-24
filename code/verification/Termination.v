@@ -545,19 +545,6 @@ Proof.
     now apply prefix_prop.
 Qed.
 
-Lemma derivation_strict__state_lt_trans_clos: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
-  state m f Hwf ==>+ s' -> state m f Hwf >>+[f] s'.
-Proof.
-  intros. apply clos_trans_tn1_iff in H. induction H.
-  - apply t_step. now apply trans__state_lt.
-  - destruct y.
-    + inversion H.
-    + apply clos_trans_tn1_iff in H0. apply derivation_strict_same_formula in H0. subst f0.
-      eapply t_trans.
-      * apply t_step. apply trans__state_lt. apply H.
-      * apply IHclos_trans_n1.
-Qed.
-
 (* Thanks to Gaetan Gilbert *)
 Lemma clos_trans_flip: forall {A: Type} (R: relation A) (a b: A),
   flip (clos_trans _ R) a b <-> clos_trans _ (flip R) a b.
