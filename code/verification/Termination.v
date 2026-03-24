@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import Nat Arith List Relations Wellfounded Lia.
+From Stdlib Require Import Basics Nat Arith List Relations Wellfounded Lia.
 Import ListNotations.
 From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation Trans WellFormed.
 
@@ -545,15 +545,197 @@ Proof.
     now apply prefix_prop.
 Qed.
 
-Lemma derivation_strict__state_lt_trans_clos: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
-  state m f Hwf ==>+ s' -> state m f Hwf >>+[f] s'.
+(* Thanks to Gaetan Gilbert *)
+Lemma clos_trans_flip: forall {A: Type} (R: relation A) (a b: A),
+  flip (clos_trans _ R) a b <-> clos_trans _ (flip R) a b.
 Proof.
-  intros. apply clos_trans_tn1_iff in H. induction H.
-  - apply t_step. now apply trans__state_lt.
-  - destruct y.
-    + inversion H.
-    + apply clos_trans_tn1_iff in H0. apply derivation_strict_same_formula in H0. subst f0.
-      eapply t_trans.
-      * apply t_step. apply trans__state_lt. apply H.
-      * apply IHclos_trans_n1.
+  split.
+  - intros. induction H.
+    + now apply t_step.
+    + eapply t_trans.
+      * apply IHclos_trans2.
+      * apply IHclos_trans1.
+  - intros. induction H.
+    + now apply t_step.
+    + eapply t_trans.
+      * apply IHclos_trans2.
+      * apply IHclos_trans1.
+Qed.
+
+Lemma clos_refl_trans_flip: forall {A: Type} (R: relation A) (a b: A),
+  flip (clos_refl_trans _ R) a b <-> clos_refl_trans _ (flip R) a b.
+Proof.
+  split.
+  - intros. induction H.
+    + now apply rt_step.
+    + apply rt_refl.
+    + eapply rt_trans.
+      * apply IHclos_refl_trans2.
+      * apply IHclos_refl_trans1.
+  - intros. induction H.
+    + now apply rt_step.
+    + apply rt_refl.
+    + eapply rt_trans.
+      * apply IHclos_refl_trans2.
+      * apply IHclos_refl_trans1.
+Qed.
+
+Section WfInclusion.
+  Variable A : Type.
+  Variables R1 R2 : A -> A -> Prop.
+
+  Lemma Acc_incl' : forall z : A, (forall x y, clos_refl_trans _ R1 y z -> R1 x y -> R2 x y) -> Acc R2 z -> Acc R1 z.
+  Proof.
+    intros z H.
+    induction 1 as [z Hz IH].
+    apply Acc_intro.
+    intros y Hy.
+    apply IH.
+    - apply H. 2:assumption.
+      constructor 2.
+    - intros x z' Hz' HR.
+      apply H; only 2: exact HR.
+      apply rt_trans with y.
+      + assumption.
+      + apply rt_step;assumption.
+  Qed.
+End WfInclusion.
+
+Equations cnf (s: State): option CNF :=
+cnf fail          := None;
+cnf (state _ f _) := Some f.
+
+Lemma to_statelt s s' :
+  Trans s s' ->
+  match cnf s with
+  | None => False
+  | Some f =>
+      (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s
+  end.
+Proof.
+  intros. funelim (cnf s).
+  - inversion H.
+  - split.
+    + destruct s'.
+      * now left.
+      * right. apply trans_same_formula in H. now subst.
+    + now apply trans__state_lt.
+Qed.
+
+Lemma to_statelt' s s' :
+  Trans s s' ->
+  match cnf s' with
+  | None => forall f, cnf s = Some f -> StateLt f s' s
+  | Some f => cnf s = Some f /\ StateLt f s' s
+  end.
+Proof.
+  intros H.
+  apply to_statelt in H.
+  destruct (cnf s').
+  - destruct (cnf s).
+    + destruct H as [[e|[=]] H];subst;auto.
+      discriminate e.
+    + contradiction H.
+  - intros f Hf;rewrite Hf in H.
+    destruct H;auto.
+Qed.
+
+Lemma to_statelt0 s s' f : cnf s' = Some f -> Trans s s' -> cnf s = Some f /\ StateLt f s' s.
+Proof.
+  intros H H'.
+  apply to_statelt in H'.
+  rewrite H in H'.
+  destruct (cnf s).
+  - destruct H' as [[e|[=]] H']; try discriminate e.
+    subst;auto.
+  - contradiction H'.
+Qed.
+
+Lemma to_statelt0' s s' f : cnf s = Some f -> Trans s s' -> (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s.
+Proof.
+  intros H H'.
+  apply to_statelt in H'. rewrite H in H'. assumption.
+Qed.
+
+Lemma clos_nf s s' f : cnf s' = Some f -> clos_refl_trans _ Trans s s' -> cnf s = Some f.
+Proof.
+  intros Hf H.
+  induction H as [s s' H| s | y v x _ IHyv _ IHzy].
+  - apply (to_statelt0 _ _ _ Hf) in H.
+    destruct H as [H _]; exact H.
+  - assumption.
+  - auto.
+Qed.
+
+Lemma clos_nf0 s s' : cnf s = None -> clos_refl_trans _ Trans s s' -> s = s'.
+Proof.
+  intros Hf H.
+  induction H as [s s' H| s | y v x Hyv IHyv Hzy IHzy].
+  - apply to_statelt in H. rewrite Hf in H. contradiction H.
+  - reflexivity.
+  - firstorder. subst. auto.
+Qed.
+
+Lemma clos_nf' s s' f : cnf s = Some f -> clos_refl_trans _ Trans s s' -> cnf s' = None \/ cnf s' = Some f.
+Proof.
+  intros Hf H.
+  induction H as [s s' H| s | y v x Hyv IHyv Hzy IHzy].
+  - apply (to_statelt0' _ _ _ Hf) in H.
+    destruct H as [H _]; exact H.
+  - right;assumption.
+  - specialize (IHyv Hf). destruct IHyv.
+    + apply (clos_nf0 _ _ H) in Hzy. subst. left;assumption.
+    + specialize (IHzy H). assumption.
+Qed.
+
+Lemma statelt_incl x f :
+  cnf x = Some f ->
+  forall z y,
+  clos_refl_trans _ Trans x y ->
+  Trans y z ->
+  StateLt f z y.
+Proof.
+  intros Hx z; induction 1 as [y x Hyx| x | y v x Hyv Hzv Hvx Hzx].
+  - intros Hxz.
+    apply (to_statelt0' _ _ _ Hx) in Hyx.
+    destruct Hyx as [[e|e] Hxy].
+    + apply to_statelt in Hxz. rewrite e in Hxz. contradiction Hxz.
+    + apply (to_statelt0' _ _ _ e) in Hxz.
+      destruct Hxz as [_ Hxz].
+      assumption.
+  - intros Hxz.
+    apply to_statelt in Hxz. rewrite Hx in Hxz.
+    destruct Hxz as [_ Hxz].
+    assumption.
+  - intros Hxz.
+    apply Hzx. 2:assumption.
+    destruct (cnf v) as [f'|] eqn:Hv.
+    + pose proof (clos_nf _ _ _ Hv Hyv) as Hy.
+      congruence.
+    + pose proof (clos_nf0 _ _ Hv Hvx). subst.
+      apply to_statelt in Hxz.
+      rewrite Hv in Hxz. contradiction Hxz.
+Qed.
+
+Lemma wf_trans0 : forall s f, cnf s = Some f -> Acc (flip Trans) s.
+Proof.
+  intros s f Hs. apply Acc_incl' with (R2:=StateLt f).
+  2:apply wf_state_lt.
+  intros z y Hxy Hyz.
+  apply clos_refl_trans_flip in Hxy.
+  apply (statelt_incl _ _ Hs); assumption.
+Qed.
+
+Lemma wf_trans: well_founded (flip Trans).
+Proof.
+  intros s. destruct (cnf s) eqn:Hs.
+  - now apply wf_trans0 in Hs.
+  - constructor. intros s' H. apply to_statelt in H. now rewrite Hs in H.
+Qed.
+
+Lemma wf_strict_derivation: well_founded (flip DerivationStrict).
+Proof. 
+  apply (wf_incl _ _ (clos_trans _ (flip Trans))).
+  - unfold inclusion. intros. now apply clos_trans_flip.
+  - apply wf_clos_trans. apply wf_trans.
 Qed.

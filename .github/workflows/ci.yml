@@ -29,20 +29,20 @@ jobs:
           opam exec -- dune build
 
       - name: Generate documentation
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/thesis'
         run: |
           cd code
           mkdir ../doc
           opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v -d ../doc -toc
 
       - name: Upload documentation artifact
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/thesis'
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./doc
 
   deploy:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/thesis'
 
     runs-on: ubuntu-latest
 
