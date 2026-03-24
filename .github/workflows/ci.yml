@@ -3,7 +3,7 @@ name: CI
 on:
   push:
   pull_request:
-  
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,10 +16,55 @@ jobs:
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 5
-          
-      - name: Install dependencies and build
+
+      - name: Install dependencies
         run: |
           cd code
           opam repo add rocq-released https://coq.inria.fr/opam/released
-          opam install . --deps-only && echo "Dependencies installed"
-          opam exec -- dune build && echo "Dune build succeeded."
+          opam install . --deps-only
+
+      - name: Build project
+        run: |
+          cd code
+          opam exec -- dune build
+
+      - name: Generate documentation
+        if: github.ref == 'refs/heads/thesis'
+        run: |
+          cd code
+          mkdir ../doc
+          opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v -d ../doc -toc
+
+      - name: Upload documentation artifact
+        if: github.ref == 'refs/heads/thesis'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./doc
+
+  deploy:
+    if: github.ref == 'refs/heads/thesis'
+
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
