@@ -1,10 +1,16 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List Bool.
+From Stdlib Require Import List Bool MSets.MSetAVL MSets.MSetEqProperties.
 From RocqSAT Require Import Lit Neg.
 
-(* A clause is a disjunction of literals. *)
-Definition Clause: Type := list Lit.
+Module LitSet := MSetAVL.Make(Lit_as_OT).
+Module LitSetEqProperties := MSetEqProperties.EqProperties(LitSet).
 
+(* A clause is a disjunction of literals. *)
+Definition Clause: Type := LitSet.t.
+
+Print LitSet.
+
+(* 
 (* Remove a literal from a clause. *)
 Equations l_remove (c: Clause) (l: Lit): Clause :=
 l_remove c l := filter (fun (l': Lit) => negb (l =? l')) c.
@@ -41,4 +47,4 @@ Lemma l_in_c_false_iff: forall (c: Clause) (l: Lit),
 Proof.
   intros. pose proof (l_in_c_true_iff c l). apply not_iff_compat in H. 
   rewrite not_true_iff_false in H. intuition.
-Qed.
+Qed. *)

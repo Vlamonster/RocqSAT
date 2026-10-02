@@ -13,7 +13,7 @@ Open Scope neg_scope.
 Lemma self_neq_neg: forall (l: Lit), l <> ¬l.
 Proof. intros. apply eqb_neq. now funelim (l =? ¬l). Qed.
 
-Lemma self_neqb_neg: forall (l: Lit), l =? ¬l = false.
+Lemma self_neqb_neg: forall (l: Lit), (l =? ¬l) = false.
 Proof. intros. now funelim (l =? ¬l). Qed.
 
 Lemma involutive: forall (l: Lit), ¬¬l = l.

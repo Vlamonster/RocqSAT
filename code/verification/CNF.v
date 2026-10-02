@@ -1,11 +1,14 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List Bool.
+From Stdlib Require Import List Bool MSets.MSetAVL MSets.MSetEqProperties.
 From RocqSAT Require Import Lit Neg Clause.
 
-(* A formula is a conjunction of clauses. *)
-Definition CNF: Type := list Clause.
+Module ClauseSet := MSetAVL.Make(LitSet).
+Module ClauseSetEqProperties := MSetEqProperties.EqProperties(ClauseSet).
 
-Equations l_in_f (f: CNF) (l: Lit): bool :=
+(* A formula is a conjunction of clauses. *)
+Definition CNF := ClauseSet.t.
+
+(* Equations l_in_f (f: CNF) (l: Lit): bool :=
 l_in_f f l := existsb (fun (c: Clause) => l_in_c c l) f.
 
 Lemma l_in_f_true_iff: forall (f: CNF) (l: Lit),
@@ -29,4 +32,4 @@ Proof.
     + apply l_in_c_true_iff in Hl_in_c. right. unfold not. intros. apply H0. now exists c.
     + apply l_in_c_false_iff in Hl_in_c. intuition.
   - intros. apply H. unfold not. intros. destruct H1. specialize (H0 x). intuition.
-Qed.
+Qed. *)

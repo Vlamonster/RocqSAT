@@ -8,7 +8,7 @@ Definition NoDuplicates (m: PA): Prop :=
 
 Definition Bounded (m: PA) (f: CNF): Prop := 
   forall (l: Lit) (a: Ann), In (l, a) m -> 
-  exists (c: Clause), In c f /\ (In l c \/ In (¬l) c).
+  exists (c: Clause), ClauseSet.In c f /\ (LitSet.In l c \/ LitSet.In (¬l) c).
 
 Definition WellFormed (m: PA) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.

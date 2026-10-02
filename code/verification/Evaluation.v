@@ -1,5 +1,5 @@
 From Equations Require Import Equations.
-From Stdlib Require Import List Bool.
+From Stdlib Require Import List Bool Morphisms.
 Import ListNotations.
 From RocqSAT Require Import Lit Neg Clause CNF.
 
@@ -12,9 +12,9 @@ Inductive Ann: Type :=
 Definition PA: Type := list (Lit * Ann).
 
 Declare Scope pa_scope.
-Notation "m ++a n" := (n ++ m) (at level 55, left associativity): pa_scope.
-Notation "m ++d l" := ((l, dec) :: m) (at level 55, left associativity): pa_scope.
-Notation "m ++p l" := ((l, prop) :: m) (at level 55, left associativity): pa_scope.
+Notation "m ++a n" := (n ++ m) (at level 54, left associativity): pa_scope.
+Notation "m ++d l" := ((l, dec) :: m) (at level 54, left associativity): pa_scope.
+Notation "m ++p l" := ((l, prop) :: m) (at level 54, left associativity): pa_scope.
 Open Scope pa_scope.
 
 (* The first instance of `l` or `¬l` determines the value. *)
@@ -25,21 +25,57 @@ l_eval ((l', _) :: m) l with l =? l', l =? ¬l' :=
   | _   , true := Some false
   | _   , _    := l_eval m l.
 
-Equations c_eval (m: PA) (c: Clause): option bool :=
-c_eval m [] := Some false;
-c_eval m (l :: c) with l_eval m l, c_eval m c :=
-  | Some true , _          := Some true
-  | _         , Some true  := Some true
-  | Some false, Some false := Some false
-  | _         , _          := None.
+Definition l_true (m: PA) (l: Lit): bool :=
+match l_eval m l with
+| Some true => true
+| _ => false
+end.
 
-Equations f_eval (m: PA) (f: CNF): option bool :=
-f_eval m [] := Some true;
-f_eval m (c :: f) with c_eval m c, f_eval m f :=
-  | Some true , r          := r
-  | Some false, _          := Some false
-  | _         , Some false := Some false
-  | None      , _          := None.
+Definition l_false (m: PA) (l: Lit): bool :=
+match l_eval m l with
+| Some false => true
+| _ => false
+end.
+
+Definition l_undef (m: PA) (l: Lit): bool :=
+match l_eval m l with
+| None => true
+| _ => false
+end.
+
+Definition c_eval (m: PA) (c: Clause): option bool :=
+if LitSet.exists_ (l_true m) c then
+  Some true
+else if LitSet.for_all (l_false m) c then
+  Some false
+else 
+  None.
+
+Definition c_true (m: PA) (c: Clause): bool :=
+match c_eval m c with
+| Some true => true
+| _ => false
+end.
+
+Definition c_false (m: PA) (c: Clause): bool :=
+match c_eval m c with
+| Some false => true
+| _ => false
+end.
+
+Definition c_undef (m: PA) (c: Clause): bool :=
+match c_eval m c with
+| None => true
+| _ => false
+end.
+
+Definition f_eval (m: PA) (f: CNF): option bool :=
+if ClauseSet.for_all (c_true m) f then
+  Some true
+else if ClauseSet.exists_ (c_false m) f then
+  Some false
+else 
+  None.
 
 Equations m_eval (m m': PA): option bool :=
 m_eval m [] := Some true;
@@ -61,10 +97,10 @@ Proof.
   - intuition. destruct H. discriminate.
 Qed.
 
-Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
-Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false.
+(* Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
+Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false. *)
 
-Module EvalExamples.
+(* Module EvalExamples.
   Example example_l_eval_1: l_eval ([] ++p Pos 1) (Pos 1) = Some true.
   Proof. reflexivity. Qed.
 
@@ -82,7 +118,7 @@ Module EvalExamples.
 
   Example example_c_eval_3: c_eval ([] ++p Neg 1 ++p Neg 2) [Pos 1; Pos 2] = Some false.
   Proof. reflexivity. Qed.
-End EvalExamples.
+End EvalExamples. *)
 
 Lemma l_eval_neg_none_iff: forall (m: PA) (l: Lit), l_eval m l = None <-> l_eval m (¬l) = None.
 Proof.
@@ -168,125 +204,88 @@ Proof.
 Qed.
 
 Lemma c_eval_true_iff: forall (m: PA) (c: Clause),
-  c_eval m c = Some true <-> exists (l: Lit), In l c /\ l_eval m l = Some true.
+  c_eval m c = Some true <-> exists (l: Lit), LitSet.In l c /\ l_eval m l = Some true.
 Proof.
-  intros. split.
-  - intros. funelim (c_eval m c); try congruence.
-    + exists l. split.
-      * now left.
-      * assumption.
-    + apply Hind in Heq as [l' [Hin' Hl']].
-      * exists l'. split.
-        -- now right.
+  intros m c. split.
+  - intros Hc. unfold c_eval in Hc. destruct (LitSet.exists_ (l_true m) c) eqn:Hexists.
+    + apply LitSet.exists_spec in Hexists as [l [Hin Htrue]].
+      * exists l. split.
         -- assumption.
-      * reflexivity.
-      * reflexivity.
-    + apply Hind in Heq as [l' [Hin' Hl']].
-      * exists l'. split.
-        -- now right.
+        -- unfold l_true in Htrue. destruct (l_eval m l) as [[|]|]; easy.
+      * now intros ? ? ->.
+    + destruct (LitSet.for_all (l_false m) c) eqn:Hforall; easy.
+  - intros [l [Hin Hl]]. unfold c_eval. assert (LitSet.exists_ (l_true m) c = true) as Hexists.
+    + apply LitSet.exists_spec.
+      * now intros ? ? ->.
+      * exists l. split.
         -- assumption.
-      * reflexivity.
-      * reflexivity.
-  - intros. funelim (c_eval m c); try congruence.
-    + now destruct H.
-    + destruct H as [l' [[Heq'|Hin'] Hl']].
-      * congruence.
-      * assert (c_eval m c = Some true).
-        -- apply Hind. now exists l'.
-        -- congruence.
-    + destruct H as [l' [[Heq'|Hin'] Hl']].
-      * congruence.
-      * assert (c_eval m c = Some true).
-        -- apply Hind. now exists l'.
-        -- congruence.
-    + destruct H as [l' [[Heq'|Hin'] Hl']].
-      * congruence.
-      * assert (c_eval m c = Some true).
-        -- apply Hind. now exists l'.
-        -- congruence.
-    + destruct H as [l' [[Heq'|Hin'] Hl']].
-      * congruence.
-      * assert (c_eval m c = Some true).
-        -- apply Hind. now exists l'.
-        -- congruence.
+        -- unfold l_true. now rewrite Hl.
+    + now rewrite Hexists.
 Qed.
 
 Lemma c_eval_false_iff: forall (m: PA) (c: Clause),
-  c_eval m c = Some false <-> forall (l: Lit), In l c -> l_eval m l = Some false.
+  c_eval m c = Some false <-> forall (l: Lit), LitSet.In l c -> l_eval m l = Some false.
 Proof.
-  intros. split.
-  - intros. funelim (c_eval m c); try congruence.
-    + contradiction.
-    + destruct H0.
-      * congruence.
-      * now apply (Hind m c).
-  - intros. funelim (c_eval m c); try congruence.
-    + pose proof (H _ (in_eq _ _)). congruence.
-    + assert (c_eval m c = Some false).
-      * apply Hind. intros. apply H. now right.
-      * congruence.
-    + assert (c_eval m c = Some false).
-      * apply Hind. intros. apply H. now right.
-      * congruence.
-    + assert (c_eval m c = Some false).
-      * apply Hind. intros. apply H. now right.
-      * congruence.
-    + pose proof (H _ (in_eq _ _)). congruence.
-    + pose proof (H _ (in_eq _ _)). congruence.
+  intros m c. split.
+  - intros Hc l Hin. unfold c_eval in Hc. destruct (LitSet.exists_ (l_true m) c) eqn:Hexists.
+    + discriminate.
+    + destruct (LitSet.for_all (l_false m) c) eqn:Hforall.
+      * apply LitSet.for_all_spec in Hforall.
+        -- apply Hforall in Hin as Hfalse. unfold l_false in Hfalse. destruct (l_eval m l) as [[|]|]; easy.
+        -- now intros ? ? ->.
+      * discriminate.
+  - intros Hforall. unfold c_eval. destruct (LitSet.exists_ (l_true m) c) eqn:Hexists.
+    + apply LitSet.exists_spec in Hexists as [l [Hin Htrue]].
+      * apply Hforall in Hin. unfold l_true in Htrue. now rewrite Hin in Htrue.
+      * now intros ? ? ->.
+    + assert (LitSet.for_all (l_false m) c = true) as Hforall'.
+      * apply LitSet.for_all_spec.
+        -- now intros ? ? ->.
+        -- intros l Hin. apply Hforall in Hin as Hl. unfold l_false. destruct (l_eval m l) as [[|]|]; easy.
+      * now rewrite Hforall'.
 Qed.
 
 Lemma c_eval_none_iff: forall (m: PA) (c: Clause),
   c_eval m c = None <-> 
-    (~ exists (l: Lit), In l c /\ l_eval m l = Some true) /\
-       exists (l: Lit), In l c /\ l_eval m l = None.
+    (~ exists (l: Lit), LitSet.In l c /\ l_eval m l = Some true) /\
+       exists (l: Lit), LitSet.In l c /\ l_eval m l = None.
 Proof.
-  unfold not. intros. induction c as [|l c IH].
-  - split.
-    + intros. discriminate.
-    + intros [H H']. now destruct H'.
-  - split.
-    + intros Hc. split.
-      * intros [l' [[Heq|Hin'] Hl']].
-        -- subst l'. assert (c_eval m (l :: c) = Some true).
-          ++ apply c_eval_true_iff. exists l. split.
-            ** now left.
-            ** assumption.
-          ++ congruence.
-        -- assert (c_eval m (l :: c) = Some true).
-          ++ apply c_eval_true_iff. exists l'. split.
-            ** now right.
-            ** assumption.
-          ++ congruence.
-      * simp c_eval in Hc. destruct (l_eval m l) as [[|]|] eqn:Hl.
-        -- discriminate.
-        -- destruct (c_eval m c) as [[|]|] eqn:Hc'; try easy.
-           simpl in Hc. apply IH in Hc as [_ [l' [Hin' Hl']]].
-           exists l'. split.
-          ++ now right.
-          ++ assumption.
+  intros m c. split.
+  - intros Hc. split.
+    + unfold not. intros [l [Hin Hl]]. unfold c_eval in Hc. assert (LitSet.exists_ (l_true m) c = true) as Hexists.
+      * apply LitSet.exists_spec.
+        -- now intros ? ? ->.
         -- exists l. split.
-          ++ now left.
           ++ assumption.
-    + intros [H H']. destruct (l_eval m l) as [[|]|] eqn:Hl.
-      * exfalso. apply H. exists l. split.
-        -- now left.
+          ++ unfold l_true. destruct (l_eval m l) as [[|]|]; easy.
+      * now rewrite Hexists in Hc.
+    + unfold c_eval in Hc. destruct (LitSet.exists_ (l_true m) c) eqn:Hexists.
+      * discriminate.
+      * destruct (LitSet.for_all (l_false m) c) eqn:Hforall.
+        -- discriminate.
+        -- apply LitSetEqProperties.for_all_mem_4 in Hforall as [l [Hin Hfalse]].
+          ++ exists l. unfold l_false in Hfalse. destruct (l_eval m l) as [[|]|] eqn:Hl.
+            ** apply LitSetEqProperties.exists_mem_2 with (x:=l) in Hexists.
+              --- unfold l_true in Hexists. now rewrite Hl in Hexists.
+              --- now intros ? ? ->.
+              --- assumption.
+            ** discriminate.
+            ** now apply LitSet.mem_spec in Hin.
+          ++ now intros ? ? ->.
+  - intros [Hexists' [l [Hin Hl]]]. unfold c_eval. destruct (LitSet.exists_ (l_true m) c) eqn:Hexists.
+    + apply LitSet.exists_spec in Hexists as [l' [Hin' Htrue']].
+      * exfalso. apply Hexists'. exists l'. split.
         -- assumption.
-      * simp c_eval. rewrite Hl. simpl. destruct (c_eval m c) as [[|]|] eqn:Hc'; try easy.
-        -- rewrite c_eval_true_iff in Hc'. destruct Hc' as [l' [Hin' Hl']].
-           exfalso. apply H. exists l'. split.
-          ++ now right.
-          ++ assumption.
-        -- rewrite c_eval_false_iff in Hc'. destruct H' as [l' [[Heq|Hin'] Hl']].
-          ++ congruence.
-          ++ apply Hc' in Hin'. congruence.
-      * simp c_eval. rewrite Hl. simpl. destruct (c_eval m c) as [[|]|] eqn:Hc'; try easy.
-        rewrite c_eval_true_iff in Hc'. destruct Hc' as [l' [Hin' Hl']].
-        exfalso. apply H. exists l'. split.
-        -- now right.
-        -- assumption.
+        -- unfold l_true in Htrue'. destruct (l_eval m l') as [[|]|]; easy.
+      * now intros ? ? ->.
+    + destruct (LitSet.for_all (l_false m) c) eqn:Hforall.
+      * apply LitSet.for_all_spec in Hforall.
+        -- apply Hforall in Hin as Hfalse. unfold l_false in Hfalse. destruct (l_eval m l) as [[|]|]; easy.
+        -- now intros ? ? ->.
+      * reflexivity.
 Qed.
 
-Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
+(* Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
   c_eval m c = None -> c_eval m (l_remove c l) = Some false -> Undef m l.
 Proof.
   unfold Undef. intros. 
@@ -318,39 +317,96 @@ Proof.
       * now apply l_remove_in_iff.
       * apply Hc in H. congruence.
   - now exists l.
+Qed. *)
+
+Lemma c_equal_exists: forall (f: Lit -> bool) (c1 c2: Clause), 
+  LitSet.Equal c1 c2 -> LitSet.exists_ f c1 = LitSet.exists_ f c2.
+Proof.
+  intros f c1 c2 Heq. destruct (LitSet.exists_ f c1) eqn:Hexists, (LitSet.exists_ f c2) eqn:Hexists'.
+  - reflexivity.
+  - apply LitSet.exists_spec in Hexists as [l [Hin Hf]].
+    + apply Heq in Hin. assert (LitSet.exists_ f c2 = true) as contra.
+      * apply LitSet.exists_spec.
+        -- now intros ? ? ->.
+        -- now exists l.
+      * congruence.
+    + now intros ? ? ->.
+  - apply LitSet.exists_spec in Hexists' as [l [Hin Hf]].
+    + apply Heq in Hin. assert (LitSet.exists_ f c1 = true) as contra.
+      * apply LitSet.exists_spec.
+        -- now intros ? ? ->.
+        -- now exists l.
+      * congruence.
+    + now intros ? ? ->.
+  - reflexivity.
+Qed.
+
+Lemma c_equal_forall: forall (f: Lit -> bool) (c1 c2: Clause),
+  LitSet.Equal c1 c2 -> LitSet.for_all f c1 = LitSet.for_all f c2.
+Proof.
+  intros f c1 c2 Heq. destruct (LitSet.for_all f c1) eqn:Hforall, (LitSet.for_all f c2) eqn:Hforall'.
+  - reflexivity.
+  - apply LitSet.for_all_spec in Hforall.
+    + apply LitSetEqProperties.for_all_mem_4 in Hforall' as [l [Hin Hf]].
+      * apply LitSet.mem_spec in Hin. apply Heq in Hin. apply Hforall in Hin as Hf'. congruence.
+      * now intros ? ? ->.
+    + now intros ? ? ->.
+  - apply LitSet.for_all_spec in Hforall'.
+    + apply LitSetEqProperties.for_all_mem_4 in Hforall as [l [Hin Hf]].
+      * apply LitSet.mem_spec in Hin. apply Heq in Hin. apply Hforall' in Hin as Hf'. congruence.
+      * now intros ? ? ->.
+    + now intros ? ? ->.
+  - reflexivity.
+Qed.
+
+Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
+  f_eval m f = Some true <-> forall (c: Clause), ClauseSet.In c f -> c_eval m c = Some true.
+Proof.
+  intros m f. split.
+  - intros Hf c Hin. unfold f_eval in Hf. destruct (ClauseSet.for_all (c_true m) f) eqn:Hforall.
+    + apply ClauseSet.for_all_spec in Hforall.
+      * apply Hforall in Hin as Htrue. unfold c_true in Htrue. destruct (c_eval m c) as [[|]|]; easy.
+      * intros c1 c2 Heq. unfold c_true. unfold c_eval. 
+        rewrite (c_equal_exists _ c1 c2 Heq). now rewrite (c_equal_forall _ c1 c2 Heq).
+    + destruct (ClauseSet.exists_ (c_false m) f) eqn:Hexists.
+      * discriminate.
+      * discriminate.
+  - intros Hforall. unfold f_eval. assert (ClauseSet.for_all (c_true m) f = true) as Hforall'.
+    + apply ClauseSet.for_all_spec.
+      * intros c1 c2 Heq. unfold c_true. unfold c_eval. 
+        rewrite (c_equal_exists _ c1 c2 Heq). now rewrite (c_equal_forall _ c1 c2 Heq).
+      * intros c Hin. apply Hforall in Hin as Hc. unfold c_true. destruct (c_eval m c) as [[|]|]; easy.
+    + now rewrite Hforall'.
 Qed.
 
 Lemma f_eval_false_iff: forall (m: PA) (f: CNF),
-  f_eval m f = Some false <-> exists (c: Clause), In c f /\ Conflicting m c.
+  f_eval m f = Some false <-> exists (c: Clause), ClauseSet.In c f /\ c_eval m c = Some false.
 Proof.
-  unfold Conflicting. intros. split.
-  - intros. funelim (f_eval m f); try congruence.
-    + rewrite H in Heqcall. apply Hind in Heqcall.
-      * destruct Heqcall as [c' G]. exists c'. auto with *.
-      * reflexivity.
-      * reflexivity.
-    + exists c. auto with *.
-    + apply Hind in Heq.
-      * destruct Heq as [c' G]. exists c'. auto with *.
-      * reflexivity.
-      * reflexivity.
-  - intros. funelim (f_eval m f); try congruence.
-    + now destruct H.
-    + destruct H as [c' [[<-|Hc_in_f] H]].
-      * congruence.
-      * assert (f_eval m f = Some false).
-        -- apply Hind. exists c'. intuition.
-        -- congruence.
-    + destruct H as [c' [[<-|Hc_in_f] H]].
-      * congruence.
-      * assert (f_eval m f = Some false).
-        -- apply Hind. exists c'. intuition.
-        -- congruence.
-    + destruct H as [c' [[<-|Hc_in_f] H]].
-      * congruence.
-      * assert (f_eval m f = Some false).
-        -- apply Hind. exists c'. intuition.
-        -- congruence.
+  intros m f. split.
+  - intros Hf. unfold f_eval in Hf. destruct (ClauseSet.for_all (c_true m) f) eqn:Hforall.
+    + discriminate.
+    + destruct (ClauseSet.exists_ (c_false m) f) eqn:Hexists.
+      * apply ClauseSet.exists_spec in Hexists as [c [Hin Hfalse]].
+        -- exists c. split.
+          ++ assumption.
+          ++ unfold c_false in Hfalse. destruct (c_eval m c) as [[|]|]; easy.
+        -- intros c1 c2 Heq. unfold c_false. unfold c_eval. 
+           rewrite (c_equal_exists _ c1 c2 Heq). now rewrite (c_equal_forall _ c1 c2 Heq).
+      * discriminate.
+  - intros [c [Hin Hc]]. unfold f_eval. assert (ClauseSet.for_all (c_true m) f = false) as Hforall.
+    + apply ClauseSetEqProperties.for_all_mem_3 with (x:=c).
+      * intros c1 c2 Heq. unfold c_true. unfold c_eval. 
+        rewrite (c_equal_exists _ c1 c2 Heq). now rewrite (c_equal_forall _ c1 c2 Heq).
+      * now apply ClauseSet.mem_spec.
+      * unfold c_true. destruct (c_eval m c) as [[|]|]; easy.
+    + rewrite Hforall. assert (ClauseSet.exists_ (c_false m) f = true) as Hexists.
+      * apply ClauseSet.exists_spec.
+        -- intros c1 c2 Heq. unfold c_false. unfold c_eval. 
+           rewrite (c_equal_exists _ c1 c2 Heq). now rewrite (c_equal_forall _ c1 c2 Heq).
+        -- exists c. split.
+          ++ assumption.
+          ++ unfold c_false. destruct (c_eval m c) as [[|]|]; easy.
+      * now rewrite Hexists.
 Qed.
 
 Lemma l_eval_false_extend: forall (m m': PA) (l: Lit),
@@ -368,59 +424,16 @@ Qed.
 Lemma c_eval_false_extend: forall (m m': PA) (c: Clause),
   c_eval m c = Some false -> c_eval (m' ++a m) c = Some false.
 Proof.
-  intros. funelim (c_eval m c); try congruence.
-  - reflexivity.
-  - assert (c_eval (m' ++a m) c = Some false).
-    + now apply Hind.
-    + simp c_eval. apply (l_eval_false_extend _ m') in Heq0.
-      rewrite H0. now rewrite Heq0.
+  intros m m' c Hc. rewrite c_eval_false_iff in *. intros l Hin. apply l_eval_false_extend. now apply Hc.
 Qed.
 
 Lemma f_eval_false_extend: forall (m m': PA) (f: CNF),
   f_eval m f = Some false -> f_eval (m' ++a m) f = Some false.
 Proof.
-  intros. funelim (f_eval m f); try congruence.
-  - assert (f_eval (m' ++a m) f = Some false).
-    + apply Hind; congruence.
-    + simp f_eval. rewrite H0. now destruct (c_eval (m' ++a m) c) as [[|]|].
-  - simp f_eval. apply (c_eval_false_extend _ m') in Heq. now rewrite Heq.
-  - apply f_eval_false_iff in H. destruct H. destruct H. destruct H.
-    + congruence.
-    + assert (f_eval m f = Some false).
-      * apply f_eval_false_iff. now exists x.
-      * assert (f_eval (m' ++a m) f = Some false).
-        -- apply Hind; congruence.
-        -- simp f_eval. rewrite H2. now destruct (c_eval (m' ++a m) c) as [[|]|].
-Qed.
-
-Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
-  f_eval m f = Some true <-> forall (c: Clause), In c f -> c_eval m c = Some true.
-Proof.
-  intros. split.
-  - intros. funelim (f_eval m f); try congruence.
-    + contradiction.
-    + destruct H0.
-      * congruence.
-      * eapply Hind.
-        -- now rewrite Heqcall.
-        -- apply H0.
-        -- reflexivity.
-        -- reflexivity.
-  - intros. funelim (f_eval m f).
-    + reflexivity.
-    + apply Hind. intros. apply H. now right.
-    + assert (c_eval m c = Some true).
-      * apply H. now left.
-      * congruence.
-    + assert (c_eval m c = Some true).
-      * apply H. now left.
-      * congruence.
-    + assert (c_eval m c = Some true).
-      * apply H. now left.
-      * congruence.
-    + assert (c_eval m c = Some true).
-      * apply H. now left.
-      * congruence.
+  intros m m' f Hf. rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
+  exists c. split.
+  - assumption.
+  - now apply c_eval_false_extend.
 Qed.
 
 Lemma m_eval_true_iff: forall (m m': PA),
@@ -453,12 +466,12 @@ Proof.
       * congruence.
 Qed.
 
-Lemma c_eval_nil: forall (c: Clause), c_eval [] c = Some false <-> c = [].
+(* Lemma c_eval_nil: forall (c: Clause), c_eval [] c = Some false <-> c = [].
 Proof.
   intros. split.
   - intros. funelim (c_eval [] c); try congruence. discriminate.
   - intros. now subst c.
-Qed.
+Qed. *)
 
 Lemma m_eval_transfer_l: forall (m m': PA) (l: Lit),
   m_eval m m' = Some true -> l_eval m' l = Some false -> l_eval m l = Some false.
@@ -495,28 +508,19 @@ Qed.
 Lemma c_eval_true_extend: forall (m m': PA) (c: Clause),
   c_eval m' c = Some true -> m_eval m' m = Some true -> c_eval (m' ++a m) c = Some true.
 Proof.
-  intros. funelim (c_eval m' c); try congruence.
-  - simp c_eval. apply (l_eval_true_extend m0) in Heq.
-    + now rewrite Heq.
-    + assumption.
-  - assert (c_eval (m ++a m0) c = Some true).
-    + apply Hind; congruence.
-    + simp c_eval. rewrite H1. now destruct (l_eval (m ++a m0) l) as [[|]|].
-  - assert (c_eval (m ++a m0) c = Some true).
-    + apply Hind; congruence.
-    + simp c_eval. rewrite H1. now destruct (l_eval (m ++a m0) l) as [[|]|].
+  intros m m' c Hc Hm. rewrite c_eval_true_iff in *. destruct Hc as [l [Hin Hl]].
+  exists l. split.
+  - assumption.
+  - now apply l_eval_true_extend.
 Qed.
 
 Lemma f_eval_true_extend: forall (m m': PA) (f: CNF),
   f_eval m' f = Some true -> m_eval m' m = Some true -> f_eval (m' ++a m) f = Some true.
 Proof.
-  intros. funelim (f_eval m' f); try congruence.
-  - reflexivity.
-  - simp f_eval. apply (c_eval_true_extend m0) in Heq.
-    + rewrite Heq. assert (f_eval (m ++a m0) f = Some true).
-      * apply Hind; congruence.
-      * now rewrite H1.
-    + assumption.
+  intros m m' f Hf Hm. rewrite f_eval_true_iff in *. intros c Hin.
+  apply c_eval_true_extend.
+  - now apply Hf.
+  - assumption.
 Qed.
 
 Lemma l_eval_head: forall (m m': PA) (l: Lit),
