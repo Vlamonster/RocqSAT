@@ -97,8 +97,7 @@ Proof.
   - intuition. destruct H. discriminate.
 Qed.
 
-(* Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
-Definition Conflicting (m: PA) (c: Clause): Prop := c_eval m c = Some false. *)
+Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
 
 (* Module EvalExamples.
   Example example_l_eval_1: l_eval ([] ++p Pos 1) (Pos 1) = Some true.
@@ -319,46 +318,6 @@ Proof.
   - now exists l.
 Qed. *)
 
-Lemma c_equal_exists: forall (f: Lit -> bool) (c1 c2: Clause), 
-  LitSet.Equal c1 c2 -> LitSet.exists_ f c1 = LitSet.exists_ f c2.
-Proof.
-  intros f c1 c2 Heq. destruct (LitSet.exists_ f c1) eqn:Hexists, (LitSet.exists_ f c2) eqn:Hexists'.
-  - reflexivity.
-  - apply LitSet.exists_spec in Hexists as [l [Hin Hf]].
-    + apply Heq in Hin. assert (LitSet.exists_ f c2 = true) as contra.
-      * apply LitSet.exists_spec.
-        -- now intros ? ? ->.
-        -- now exists l.
-      * congruence.
-    + now intros ? ? ->.
-  - apply LitSet.exists_spec in Hexists' as [l [Hin Hf]].
-    + apply Heq in Hin. assert (LitSet.exists_ f c1 = true) as contra.
-      * apply LitSet.exists_spec.
-        -- now intros ? ? ->.
-        -- now exists l.
-      * congruence.
-    + now intros ? ? ->.
-  - reflexivity.
-Qed.
-
-Lemma c_equal_forall: forall (f: Lit -> bool) (c1 c2: Clause),
-  LitSet.Equal c1 c2 -> LitSet.for_all f c1 = LitSet.for_all f c2.
-Proof.
-  intros f c1 c2 Heq. destruct (LitSet.for_all f c1) eqn:Hforall, (LitSet.for_all f c2) eqn:Hforall'.
-  - reflexivity.
-  - apply LitSet.for_all_spec in Hforall.
-    + apply LitSetEqProperties.for_all_mem_4 in Hforall' as [l [Hin Hf]].
-      * apply LitSet.mem_spec in Hin. apply Heq in Hin. apply Hforall in Hin as Hf'. congruence.
-      * now intros ? ? ->.
-    + now intros ? ? ->.
-  - apply LitSet.for_all_spec in Hforall'.
-    + apply LitSetEqProperties.for_all_mem_4 in Hforall as [l [Hin Hf]].
-      * apply LitSet.mem_spec in Hin. apply Heq in Hin. apply Hforall' in Hin as Hf'. congruence.
-      * now intros ? ? ->.
-    + now intros ? ? ->.
-  - reflexivity.
-Qed.
-
 Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
   f_eval m f = Some true <-> forall (c: Clause), ClauseSet.In c f -> c_eval m c = Some true.
 Proof.
@@ -465,13 +424,6 @@ Proof.
       * apply (H _ a). now left.
       * congruence.
 Qed.
-
-(* Lemma c_eval_nil: forall (c: Clause), c_eval [] c = Some false <-> c = [].
-Proof.
-  intros. split.
-  - intros. funelim (c_eval [] c); try congruence. discriminate.
-  - intros. now subst c.
-Qed. *)
 
 Lemma m_eval_transfer_l: forall (m m': PA) (l: Lit),
   m_eval m m' = Some true -> l_eval m' l = Some false -> l_eval m l = Some false.
