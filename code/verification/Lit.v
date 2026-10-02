@@ -50,19 +50,6 @@ Proof.
 Qed.
 
 Module Lit_as_OT <: OrderedType.
-(* Parameter t : Type.
-Parameter eq : t -> t -> Prop.
-Parameter eq_equiv : RelationClasses.Equivalence eq.
-Parameter lt : t -> t -> Prop.
-Parameter lt_strorder : RelationClasses.StrictOrder lt.
-Parameter lt_compat :
-Morphisms.Proper
-(Morphisms.respectful eq (Morphisms.respectful eq iff)) lt.
-Parameter compare : t -> t -> comparison.
-Parameter compare_spec :
-forall x y : t, CompareSpec (eq x y) (lt x y) (lt y x) (compare x y).
-Parameter eq_dec : forall x y : t, {eq x y} + {~ eq x y}. *)
-
   Definition t := Lit.
 
   Definition eq := @eq Lit.
