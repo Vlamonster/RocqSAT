@@ -12,7 +12,6 @@ From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
 From RocqSAT Require Import Rule.
 From RocqSAT.entailment Require Import Entails.
-From RocqSAT.entailment Require Import Properties.
 From RocqSAT Require Import Measure.
 
 (* If a clause is false except for one unassigned literal, assign it to satisfy the clause. *)

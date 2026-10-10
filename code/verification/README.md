@@ -58,12 +58,8 @@ are grouped into one node.
        entailment/Entails       Measure
                  |                 |
                  +--------+--------+
-                 |        |
-                 |      Rule
-                 |        |
-  entailment/Properties   |
-                 |        |
-                 +--------+
+                          |
+                        Rule
                           |
           rules/{Fail,Unit,Decide,Backtrack,Pure}
                           |
@@ -82,9 +78,7 @@ entailment/Preservation  Termination     Strategy (1)     Normalization (2)
 ```
 
 (1) `Strategy` also imports the helper `utils/Inspect`. (2) `Normalization` also imports
-the helper `utils/Dedupe`. `rules/Fail`, `rules/Decide` and `rules/Pure` only need
-`entailment/Entails`; `rules/Unit` and `rules/Backtrack` also use
-`entailment/Properties`.
+the helper `utils/Dedupe`.
 
 ## Adding a rule
 
@@ -162,10 +156,9 @@ The entailment invariant says that every propagated literal on the trail follows
 from the formula together with the literals before it, except pure literals, which
 only preserve models.
 
-| File                      | Contents                                                                                                                                                                                                                                                                                            |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `entailment/Entails.v`    | The invariant `Entails f m`, built one trail entry at a time (`e_nil`, `e_decide`, `e_propagate`, `e_pure`).                                                                                                                                                                                        |
-| `entailment/Properties.v` | `entails_prefix` (the older part of an entailed trail is entailed) and `entails_extend` (a model of the formula and an entailed trail extends past propagated literals); used for soundness of `Fail` and `Backtrack`; `entails_equivalent` (entailment only depends on the models of the formula). |
+| File                   | Contents                                                                                                                                                                                                                                                                                                                                                                                                         |
+|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `entailment/Entails.v` | The invariant `Entails f m`, built one trail entry at a time (`e_nil`, `e_decide`, `e_propagate`, `e_pure`); `entails_prefix` (the older part of an entailed trail is entailed) and `entails_extend` (a model of the formula and an entailed trail extends past propagated literals), used for soundness of `Fail` and `Backtrack`; `entails_equivalent` (entailment only depends on the models of the formula). |
 
 ### Termination measure
 

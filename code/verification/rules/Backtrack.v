@@ -14,7 +14,6 @@ From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
 From RocqSAT Require Import Rule.
 From RocqSAT.entailment Require Import Entails.
-From RocqSAT.entailment Require Import Properties.
 From RocqSAT Require Import Measure.
 
 (* Backtrack by flipping the most recent decision literal. *)

@@ -15,7 +15,6 @@ From RocqSAT Require Import Solve.
 From RocqSAT Require Import Strategy.
 From RocqSAT Require Import Normalization.
 From RocqSAT.entailment Require Import Entails.
-From RocqSAT.entailment Require Import Properties.
 From RocqSAT.entailment Require Import Preservation.
 From RocqSAT.rules Require Import Fail.
 From RocqSAT.rules Require Import Unit.
