@@ -11,7 +11,7 @@ Definition Consequence (f g: CNF): Prop := forall (m: PA), Model m f -> Model m 
 
 Notation "f ⊨ g" := (Consequence f g) (at level 70).
 
-(* The entailment invariant on a trail: every propagated literal follows from f and the literals before it, and every pure literal keeps models of f and those literals models. *)
+(* The entailment invariant on a trail: every propagated literal follows from f and the literals before it, except pure literals, which only have to preserve models. *)
 Inductive Entails (f: CNF): PA -> Prop :=
 (* The empty assignment. *)
 | e_nil: Entails f []
