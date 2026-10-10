@@ -4,15 +4,15 @@ From Stdlib Require Import MSets.MSetEqProperties.
 From RocqSAT Require Import Lit.
 
 Module Clause.
-  Module LitSet := MSetAVL.Make(LitOrderType).
-  Module LitSetEqProperties := MSetEqProperties.EqProperties(LitSet).
-
-  Include LitSet.
-  Include LitSetEqProperties.
+  Include MSetAVL.Make(LitOrderType).
+  Include MSetEqProperties.EqProperties.
 
   Module Definitions.
     (* A clause is a disjunction of literals. *)
-    Definition Clause: Type := t.
+    Abbreviation Clause := t.
+
+    (* Print elements as literals rather than as Clause.elt. *)
+    Notation "'Lit'" := elt (only printing).
   End Definitions.
 
   Include Definitions.

@@ -6,27 +6,27 @@ From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 
 Module CNF.
-  Module ClauseSet := MSetAVL.Make(Clause).
-  Module ClauseSetEqProperties := MSetEqProperties.EqProperties(ClauseSet).
-
-  Include ClauseSet.
-  Include ClauseSetEqProperties.
+  Include MSetAVL.Make(Clause).
+  Include MSetEqProperties.EqProperties.
 
   Module Definitions.
     (* A formula is a conjunction of clauses. *)
-    Definition CNF := ClauseSet.t.
+    Abbreviation CNF := t.
+
+    (* Print elements as clauses rather than as CNF.elt. *)
+    Notation "'Clause'" := elt (only printing).
 
     Definition l_in_f (f: CNF) (l: Lit): bool :=
-    ClauseSet.exists_ (fun (c: Clause) => Clause.mem l c || Clause.mem (¬l) c) f.
+    CNF.exists_ (fun (c: Clause) => Clause.mem l c || Clause.mem (¬l) c) f.
   End Definitions.
 
   Include Definitions.
 
   Module Lemmas.
     Lemma l_in_f_true_iff: forall (f: CNF) (l: Lit),
-      l_in_f f l = true <-> exists (c: Clause), (Clause.In l c \/ Clause.In (¬l) c) /\ ClauseSet.In c f.
+      l_in_f f l = true <-> exists (c: Clause), (Clause.In l c \/ Clause.In (¬l) c) /\ CNF.In c f.
     Proof.
-      intros. unfold l_in_f. rewrite ClauseSet.exists_spec.
+      intros. unfold l_in_f. rewrite CNF.exists_spec.
       - split.
         + intros [c [Hc_in_f Hmem]]. exists c. split.
           * apply orb_true_iff in Hmem as [Hl_mem|Hnegl_mem].
@@ -44,7 +44,7 @@ Module CNF.
     Qed.
 
     Lemma l_in_f_false_iff: forall (f: CNF) (l: Lit),
-      l_in_f f l = false <-> forall (c: Clause), (~ Clause.In l c /\ ~ Clause.In (¬l) c) \/ ~ ClauseSet.In c f.
+      l_in_f f l = false <-> forall (c: Clause), (~ Clause.In l c /\ ~ Clause.In (¬l) c) \/ ~ CNF.In c f.
     Proof.
       intros. pose proof (l_in_f_true_iff f l). apply not_iff_compat in H. 
       rewrite not_true_iff_false in H. split.
