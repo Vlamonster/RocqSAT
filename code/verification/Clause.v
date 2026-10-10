@@ -18,6 +18,7 @@ Module Clause.
   Include Definitions.
 
   Module Lemmas.
+    (* exists_ gives the same result on equal clauses (as sets), for any predicate. *)
     Lemma c_equal_exists: forall (f: Lit -> bool) (c1 c2: Clause), 
       Equal c1 c2 -> exists_ f c1 = exists_ f c2.
     Proof.
@@ -40,6 +41,7 @@ Module Clause.
       - reflexivity.
     Qed.
 
+    (* for_all gives the same result on equal clauses (as sets), for any predicate. *)
     Lemma c_equal_forall: forall (f: Lit -> bool) (c1 c2: Clause),
       Equal c1 c2 -> for_all f c1 = for_all f c2.
     Proof.

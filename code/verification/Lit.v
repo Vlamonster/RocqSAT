@@ -6,7 +6,7 @@ From Stdlib Require Import Structures.Orders.
 From Equations Require Import Equations.
 
 From RocqSAT Require Import Atom.
-From RocqSAT Require Export EqB.
+From RocqSAT.utils Require Export EqB.
 
 Module Lit.
   Module Definitions.
@@ -23,6 +23,7 @@ Module Lit.
     | _,      _      => false
     end.
 
+    (* The atom underlying a literal. *)
     Equations extract (l: Lit): Atom :=
     extract (Pos p) := p;
     extract (Neg p) := p.
@@ -74,6 +75,7 @@ Module LitOrderType <: OrderedType.
   Lemma eq_equiv: Equivalence eq.
   Proof. constructor; congruence. Qed.
 
+  (* Positive literals come before negative ones; literals of the same sign are ordered by their atom. *)
   Definition lt (l1 l2: Lit): Prop :=
   match l1, l2 with
   | Pos p1, Pos p2 => p1 < p2
@@ -146,9 +148,11 @@ Module Neg.
     Lemma involutive: forall (l: Lit), ¬¬l = l.
     Proof. intros. now funelim (¬l). Qed.
 
+    (* Negating both sides does not change whether two literals are equal. *)
     Lemma eqb_compat: forall (l1 l2: Lit), (l1 =? l2) = (¬l1 =? ¬l2).
     Proof. now destruct l1, l2. Qed.
 
+    (* Negation is injective. *)
     Lemma eq_compat: forall (l1 l2: Lit), l1 = l2 <-> ¬l1 = ¬l2.
     Proof. intros. repeat rewrite <- Lit.eqb_eq. now rewrite eqb_compat. Qed.
   End Lemmas.

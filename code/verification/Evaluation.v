@@ -7,20 +7,7 @@ From Equations Require Import Equations.
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
-
-(* An annotation on a literal (Lit * Ann) describing how its value was assigned. *)
-Inductive Ann: Type :=
-| dec
-| prop.
-
-(* A partial assignment for annoted literals. See below for evaluation. *)
-Definition PA: Type := list (Lit * Ann).
-
-Declare Scope pa_scope.
-Notation "m ++a n" := (n ++ m) (at level 54, left associativity): pa_scope.
-Notation "m ++d l" := ((l, dec) :: m) (at level 54, left associativity): pa_scope.
-Notation "m ++p l" := ((l, prop) :: m) (at level 54, left associativity): pa_scope.
-Open Scope pa_scope.
+From RocqSAT Require Import Assignment.
 
 (* The first instance of `l` or `¬l` determines the value. *)
 Equations l_eval (m: PA) (l: Lit): option bool :=
@@ -30,6 +17,7 @@ l_eval ((l', _) :: m) l with l =? l', l =? ¬l' :=
   | _   , true := Some false
   | _   , _    := l_eval m l.
 
+(* Boolean tests for the three possible values of a literal. *)
 Definition l_true (m: PA) (l: Lit): bool :=
 match l_eval m l with
 | Some true => true
@@ -48,6 +36,7 @@ match l_eval m l with
 | _ => false
 end.
 
+(* A clause is true if some literal is true, false if all literals are false, and undefined otherwise. *)
 Definition c_eval (m: PA) (c: Clause): option bool :=
 if Clause.exists_ (l_true m) c then
   Some true
@@ -56,6 +45,7 @@ else if Clause.for_all (l_false m) c then
 else 
   None.
 
+(* Boolean tests for the three possible values of a clause. *)
 Definition c_true (m: PA) (c: Clause): bool :=
 match c_eval m c with
 | Some true => true
@@ -74,6 +64,7 @@ match c_eval m c with
 | _ => false
 end.
 
+(* A formula is true if all clauses are true, false if some clause is false, and undefined otherwise. *)
 Definition f_eval (m: PA) (f: CNF): option bool :=
 if CNF.for_all (c_true m) f then
   Some true
@@ -82,14 +73,7 @@ else if CNF.exists_ (c_false m) f then
 else 
   None.
 
-Equations m_eval (m m': PA): option bool :=
-m_eval m [] := Some true;
-m_eval m ((l, _) :: m') with l_eval m l, m_eval m m' :=
-  | Some true , r          := r
-  | Some false, _          := Some false
-  | _         , Some false := Some false
-  | None      , _          := None.
-
+(* Whether a literal has a value under m. Since l_eval also looks at ¬l, either polarity being assigned counts. *)
 Definition Def (m: PA) (l: Lit): Prop := exists (b: bool), l_eval m l = Some b.
 Definition Undef (m: PA) (l: Lit): Prop := l_eval m l = None.
 
@@ -101,8 +85,6 @@ Proof.
     + exists b. reflexivity.
   - intuition. destruct H. discriminate.
 Qed.
-
-Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
 
 Lemma l_eval_neg_none_iff: forall (m: PA) (l: Lit), l_eval m l = None <-> l_eval m (¬l) = None.
 Proof.
@@ -124,6 +106,7 @@ Proof.
       apply H1. apply H.
 Qed.
 
+(* Negation flips the value of a literal. *)
 Lemma l_eval_neg_some_iff: forall (m: PA) (l: Lit) (b: bool),
   l_eval m l = Some b <-> l_eval m (¬l) = Some (negb b).
 Proof.
@@ -148,6 +131,7 @@ Proof.
       rewrite Neg.eqb_compat in H0. rewrite Neg.involutive in H0. now rewrite Heq in H0.
 Qed.
 
+(* A literal has a value exactly when it or its negation occurs in the assignment. *)
 Lemma l_eval_some_iff: forall (m: PA) (l: Lit), 
   (exists (b: bool), l_eval m l = Some b) <-> exists (a: Ann), In (l, a) m \/ In (¬l, a) m.
 Proof. 
@@ -176,6 +160,7 @@ Proof.
         -- assumption.
 Qed.
 
+(* A literal can only be false because its negation was assigned. *)
 Lemma l_eval_false_in: forall (m: PA) (l: Lit),
   l_eval m l = Some false -> exists (a: Ann), In (¬l, a) m.
 Proof.
@@ -229,6 +214,7 @@ Proof.
       * now rewrite Hforall'.
 Qed.
 
+(* A clause is undefined when no literal is true and at least one literal is unassigned. *)
 Lemma c_eval_none_iff: forall (m: PA) (c: Clause),
   c_eval m c = None <-> 
     (~ exists (l: Lit), Clause.In l c /\ l_eval m l = Some true) /\
@@ -269,6 +255,7 @@ Proof.
       * reflexivity.
 Qed.
 
+(* If c without l is false and l is false, then c is false. *)
 Lemma c_eval_remove_false_l: forall (m: PA) (c: Clause) (l: Lit),
   c_eval m (Clause.remove l c) = Some false -> l_eval m l = Some false -> c_eval m c = Some false.
 Proof.
@@ -280,6 +267,7 @@ Proof.
     + congruence.
 Qed.
 
+(* If c without l is false and l is unassigned, then c is undefined (it is a unit clause). *)
 Lemma c_eval_remove_none_l: forall (m: PA) (c: Clause) (l: Lit),
   Clause.In l c -> c_eval m (Clause.remove l c) = Some false -> l_eval m l = None -> c_eval m c = None.
 Proof.
@@ -292,6 +280,17 @@ Proof.
         -- congruence.
       * apply Hc in Hin_remove. congruence.
   - now exists l.
+Qed.
+
+(* A clause equal to {l} is true exactly when l is. *)
+Lemma c_eval_singleton_true_iff: forall (m: PA) (c: Clause) (l: Lit),
+  Clause.Equal c (Clause.singleton l) -> c_eval m c = Some true <-> l_eval m l = Some true.
+Proof.
+  intros m c l Heq. rewrite c_eval_true_iff. split.
+  - intros [l' [Hin Hl']]. apply Heq in Hin. apply Clause.singleton_spec in Hin as ->. assumption.
+  - intros Hl. exists l. split.
+    + apply Heq. now apply Clause.singleton_spec.
+    + assumption.
 Qed.
 
 Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
@@ -344,138 +343,41 @@ Proof.
       * now rewrite Hexists.
 Qed.
 
-Lemma l_eval_false_extend: forall (m m': PA) (l: Lit),
-  l_eval m l = Some false -> l_eval (m' ++a m) l = Some false.
+(* Assigning a literal that was unassigned does not change the value of any literal that already had one. *)
+Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
+  Undef m l' -> l_eval m l = Some b -> l_eval ((l', a) :: m) l = Some b.
 Proof.
-  intros. funelim (l_eval m l); try congruence.
-  - simpl. simp l_eval. rewrite Heq. now rewrite Heq0.
-  - simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl.
-    apply H.
-    + congruence.
-    + reflexivity.
-    + reflexivity.
-Qed.
-
-Lemma c_eval_false_extend: forall (m m': PA) (c: Clause),
-  c_eval m c = Some false -> c_eval (m' ++a m) c = Some false.
-Proof.
-  intros m m' c Hc. rewrite c_eval_false_iff in *. intros l Hin. apply l_eval_false_extend. now apply Hc.
-Qed.
-
-Lemma f_eval_false_extend: forall (m m': PA) (f: CNF),
-  f_eval m f = Some false -> f_eval (m' ++a m) f = Some false.
-Proof.
-  intros m m' f Hf. rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
-  exists c. split.
-  - assumption.
-  - now apply c_eval_false_extend.
-Qed.
-
-Lemma m_eval_true_iff: forall (m m': PA),
-  m_eval m m' = Some true <-> forall (l: Lit) (a: Ann), In (l, a) m' -> l_eval m l = Some true.
-Proof.
-  intros. split.
-  - intros. funelim (m_eval m m'); try congruence.
-    + contradiction.
-    + destruct H0.
-      * congruence.
-      * eapply Hind.
-        -- now rewrite Heqcall.
-        -- apply H0.
-        -- reflexivity.
-        -- reflexivity.
-  - intros. funelim (m_eval m m').
-    + reflexivity.
-    + apply Hind. intros. apply (H l0 a0). now right.
-    + assert (l_eval m l = Some true).
-      * apply (H _ a). now left.
-      * congruence.
-    + assert (l_eval m l = Some true).
-      * apply (H _ a). now left.
-      * congruence.
-    + assert (l_eval m l = Some true).
-      * apply (H _ a). now left.
-      * congruence.
-    + assert (l_eval m l = Some true).
-      * apply (H _ a). now left.
-      * congruence.
-Qed.
-
-Lemma m_eval_transfer_l: forall (m m': PA) (l: Lit),
-  m_eval m m' = Some true -> l_eval m' l = Some false -> l_eval m l = Some false.
-Proof.
-  intros. apply l_eval_neg_some_iff. simpl. rewrite m_eval_true_iff in H.
-  apply l_eval_false_in in H0 as [a Hin]. now apply H in Hin.
-Qed.
-
-Lemma m_eval_transfer_c: forall (m m': PA) (c: Clause),
-  m_eval m m' = Some true -> c_eval m' c = Some false -> c_eval m c = Some false.
-Proof.
-  intros. apply c_eval_false_iff. intros.
-  rewrite c_eval_false_iff in H0. apply H0 in H1. 
-  now apply (m_eval_transfer_l _ m').
-Qed.
-
-Lemma l_eval_true_extend: forall (m m': PA) (l: Lit),
-  l_eval m' l = Some true -> m_eval m' m = Some true -> l_eval (m' ++a m) l = Some true.
-Proof.
-  induction m as [|[l a] m IH].
-  - intros. assumption.
-  - intros. simpl. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
-    + reflexivity.
-    + reflexivity.
-    + simpl. rewrite Lit.eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
-      assert (l_eval m' l = Some true).
-      * apply (H0 _ a). now left.
-      * apply l_eval_neg_some_iff in H1. simpl in H1. congruence.
-    + simpl. apply IH.
-      * assumption.
-      * apply m_eval_true_iff. intros. rewrite m_eval_true_iff in H0. apply (H0 _ a0). now right.
-Qed.
-
-Lemma c_eval_true_extend: forall (m m': PA) (c: Clause),
-  c_eval m' c = Some true -> m_eval m' m = Some true -> c_eval (m' ++a m) c = Some true.
-Proof.
-  intros m m' c Hc Hm. rewrite c_eval_true_iff in *. destruct Hc as [l [Hin Hl]].
-  exists l. split.
-  - assumption.
-  - now apply l_eval_true_extend.
-Qed.
-
-Lemma f_eval_true_extend: forall (m m': PA) (f: CNF),
-  f_eval m' f = Some true -> m_eval m' m = Some true -> f_eval (m' ++a m) f = Some true.
-Proof.
-  intros m m' f Hf Hm. rewrite f_eval_true_iff in *. intros c Hin.
-  apply c_eval_true_extend.
-  - now apply Hf.
+  unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
+  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. now rewrite Neg.self_neqb_neg in G1.
+  - exfalso. rewrite Lit.eqb_eq in G1. subst l. apply (l_eval_neg_none_iff m l') in H. congruence.
+  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. congruence.
   - assumption.
 Qed.
 
-Lemma l_eval_head: forall (m m': PA) (l: Lit),
-  l_eval m l = Some true -> l_eval (m' ++a m) l = Some true.
+(* Likewise for clauses. *)
+Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (a: Ann) (b: bool),
+  Undef m l -> c_eval m c = Some b -> c_eval ((l, a) :: m) c = Some b.
 Proof.
-  induction m as [|[l' a] m IH].
-  - intros. discriminate.
-  - intros. simpl. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2; simpl.
-    + reflexivity.
-    + rewrite Lit.eqb_eq in G1. subst l. simp l_eval in H.
-      rewrite Lit.eqb_refl in H. rewrite Neg.eqb_compat in H. rewrite Neg.involutive in H.
-      rewrite Neg.self_neqb_neg in H. discriminate.
-    + reflexivity.
-    + apply IH. simp l_eval in H. rewrite G1 in H. now rewrite G2 in H.
+  intros m c l a b Hundef Hc. destruct b.
+  - rewrite c_eval_true_iff in *. destruct Hc as [l' [Hin Hl']].
+    exists l'. split.
+    + assumption.
+    + now apply l_eval_extend_undef.
+  - rewrite c_eval_false_iff in *. intros l' Hin. apply l_eval_extend_undef.
+    + assumption.
+    + now apply Hc.
 Qed.
 
-Lemma m_eval_head_refl: forall (m m' m'': PA) (l: Lit) (a: Ann),
-  Undef m l -> m_eval m m'' = Some true -> m_eval ((l, a) :: m' ++a m) m'' = Some true.
+(* Likewise for formulas. *)
+Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (b: bool),
+  Undef m l -> f_eval m f = Some b -> f_eval ((l, a) :: m) f = Some b.
 Proof.
-  intros. funelim (m_eval m m''); try congruence.
-  - reflexivity.
-  - apply (Hind m m'0 m' l0 a0) in H as G; try congruence.
-    simp m_eval. rewrite G. simp l_eval.
-    destruct (l =? ¬l0) eqn:G1, (l =? l0) eqn:G2; simpl.
-    + reflexivity.
-    + rewrite Lit.eqb_eq in G1. subst l. apply l_eval_neg_some_iff in Heq.
-      rewrite Neg.involutive in Heq. simpl in Heq. congruence.
-    + reflexivity.
-    + apply (l_eval_head _ m'0) in Heq. now rewrite Heq.
+  intros m f l a b Hundef Hf. destruct b.
+  - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_extend_undef.
+    + assumption.
+    + now apply Hf.
+  - rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
+    exists c. split.
+    + assumption.
+    + now apply c_eval_extend_undef.
 Qed.

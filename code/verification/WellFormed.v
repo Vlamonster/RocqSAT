@@ -6,31 +6,25 @@ From Equations Require Import Equations.
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
+From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 
+(* No atom is assigned more than once, in either polarity. *)
 Definition NoDuplicates (m: PA): Prop := 
   NoDup (map extract (map fst m)).
 
+(* Every assigned literal belongs to the formula: it or its negation occurs in some clause. *)
 Definition Bounded (m: PA) (f: CNF): Prop := 
   forall (l: Lit) (a: Ann), In (l, a) m -> 
   exists (c: Clause), CNF.In c f /\ (Clause.In l c \/ Clause.In (¬l) c).
 
+(* The assignments the transition system works with: no duplicates, and bounded by the formula. *)
 Definition WellFormed (m: PA) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.
 
 Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> NoDuplicates m.
 Proof. intros. now inversion H. Qed.
-
-Lemma nodup_cons__nodup': forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates ([(l, a)] ++a m) -> NoDuplicates m.
-Proof.
-  intros. apply NoDup_rev in H. repeat rewrite <- map_rev in H.
-  rewrite rev_app_distr in H. simpl in H. inversion H.
-  subst x l0. apply NoDup_rev in H3. repeat rewrite <- map_rev in H3.
-  now rewrite rev_involutive in H3.
-Qed.
-
 Lemma nodup_app__nodup: forall (m n: PA),
   NoDuplicates (m ++a n) -> NoDuplicates m.
 Proof.
@@ -40,46 +34,19 @@ Proof.
     + now apply IHn.
     + apply dec.
 Qed.
-
-Lemma nodup_app__nodup': forall (m n: PA),
-  NoDuplicates (m ++a n) -> NoDuplicates n.
-Proof.
-  induction m as [|[l a] m IH].
-  - intros. now rewrite app_nil_r in H.
-  - intros. assert (((l, a) :: m) ++a n = m ++a ((l, a) :: []) ++a n) by reflexivity.
-    rewrite H0 in H. rewrite app_assoc in H. apply IH in H. now apply nodup_cons__nodup' in H.
-Qed.
-
 Lemma bounded_cons__bounded: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
   Bounded ((l, a) :: m) f -> Bounded m f.
 Proof.
   unfold Bounded. intros m f l a Hbounded l' a' Hin. apply (Hbounded l' a'). now right.
 Qed.
-
-Lemma bounded_app__bounded: forall (m n: PA) (f: CNF),
-  Bounded (m ++a n) f -> Bounded m f.
-Proof.
-  induction n.
-  - now intros.
-  - intros. simpl in H. destruct a. apply bounded_cons__bounded in H. now apply IHn.
-Qed.
-
-Lemma wf_cons__wf: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
+Lemma well_formed_tail: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
   WellFormed ((l, a) :: m) f -> WellFormed m f.
 Proof.
   unfold WellFormed. intros. destruct H. split.
   - now apply nodup_cons__nodup in H.
   - now apply bounded_cons__bounded in H0.
 Qed.
-
-Lemma wf_app__wf: forall (m n: PA) (f: CNF),
-  WellFormed (m ++a n) f -> WellFormed m f.
-Proof.
-  unfold WellFormed. intros. destruct H. split.
-  - now apply nodup_app__nodup in H.
-  - now apply bounded_app__bounded in H0.
-Qed.
-
+(* The literal on top of an assignment without duplicates was unassigned in the rest. *)
 Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> Undef m l.
 Proof. 
@@ -94,6 +61,7 @@ Proof.
   - reflexivity.
 Qed.
 
+(* Adding an unassigned literal keeps an assignment free of duplicates. *)
 Lemma nodup_cons: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates m -> Undef m l -> NoDuplicates ((l, a) :: m).
 Proof.
@@ -124,6 +92,7 @@ Proof.
   apply Hincl in Hin. now apply Hbounded in Hin.
 Qed.
 
+(* Adding a literal of the formula keeps an assignment bounded. *)
 Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
   Bounded m f -> l_in_f f l = true -> Bounded ((l, a) :: m) f.
 Proof.
@@ -135,4 +104,11 @@ Proof.
   - destruct Hin.
     + injection H as <- <-. exists c. intuition.
     + now apply Hbounded in H.
+Qed.
+
+Lemma initial_well_formed: forall (f: CNF), WellFormed [] f.
+Proof.
+  unfold WellFormed, NoDuplicates, Bounded. split.
+  - constructor.
+  - now intros.
 Qed.

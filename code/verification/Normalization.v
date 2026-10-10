@@ -8,71 +8,28 @@ From RocqSAT Require Import Atom.
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
+From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Trans.
 From RocqSAT Require Import WellFormed.
-From RocqSAT Require Import Dedupe.
+From RocqSAT.utils Require Import Dedupe.
 
+(* Assign l as a decision if it has no value yet. *)
 Definition l_totalize (m: PA) (l: Lit): PA :=
 match l_eval m l with
 | None => m ++d l
 | _    => m
 end.
 
+(* Assign every literal of a clause that has no value yet. *)
 Definition c_totalize (m: PA) (c: Clause): PA :=
 Clause.fold (fun (l: Lit) (m': PA) => l_totalize m' l) c m.
 
+(* Assign every literal of a formula that has no value yet. *)
 Definition f_totalize (m: PA) (f: CNF): PA :=
 CNF.fold (fun (c: Clause) (m': PA) => c_totalize m' c) f m.
 
-Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
-  Undef m l' -> l_eval m l = Some b -> l_eval ((l', a) :: m) l = Some b.
-Proof.
-  unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
-  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. now rewrite Neg.self_neqb_neg in G1.
-  - exfalso. rewrite Lit.eqb_eq in G1. subst l. apply (l_eval_neg_none_iff m l') in H. congruence.
-  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. congruence.
-  - assumption.
-Qed.
-
-Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (a: Ann) (b: bool),
-  Undef m l -> c_eval m c = Some b -> c_eval ((l, a) :: m) c = Some b.
-Proof.
-  intros m c l a b Hundef Hc. destruct b.
-  - rewrite c_eval_true_iff in *. destruct Hc as [l' [Hin Hl']].
-    exists l'. split.
-    + assumption.
-    + now apply l_eval_extend_undef.
-  - rewrite c_eval_false_iff in *. intros l' Hin. apply l_eval_extend_undef.
-    + assumption.
-    + now apply Hc.
-Qed.
-
-Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (b: bool),
-  Undef m l -> f_eval m f = Some b -> f_eval ((l, a) :: m) f = Some b.
-Proof.
-  intros m f l a b Hundef Hf. destruct b.
-  - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_extend_undef.
-    + assumption.
-    + now apply Hf.
-  - rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
-    exists c. split.
-    + assumption.
-    + now apply c_eval_extend_undef.
-Qed.
-
-Lemma m_eval_extend_undef: forall (m m': PA) (l: Lit) (a: Ann),
-  Undef m l -> m_eval m m' = Some true -> m_eval ((l, a) :: m) m' = Some true.
-Proof.
-  unfold Undef. intros. apply m_eval_true_iff. intros.
-  simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
-  - reflexivity.
-  - reflexivity.
-  - simpl. rewrite Lit.eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
-    apply H0 in H1. apply l_eval_neg_some_iff in H1. rewrite Neg.involutive in H1. congruence.
-  - simpl. rewrite m_eval_true_iff in H0. now apply H0 in H1.
-Qed.
-
+(* Totalizing keeps every value that is already defined, for literals, clauses and formulas. *)
 Lemma l_totalize_l: forall (m: PA) (l l': Lit) (b: bool),
   l_eval m l' = Some b -> l_eval (l_totalize m l) l' = Some b.
 Proof.
@@ -148,6 +105,7 @@ Proof.
   intros m f Hf. rewrite f_eval_true_iff in *. intros c Hin. apply f_totalize_c. now apply Hf.
 Qed.
 
+(* After totalizing a clause, every literal of it has a value. *)
 Lemma c_totalize_all_def: forall (m: PA) (c: Clause) (l: Lit),
   Clause.In l c -> Def (c_totalize m c) l.
 Proof.
@@ -160,6 +118,7 @@ Proof.
     + apply IH in Hl_in_c' as [b Hl]. exists b. now apply l_totalize_l.
 Qed.
 
+(* After totalizing a formula, every literal occurring in it has a value. *)
 Lemma f_totalize_all_def: forall (m: PA) (f: CNF) (l: Lit),
   (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> Def (f_totalize m f) l.
 Proof.
@@ -173,10 +132,12 @@ Proof.
       * exists b. now apply c_totalize_l.
 Qed.
 
+(* Turn every assigned literal into a decision. *)
 Equations convert_prop (m: PA): PA :=
 convert_prop []            := [];
 convert_prop ((l, _) :: m) := convert_prop m ++d l.
 
+(* Turning literals into decisions does not change the value of any literal. *)
 Lemma convert_prop_l: forall (m: PA) (l: Lit) (v: option bool),
   l_eval m l = v -> l_eval (convert_prop m) l = v.
 Proof.
@@ -230,12 +191,14 @@ Proof.
       * simp l_eval in H1. rewrite G1 in H1. now rewrite G2 in H1.
 Qed.
 
+(* Drop the literals whose atom does not occur in f. *)
 Equations bound (m: PA) (f: CNF): PA :=
 bound [] f := [];
 bound ((l, a) :: m) f with l_in_f f l :=
   | true  := (l, a) :: bound m f
   | false := bound m f.
 
+(* A true literal of f stays true after dropping literals outside f. *)
 Lemma bound_l: forall (m: PA) (f: CNF) (l: Lit),
   l_in_f f l = true -> l_eval m l = Some true -> l_eval (bound m f) l = Some true.
 Proof.
@@ -247,6 +210,7 @@ Proof.
     + simpl. apply H; try easy. congruence.
 Qed.
 
+(* Hence a true clause of f stays true as well. *)
 Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
   CNF.In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
 Proof.
@@ -324,12 +288,15 @@ Proof.
         -- assumption.
 Qed.
 
+(* Two assigned literals count as duplicates when they have the same atom. *)
 Equations eqb_by_atom (la la': Lit * Ann): bool :=
 eqb_by_atom (l, _) (l', _) := extract l =? extract l'. 
 
+(* Keep only the most recent assignment of every atom (the head of the list is the most recent). *)
 Equations dedupe (m: PA): PA :=
 dedupe m := dedupe_by eqb_by_atom m.
 
+(* A literal that differs from both l' and ¬l' has a different atom than l'. *)
 Lemma extract_neqb_iff: forall (l l': Lit),
   (l =? l') = false ->
   (l =? ¬l') = false ->
@@ -359,6 +326,7 @@ Proof.
       * now apply IH.
 Qed.
 
+(* Removing older duplicate atoms does not change the value of any literal. *)
 Lemma dedupe_l: forall (m: PA) (l: Lit) (v: option bool),
   l_eval m l = v -> l_eval (dedupe m) l = v.
 Proof.
@@ -417,6 +385,7 @@ Proof.
     + assumption.
 Qed.
 
+(* Turn any assignment into one made of decisions only, which assigns every literal of f, contains only literals of f, and has no duplicates. *)
 Equations normalize (m: PA) (f: CNF): PA :=
 normalize m f := dedupe (bound (convert_prop (f_totalize m f)) f).
 
@@ -457,23 +426,24 @@ Proof. intros. simp normalize. apply dedupe_bounded. apply bound_bounded. Qed.
 Lemma normalize_no_duplicates: forall (m: PA) (f: CNF), NoDuplicates (normalize m f).
 Proof. intros. simp normalize. apply dedupe_no_duplicates. Qed.
 
-Lemma normalize_wf: forall (m: PA) (f: CNF), WellFormed (normalize m f) f.
+Lemma normalize_well_formed: forall (m: PA) (f: CNF), WellFormed (normalize m f) f.
 Proof.
   unfold WellFormed. intros. split.
   - apply normalize_no_duplicates.
   - apply normalize_bounded.
 Qed.
 
+(* Every well-formed assignment that consists of decisions only is reachable from the initial state. *)
 Lemma normalize_derivation_aux: forall (m: PA) (f: CNF),
   WellFormed m f ->
   (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) -> 
   exists (Hwf': WellFormed m f), 
-    state [] f (initial_wf f) ==>* state m f Hwf'.
+    state [] f (initial_well_formed f) ==>* state m f Hwf'.
 Proof.
   induction m as [|[l a] m IH].
-  - intros. exists (initial_wf f). apply rt_refl.
+  - intros. exists (initial_well_formed f). apply rt_refl.
   - intros. destruct a.
-    + apply wf_cons__wf in H as H'. apply IH in H' as [Hwf' Htrans].
+    + apply well_formed_tail in H as H'. apply IH in H' as [Hwf' Htrans].
       * exists H. apply rt_trans with (y := state m f Hwf').
         -- assumption.
         -- apply rt_step. destruct H as [Hno_dup Hbounded].
@@ -482,18 +452,23 @@ Proof.
           ++ now left.
           ++ apply Hbounded in H. destruct H as [c [Hc_in_f Hx_in_c]].
              apply nodup_cons__undef in Hno_dup as Hundef.
-             apply (t_decide _ _ c _ _ _ Hx_in_c Hc_in_f Hundef).
+             apply (t_decide _ _ c).
+             ** right. right. now left.
+             ** assumption.
+             ** assumption.
+             ** assumption.
       * intros. apply (H0 l0). now right.
     + assert (In (l, prop) (m ++p l)).
       * now left.
       * now apply H0 in H1.
 Qed.
 
+(* Hence the normalization of any assignment is reachable from the initial state. *)
 Lemma normalize_derivation: forall (m: PA) (f: CNF),
   exists (Hwf: WellFormed (normalize m f) f), 
-    state [] f (initial_wf f) ==>* state (normalize m f) f Hwf.
+    state [] f (initial_well_formed f) ==>* state (normalize m f) f Hwf.
 Proof.
   intros. apply normalize_derivation_aux.
-  - apply normalize_wf.
+  - apply normalize_well_formed.
   - apply normalize_only_dec.
 Qed.

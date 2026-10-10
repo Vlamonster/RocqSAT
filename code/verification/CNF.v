@@ -16,6 +16,7 @@ Module CNF.
     (* Print elements as clauses rather than as CNF.elt. *)
     Notation "'Clause'" := elt (only printing).
 
+    (* Whether the atom of l occurs in f, i.e. whether l or ¬l occurs in some clause of f. *)
     Definition l_in_f (f: CNF) (l: Lit): bool :=
     CNF.exists_ (fun (c: Clause) => Clause.mem l c || Clause.mem (¬l) c) f.
   End Definitions.
