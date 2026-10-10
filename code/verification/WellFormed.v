@@ -1,14 +1,19 @@
-From Equations Require Import Equations.
 From Stdlib Require Import List.
 Import ListNotations.
-From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation.
+
+From Equations Require Import Equations.
+
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
 
 Definition NoDuplicates (m: PA): Prop := 
   NoDup (map extract (map fst m)).
 
 Definition Bounded (m: PA) (f: CNF): Prop := 
   forall (l: Lit) (a: Ann), In (l, a) m -> 
-  exists (c: Clause), In c f /\ (In l c \/ In (¬l) c).
+  exists (c: Clause), CNF.In c f /\ (Clause.In l c \/ Clause.In (¬l) c).
 
 Definition WellFormed (m: PA) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.
@@ -99,10 +104,10 @@ Proof.
     + congruence.
     + simpl in *. destruct H2. 
       * destruct l, l'.
-        -- simp extract in H2. subst p0. now rewrite eqb_refl in Heq0.
-        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite eqb_refl in Heq.
-        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite eqb_refl in Heq.
-        -- simp extract in H2. subst p0. now rewrite eqb_refl in Heq0.
+        -- simp extract in H2. subst p0. now rewrite Lit.eqb_refl in Heq0.
+        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite Lit.eqb_refl in Heq.
+        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite Lit.eqb_refl in Heq.
+        -- simp extract in H2. subst p0. now rewrite Lit.eqb_refl in Heq0.
       * apply (H m l dec).
         -- now inversion H0.
         -- congruence.
@@ -123,7 +128,7 @@ Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
   Bounded m f -> l_in_f f l = true -> Bounded ((l, a) :: m) f.
 Proof.
   unfold Bounded. intros m f l a Hbounded Hl_in_f l' a' Hin. 
-  apply l_in_f_true_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
+  apply CNF.l_in_f_true_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
   - destruct Hin.
     + injection H as <- <-. exists c. intuition.
     + now apply Hbounded in H.

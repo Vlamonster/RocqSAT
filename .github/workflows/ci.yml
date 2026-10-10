@@ -21,6 +21,7 @@ jobs:
         run: |
           cd code
           opam repo add rocq-released https://coq.inria.fr/opam/released
+          opam repo add rocq-extra-dev https://coq.inria.fr/opam/extra-dev
           opam install . --deps-only
 
       - name: Build project

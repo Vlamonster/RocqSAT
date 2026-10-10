@@ -1,6 +1,8 @@
-From Equations Require Import Equations.
-From Stdlib Require Import Nat Arith List.
+From Stdlib Require Import Arith.
+From Stdlib Require Import List.
 Import ListNotations.
+
+From Equations Require Import Equations.
 
 (* Do not assume functional extensionality with Equations. *)
 Unset Equations With Funext.

@@ -1,18 +1,29 @@
-From Equations Require Import Equations.
-From Stdlib Require Import Basics Nat Arith List Relations Wellfounded Lia.
+From Stdlib Require Import Basics.
+From Stdlib Require Import Nat.
+From Stdlib Require Import Arith.
+From Stdlib Require Import List.
+From Stdlib Require Import Relations.
+From Stdlib Require Import Wellfounded.
+From Stdlib Require Import Lia.
 Import ListNotations.
-From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation Trans WellFormed.
+
+From Equations Require Import Equations.
+
+From RocqSAT Require Import Atom.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import WellFormed.
 
 Ltac slia := simpl in *; lia.
 
-Equations max_atom_c (c: Clause): nat :=
-max_atom_c []           := 0;
-max_atom_c (Pos p :: c) := max p (max_atom_c c);
-max_atom_c (Neg p :: c) := max p (max_atom_c c).
+Definition max_atom_c (c: Clause): nat :=
+list_max (map extract (Clause.elements c)).
 
-Equations max_atom_f (f: CNF): nat :=
-max_atom_f []       := 0;
-max_atom_f (c :: f) := max (max_atom_c c) (max_atom_f f).
+Definition max_atom_f (f: CNF): nat :=
+list_max (map max_atom_c (CNF.elements f)).
 
 Equations score_aux (m: PA) (n x: nat): list nat :=
 score_aux []        n x := [n - x];
@@ -28,32 +39,6 @@ score m f :=
 
 Equations score_total (m: PA) (f: CNF): nat :=
 score_total m f := S (max_atom_f f) - length m.
-
-Module ScoreExamples.
-  Example score_1: score [] [[Pos 0; Pos 1]] = [2; 2; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_2: score ([] ++p Pos 0) [[Pos 0; Pos 1]] = [1; 2; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_3: score ([] ++d Pos 0) [[Pos 0; Pos 1]] = [2; 2; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_4: score ([] ++d Neg 0 ++p Pos 1) [[Pos 0; Pos 1]] = [2; 1; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_total_1: score_total [] [[Pos 0; Pos 1]] = 2.
-  Proof. reflexivity. Qed.
-
-  Example score_total_2: score_total ([] ++p Pos 0) [[Pos 0; Pos 1]] = 1.
-  Proof. reflexivity. Qed.
-
-  Example score_total_3: score_total ([] ++d Pos 0) [[Pos 0; Pos 1]] = 1.
-  Proof. reflexivity. Qed.
-
-  Example score_total_4: score_total ([] ++d Neg 0 ++p Pos 1) [[Pos 0; Pos 1]] = 0.
-  Proof. reflexivity. Qed.
-End ScoreExamples.
 
 Inductive FailLt: relation State :=
 | f_fail (m: PA) (f: CNF) (Hwf: WellFormed m f):
@@ -193,48 +178,24 @@ Qed.
 Theorem wf_state_lt_trans_clos (f: CNF): well_founded (StateLtTransClos f).
 Proof. unfold well_founded. intros. constructor. apply wf_clos_trans. apply wf_state_lt. Qed.
 
+Lemma in_le_list_max: forall (l: list nat) (x: nat), In x l -> x <= list_max l.
+Proof. intros l. apply Forall_forall. now apply list_max_le. Qed.
+
 Lemma max_atom_c_le: forall (c: Clause) (l: Lit) (p: Atom),
-  In l c ->
-  extract l = p ->
-  p <= max_atom_c c.
+  Clause.In l c -> extract l = p -> p <= max_atom_c c.
 Proof.
-  intros c l p Hin Heq. funelim (max_atom_c c).
-  - contradiction.
-  - inversion Hin.
-    + subst l. simp extract. apply Nat.max_le_iff. now left.
-    + destruct l as [p'|p'].
-      * simp extract. apply (H (Pos p') p') in H0.
-        -- apply Nat.max_le_iff. now right.
-        -- reflexivity.
-      * simp extract. apply (H (Neg p') p') in H0.
-        -- apply Nat.max_le_iff. now right.
-        -- reflexivity.
-  - inversion Hin.
-    + subst l. simp extract. apply Nat.max_le_iff. now left.
-    + destruct l as [p'|p'].
-      * simp extract. apply (H (Pos p') p') in H0.
-        -- apply Nat.max_le_iff. now right.
-        -- reflexivity.
-      * simp extract. apply (H (Neg p') p') in H0.
-        -- apply Nat.max_le_iff. now right.
-        -- reflexivity.
+  intros c l p Hl_in_c <-. unfold max_atom_c. apply in_le_list_max. apply in_map.
+  apply Clause.elements_spec1 in Hl_in_c. now apply SetoidList.InA_alt in Hl_in_c as [l' [<- Hin]].
 Qed.
 
 Lemma max_atom_f_le: forall (f: CNF) (c: Clause) (l: Lit) (p: Atom),
-  In l c ->
-  In c f ->
-  extract l = p ->
-  p <= max_atom_f f.
+  Clause.In l c -> CNF.In c f -> extract l = p -> p <= max_atom_f f.
 Proof.
-  intros f c l p Hl_in_c Hc_in_f Heq. funelim (max_atom_f f).
-  - contradiction.
-  - inversion Hc_in_f.
-    + subst c0. destruct l as [p|p].
-      * simp extract. apply Nat.max_le_iff. left. now apply (max_atom_c_le c (Pos p) p).
-      * simp extract. apply Nat.max_le_iff. left. now apply (max_atom_c_le c (Neg p) p).
-    + destruct l as [p|p].
-      * apply Nat.max_le_iff. right. simp extract. now apply (H c0 (Pos p) p).
-      * apply Nat.max_le_iff. right. simp extract. now apply (H c0 (Neg p) p).
+  intros f c l p Hl_in_c Hc_in_f Heq.
+  apply CNF.elements_spec1 in Hc_in_f. apply SetoidList.InA_alt in Hc_in_f as [c' [Hequal Hc'_in_f]].
+  apply Hequal in Hl_in_c. transitivity (max_atom_c c').
+  - now apply max_atom_c_le with l.
+  - unfold max_atom_f. apply in_le_list_max. now apply in_map.
 Qed.
 
 Lemma wf_le: forall (m: PA) (f: CNF) (p: Atom),

@@ -1,6 +1,12 @@
-From Stdlib Require Import List Relations.
+From Stdlib Require Import List.
+From Stdlib Require Import Relations.
 Import ListNotations.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed.
+
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import WellFormed.
 
 Inductive State: Type :=
 | fail
@@ -9,56 +15,56 @@ Inductive State: Type :=
 Inductive Trans: relation State :=
 (* Fail if all literals are assigned and there is a conflict. *)
 | t_fail (m: PA) (f: CNF) (c: Clause) (Hwf: WellFormed m f):
-  In c f ->
-  Conflicting m c ->
+  CNF.In c f ->
+  c_eval m c = Some false ->
   NoDecisions m ->
   Trans (state m f Hwf) fail
 (* If a clause is false except for one unassigned literal, assign it to satisfy the clause. *)
 | t_unit (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
-  In l c ->
-  In c f ->
-  Conflicting m (l_remove c l) ->
+  Clause.In l c ->
+  CNF.In c f ->
+  c_eval m (Clause.remove l c) = Some false ->
   Undef m l ->
   Trans (state m f Hwf) (state (m ++p l) f Hwf')
 (* Arbitrarily set an unassigned literal in the formula to true. *)
 | t_decide (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++d l) f):
-  In l c \/ In (¬l) c ->
-  In c f ->
+  Clause.In l c \/ Clause.In (¬l) c ->
+  CNF.In c f ->
   Undef m l ->
   Trans (state m f Hwf) (state (m ++d l) f Hwf')
 (* Backtrack by flipping the most recent decision literal. *)
-| t_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p ¬l) f):
-  In c f ->
-  Conflicting (m ++d l ++a n) c ->
+| t_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p (¬l)) f):
+  CNF.In c f ->
+  c_eval (m ++d l ++a n) c = Some false ->
   NoDecisions n ->
-  Trans (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf')
+  Trans (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf')
 (* Adds a literal that only occurs positively. *)
 | t_pure (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
-  In l c ->
-  In c f ->
-  (forall (c': Clause), In c' f -> ~ In (¬l) c') ->
+  Clause.In l c ->
+  CNF.In c f ->
+  (forall (c': Clause), CNF.In c' f -> ~ Clause.In (¬l) c') ->
   Undef m l ->
   Trans (state m f Hwf) (state (m ++p l) f Hwf').
 
 Inductive TransB: relation State :=
 (* Fail if all literals are assigned and there is a conflict. *)
 | tb_fail (m: PA) (f: CNF) (c: Clause) (Hwf: WellFormed m f):
-  In c f ->
-  Conflicting m c ->
+  CNF.In c f ->
+  c_eval m c = Some false ->
   NoDecisions m ->
   TransB (state m f Hwf) fail
 (* Arbitrarily set an unassigned literal in the formula to true. *)
 | tb_decide (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++d l) f):
-  In l c \/ In (¬l) c ->
-  In c f ->
+  Clause.In l c \/ Clause.In (¬l) c ->
+  CNF.In c f ->
   Undef m l ->
   TransB (state m f Hwf) (state (m ++d l) f Hwf')
 (* Backtrack by flipping the most recent decision literal. *)
-| tb_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p ¬l) f):
-  In c f ->
-  Conflicting (m ++d l ++a n) c ->
+| tb_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p (¬l)) f):
+  CNF.In c f ->
+  c_eval (m ++d l ++a n) c = Some false ->
   NoDecisions n ->
-  TransB (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf').
+  TransB (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf').
 
 Definition Derivation: relation State := clos_refl_trans State Trans.
 Definition DerivationStrict: relation State := clos_trans State Trans.
@@ -102,7 +108,7 @@ Proof.
           ++ assumption.
         -- apply bounded_cons.
           ++ apply Hwf.
-          ++ apply l_in_f_true_iff. exists c_unit. intuition.
+          ++ apply CNF.l_in_f_true_iff. exists c_unit. intuition.
       * exists (state (m ++d l_unit) f Hwf''). apply (tb_decide _ _ c_unit).
         -- intuition.
         -- assumption.
@@ -116,7 +122,7 @@ Proof.
           ++ assumption.
         -- apply bounded_cons.
           ++ apply Hwf.
-          ++ apply l_in_f_true_iff. exists c_pure. intuition.
+          ++ apply CNF.l_in_f_true_iff. exists c_pure. intuition.
       * exists (state (m ++d l_pure) f Hwf''). apply (tb_decide _ _ c_pure).
         -- intuition.
         -- assumption.

@@ -1,74 +1,64 @@
-From Equations Require Import Equations.
-From Stdlib Require Import List Bool Relations.
+From Stdlib Require Import List.
+From Stdlib Require Import Relations.
 Import ListNotations.
-From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation Trans WellFormed Dedupe.
 
-Equations c_totalize (m: PA) (c: Clause): PA :=
-c_totalize m [] := m;
-c_totalize m (l :: c) with l_eval m l :=
-  | None := c_totalize (m ++d l) c
-  | _    := c_totalize m c.
+From Equations Require Import Equations.
 
-Equations f_totalize (m: PA) (f: CNF): PA :=
-f_totalize m []       := m;
-f_totalize m (c :: f) := f_totalize (c_totalize m c) f.
+From RocqSAT Require Import Atom.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Dedupe.
 
-Lemma f_eval_cons: forall (m: PA) (f: CNF) (c: Clause),
-  f_eval m (c :: f) = Some true -> 
-  f_eval m f = Some true /\ c_eval m c = Some true.
-Proof.
-  intros. simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-  - intuition.
-  - discriminate.
-  - now destruct (f_eval m f) as [[|]|].
-Qed.
+Definition l_totalize (m: PA) (l: Lit): PA :=
+match l_eval m l with
+| None => m ++d l
+| _    => m
+end.
+
+Definition c_totalize (m: PA) (c: Clause): PA :=
+Clause.fold (fun (l: Lit) (m': PA) => l_totalize m' l) c m.
+
+Definition f_totalize (m: PA) (f: CNF): PA :=
+CNF.fold (fun (c: Clause) (m': PA) => c_totalize m' c) f m.
 
 Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
   Undef m l' -> l_eval m l = Some b -> l_eval ((l', a) :: m) l = Some b.
 Proof.
   unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
-  - exfalso. rewrite eqb_eq in G2. subst l'. now rewrite self_neqb_neg in G1.
-  - exfalso. rewrite eqb_eq in G1. subst l. apply (l_eval_neg_none_iff m l') in H. congruence.
-  - exfalso. rewrite eqb_eq in G2. subst l'. congruence.
+  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. now rewrite Neg.self_neqb_neg in G1.
+  - exfalso. rewrite Lit.eqb_eq in G1. subst l. apply (l_eval_neg_none_iff m l') in H. congruence.
+  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. congruence.
   - assumption.
 Qed.
 
 Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (a: Ann) (b: bool),
   Undef m l -> c_eval m c = Some b -> c_eval ((l, a) :: m) c = Some b.
 Proof.
-  unfold Undef. induction c as [|l c IH].
-  - intros. assumption.
-  - intros. simp c_eval in *. destruct (l_eval m l) as [[|]|] eqn:Hl.
-    + now rewrite (l_eval_extend_undef m l l0 a true H Hl).
-    + rewrite (l_eval_extend_undef m l l0 a false H Hl). simpl in *.
-      destruct (c_eval m c) as [[|]|] eqn:Hc.
-      * rewrite (IH l0 a b H H0). now injection H0 as <-.
-      * rewrite (IH l0 a b H H0). now injection H0 as <-.
-      * discriminate.
-    + destruct (c_eval m c) as [[|]|] eqn:Hc.
-      * simpl in H0. rewrite (IH l0 a b H H0). injection H0 as <-.
-        now destruct (l_eval ((l0, a) :: m) l) as [[|]|].
-      * discriminate.
-      * discriminate.
+  intros m c l a b Hundef Hc. destruct b.
+  - rewrite c_eval_true_iff in *. destruct Hc as [l' [Hin Hl']].
+    exists l'. split.
+    + assumption.
+    + now apply l_eval_extend_undef.
+  - rewrite c_eval_false_iff in *. intros l' Hin. apply l_eval_extend_undef.
+    + assumption.
+    + now apply Hc.
 Qed.
 
 Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (b: bool),
   Undef m l -> f_eval m f = Some b -> f_eval ((l, a) :: m) f = Some b.
 Proof.
-  unfold Undef. induction f as [|c f IH].
-  - intros. assumption.
-  - intros. simp f_eval in *. destruct (c_eval m c) as [[|]|] eqn:Hc.
-    + simpl in H0. rewrite (IH l a b H H0). 
-      now rewrite (c_eval_extend_undef m c l a true H Hc).
-    + simpl in H0. now rewrite (c_eval_extend_undef m c l a false H Hc).
-    + simpl in H0. destruct (f_eval m f) as [[|]|] eqn:Hf.
-      * discriminate.
-      * rewrite (IH l a b H H0). 
-        destruct ((c_eval ((l, a) :: m) c)) as [[|]|].
-        -- reflexivity.
-        -- assumption.
-        -- now injection H0 as <-.
-      * discriminate.
+  intros m f l a b Hundef Hf. destruct b.
+  - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_extend_undef.
+    + assumption.
+    + now apply Hf.
+  - rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
+    exists c. split.
+    + assumption.
+    + now apply c_eval_extend_undef.
 Qed.
 
 Lemma m_eval_extend_undef: forall (m m': PA) (l: Lit) (a: Ann),
@@ -78,96 +68,109 @@ Proof.
   simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
   - reflexivity.
   - reflexivity.
-  - simpl. rewrite eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
-    apply H0 in H1. apply l_eval_neg_some_iff in H1. rewrite involutive in H1. congruence.
+  - simpl. rewrite Lit.eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
+    apply H0 in H1. apply l_eval_neg_some_iff in H1. rewrite Neg.involutive in H1. congruence.
   - simpl. rewrite m_eval_true_iff in H0. now apply H0 in H1.
+Qed.
+
+Lemma l_totalize_l: forall (m: PA) (l l': Lit) (b: bool),
+  l_eval m l' = Some b -> l_eval (l_totalize m l) l' = Some b.
+Proof.
+  intros. unfold l_totalize. destruct (l_eval m l) eqn:Hl.
+  - assumption.
+  - now apply l_eval_extend_undef.
+Qed.
+
+Lemma l_totalize_c: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
+  c_eval m c = Some b -> c_eval (l_totalize m l) c = Some b.
+Proof.
+  intros. unfold l_totalize. destruct (l_eval m l) eqn:Hl.
+  - assumption.
+  - now apply c_eval_extend_undef.
+Qed.
+
+Lemma l_totalize_f: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
+  f_eval m f = Some b -> f_eval (l_totalize m l) f = Some b.
+Proof.
+  intros. unfold l_totalize. destruct (l_eval m l) eqn:Hl.
+  - assumption.
+  - now apply f_eval_extend_undef.
 Qed.
 
 Lemma c_totalize_l: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
   l_eval m l = Some b -> l_eval (c_totalize m c) l = Some b.
 Proof.
-  intros. funelim (c_totalize m c).
-  - assumption.
-  - now apply H.
-  - apply H. now apply l_eval_extend_undef.
+  intros m c l b. unfold c_totalize. rewrite Clause.fold_spec. revert m.
+  induction (Clause.elements c) as [|l' c' IH].
+  - now intros.
+  - intros. simpl. apply IH. now apply l_totalize_l.
 Qed.
 
 Lemma c_totalize_c: forall (m: PA) (c c': Clause) (b: bool),
   c_eval m c = Some b -> c_eval (c_totalize m c') c = Some b.
 Proof.
-  intros. funelim (c_totalize m c').
-  - assumption.
-  - now apply H.
-  - apply H. now apply c_eval_extend_undef.
+  intros m c c' b. unfold c_totalize. rewrite Clause.fold_spec. revert m.
+  induction (Clause.elements c') as [|l c'' IH].
+  - now intros.
+  - intros. simpl. apply IH. now apply l_totalize_c.
 Qed.
 
 Lemma c_totalize_f: forall (m: PA) (f: CNF) (c: Clause) (b: bool),
   f_eval m f = Some b -> f_eval (c_totalize m c) f = Some b.
 Proof.
-  intros. funelim (c_totalize m c).
-  - assumption.
-  - now apply H.
-  - apply H. now apply f_eval_extend_undef.
+  intros m f c b. unfold c_totalize. rewrite Clause.fold_spec. revert m.
+  induction (Clause.elements c) as [|l c' IH].
+  - now intros.
+  - intros. simpl. apply IH. now apply l_totalize_f.
 Qed.
 
 Lemma f_totalize_l: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
   l_eval m l = Some b -> l_eval (f_totalize m f) l = Some b.
 Proof.
-  intros. funelim (f_totalize m f).
-  - assumption.
-  - apply H. now apply c_totalize_l.
+  intros m f l b. unfold f_totalize. rewrite CNF.fold_spec. revert m.
+  induction (CNF.elements f) as [|c f' IH].
+  - now intros.
+  - intros. simpl. apply IH. now apply c_totalize_l.
 Qed.
 
 Lemma f_totalize_c: forall (m: PA) (f: CNF) (c: Clause) (b: bool),
   c_eval m c = Some b -> c_eval (f_totalize m f) c = Some b.
 Proof.
-  intros. funelim (f_totalize m f).
-  - assumption.
-  - apply H. now apply c_totalize_c.
+  intros m f c b. unfold f_totalize. rewrite CNF.fold_spec. revert m.
+  induction (CNF.elements f) as [|c' f' IH].
+  - now intros.
+  - intros. simpl. apply IH. now apply c_totalize_c.
 Qed.
 
 Lemma f_totalize_f: forall (m: PA) (f: CNF),
   f_eval m f = Some true -> f_eval (f_totalize m f) f = Some true.
 Proof.
-  intros. funelim (f_totalize m f).
-  - reflexivity.
-  - apply f_eval_cons in H0 as [Hf Hc]. simp f_eval.
-    assert (c_eval (f_totalize (c_totalize m c) f) c = Some true).
-    + apply f_totalize_c. now apply c_totalize_c.
-    + rewrite H0. simpl. apply H.
-      * now apply c_totalize_f.
-      * reflexivity.
-      * reflexivity.
+  intros m f Hf. rewrite f_eval_true_iff in *. intros c Hin. apply f_totalize_c. now apply Hf.
 Qed.
 
 Lemma c_totalize_all_def: forall (m: PA) (c: Clause) (l: Lit),
-  In l c -> Def (c_totalize m c) l.
+  Clause.In l c -> Def (c_totalize m c) l.
 Proof.
-  unfold Def. intros m c. generalize dependent m. induction c as [|l' c IH].
-  - now intros.
-  - intros. destruct (l_eval m l) eqn:Hl.
-    + exists b. now apply c_totalize_l.
-    + destruct H as [->|H].
-      * simp c_totalize. rewrite Hl. simpl.
-        exists true. apply c_totalize_l. simp l_eval.
-        rewrite self_neqb_neg. now rewrite eqb_refl.
-      * simp c_totalize. destruct (l_eval m l').
-        -- simpl. now apply IH.
-        -- simpl. now apply IH.
+  intros m c l. unfold c_totalize. apply Clause.MP.fold_rec.
+  - intros c' Hempty Hl_in_c'. now apply Hempty in Hl_in_c'.
+  - intros l' m' c' c'' _ _ Hadd IH Hl_in_c''. apply Hadd in Hl_in_c'' as [->|Hl_in_c'].
+    + unfold Def, l_totalize. destruct (l_eval m' l) eqn:Hl.
+      * now exists b.
+      * exists true. simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
+    + apply IH in Hl_in_c' as [b Hl]. exists b. now apply l_totalize_l.
 Qed.
 
 Lemma f_totalize_all_def: forall (m: PA) (f: CNF) (l: Lit),
-  (exists (c: Clause), In l c /\ In c f) -> Def (f_totalize m f) l.
+  (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> Def (f_totalize m f) l.
 Proof.
-  unfold Def. intros m f. generalize dependent m. induction f as [|c f IH].
-  - intros. destruct H as [c [_ Hc_in_f]]. contradiction.
-  - intros. destruct H as [c' [Hl_in_c Hc_in_f]].
-    destruct (l_eval m l) eqn:Hl.
-    + exists b. now apply f_totalize_l.
-    + destruct Hc_in_f as [->|Hc_in_f].
-      * simp f_totalize. apply (c_totalize_all_def m) in Hl_in_c.
-        destruct Hl_in_c as [b Hdef]. exists b. now apply f_totalize_l.
-      * simp f_totalize. apply IH. now exists c'.
+  intros m f l. unfold f_totalize. apply CNF.MP.fold_rec.
+  - intros f' Hempty [c [_ Hc_in_f']]. now apply Hempty in Hc_in_f'.
+  - intros c m' f' f'' _ _ Hadd IH [c' [Hl_in_c' Hc'_in_f'']].
+    apply Hadd in Hc'_in_f'' as [Hequal|Hc'_in_f'].
+    + apply Hequal in Hl_in_c'. now apply c_totalize_all_def.
+    + destruct IH as [b Hl].
+      * now exists c'.
+      * exists b. now apply c_totalize_l.
 Qed.
 
 Equations convert_prop (m: PA): PA :=
@@ -189,32 +192,16 @@ Qed.
 Lemma convert_prop_c: forall (m: PA) (c: Clause),
   c_eval m c = Some true -> c_eval (convert_prop m) c = Some true.
 Proof.
-  intros. induction c as [|l c IH].
-  - discriminate.
-  - simp c_eval in *. destruct (l_eval m l) as [[|]|] eqn:Hl.
-    + apply convert_prop_l in Hl. now rewrite Hl. 
-    + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-      * apply convert_prop_l in Hl. rewrite Hl.
-        apply IH in H. now rewrite H.
-      * discriminate.
-      * discriminate.
-    + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-      * apply convert_prop_l in Hl. rewrite Hl.
-        apply IH in H. now rewrite H.
-      * discriminate.
-      * discriminate.
+  intros m c Hc. rewrite c_eval_true_iff in *. destruct Hc as [l [Hin Hl]].
+  exists l. split.
+  - assumption.
+  - now apply convert_prop_l.
 Qed.
 
 Lemma convert_prop_f: forall (m: PA) (f: CNF),
   f_eval m f = Some true -> f_eval (convert_prop m) f = Some true.
 Proof.
-  intros. induction f as [|c f IH].
-  - reflexivity.
-  - simp f_eval in H. destruct (c_eval m c) as [[|]|] eqn:Hc.
-    + simpl in H. apply convert_prop_c in Hc. simp f_eval.
-      rewrite Hc. apply IH in H. rewrite H. reflexivity.
-    + discriminate.
-    + now destruct (f_eval m f) as [[|]|].
+  intros m f Hf. rewrite f_eval_true_iff in *. intros c Hin. apply convert_prop_c. now apply Hf.
 Qed.
 
 Lemma convert_prop_only_dec: forall (m: PA) (l: Lit) (a: Ann),
@@ -228,7 +215,7 @@ Proof.
 Qed.
 
 Lemma convert_prop_all_def: forall (m: PA) (f: CNF) (l: Lit),
-  (exists (c: Clause), In l c /\ In c f) -> 
+  (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> 
   Def m l ->
   Def (convert_prop m) l.
 Proof.
@@ -249,75 +236,44 @@ bound ((l, a) :: m) f with l_in_f f l :=
   | true  := (l, a) :: bound m f
   | false := bound m f.
 
-Lemma c_eval_in: forall (m: PA) (c: Clause) (l: Lit) (a: Ann),
-  In l c -> c_eval ((l, a) :: m) c = Some true.
-Proof.
-  intros m c. generalize dependent m. induction c.
-  - intros. destruct H.
-  - intros. destruct H.
-    + subst a. simp c_eval. simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
-    + apply (IHc m l a0) in H. simp c_eval. rewrite H. 
-      now destruct (l_eval ((l, a0) :: m) a) as [[|]|].
-Qed.
-
 Lemma bound_l: forall (m: PA) (f: CNF) (l: Lit),
   l_in_f f l = true -> l_eval m l = Some true -> l_eval (bound m f) l = Some true.
 Proof.
   intros. funelim (l_eval m l); try congruence.
-  - rewrite eqb_eq in Heq. subst l'. simp bound. rewrite H. simpl. simp l_eval.
-    rewrite eqb_refl. now rewrite self_neqb_neg.
+  - rewrite Lit.eqb_eq in Heq. subst l'. simp bound. rewrite H. simpl. simp l_eval.
+    rewrite Lit.eqb_refl. now rewrite Neg.self_neqb_neg.
   - simp bound. destruct (l_in_f f l').
     + simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl. apply H; try easy. congruence.
     + simpl. apply H; try easy. congruence.
 Qed.
 
-Lemma bound_c_aux: forall (m: PA) (f: CNF) (c c': Clause),
-  incl c c' -> In c' f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
-Proof.
-  intros. funelim (c_eval m c); try congruence.
-  - simp c_eval. assert (l_eval (bound m f) l = Some true).
-    + apply bound_l.
-      * apply l_in_f_true_iff. exists c'. auto with *.
-      * assumption.
-    + now rewrite H2.
-  - assert (c_eval (bound m f) c = Some true).
-    + apply (Hind _ _ _ c'); try easy. unfold incl. intros. apply H. now right.
-    + simp c_eval. rewrite H2. now destruct (l_eval (bound m f) l) as [[|]|].
-  - assert (c_eval (bound m f) c = Some true).
-    + apply (Hind _ _ _ c'); try easy. unfold incl. intros. apply H. now right.
-    + simp c_eval. rewrite H2. now destruct (l_eval (bound m f) l) as [[|]|].
-Qed.
-
 Lemma bound_c: forall (m: PA) (f: CNF) (c: Clause),
-  In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
-Proof. intros. apply (bound_c_aux _ _ _ c); easy. Qed.
-
-Lemma bound_f_aux: forall (m: PA) (f f': CNF),
-  incl f f' -> f_eval m f = Some true -> f_eval (bound m f') f = Some true.
+  CNF.In c f -> c_eval m c = Some true -> c_eval (bound m f) c = Some true.
 Proof.
-  intros. induction f as [|c f IH].
+  intros m f c Hc_in_f Hc. rewrite c_eval_true_iff in *. destruct Hc as [l [Hl_in_c Hl]].
+  exists l. split.
   - assumption.
-  - assert (f_eval (bound m f') f = Some true).
-    + apply IH.
-      * unfold incl. intros. apply H. now right.
-      * now apply f_eval_cons in H0.
-    + assert (c_eval (bound m f') c = Some true).
-      * apply bound_c.
-        -- apply H. now left.
-        -- now apply f_eval_cons in H0.
-      * simp f_eval. rewrite H1. now rewrite H2.
+  - apply bound_l.
+    + apply CNF.l_in_f_true_iff. exists c. split.
+      * now left.
+      * assumption.
+    + assumption.
 Qed.
 
 Lemma bound_f: forall (m: PA) (f: CNF),
   f_eval m f = Some true -> f_eval (bound m f) f = Some true.
-Proof. intros. apply bound_f_aux; easy. Qed.
+Proof.
+  intros m f Hf. rewrite f_eval_true_iff in *. intros c Hc_in_f. apply bound_c.
+  - assumption.
+  - now apply Hf.
+Qed.
 
 Lemma bound_bounded: forall (m: PA) (f: CNF), Bounded (bound m f) f.
 Proof.
   unfold Bounded. intros. funelim (bound m f).
   - contradiction.
   - simp bound in H0. rewrite Heq in H0. simpl in H0. destruct H0.
-    + injection H0 as <- <-. apply l_in_f_true_iff in Heq as [c [Hx_in_c Hc_in_f]].
+    + injection H0 as <- <-. apply CNF.l_in_f_true_iff in Heq as [c [Hx_in_c Hc_in_f]].
       exists c. intuition.
     + now apply H in H0.
   - simp bound in H0. rewrite Heq in H0. simpl in H0. now apply H in H0.
@@ -339,7 +295,7 @@ Lemma bound_only_dec: forall (m: PA) (f: CNF),
 Proof. intros. apply (H l). now apply bound_incl in H0. Qed.
 
 Lemma bound_all_def: forall (m: PA) (f: CNF) (l: Lit),
-  (exists (c: Clause), In l c /\ In c f) -> 
+  (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> 
   Def m l ->
   Def (bound m f) l.
 Proof.
@@ -356,49 +312,49 @@ Proof.
     + assumption.
     + destruct H0 as [c [Hl_in_c Hc_in_f]].
       assert (l_in_f f l0 = true).
-      * apply l_in_f_true_iff. exists c. intuition.
+      * apply CNF.l_in_f_true_iff. exists c. intuition.
       * simp l_eval in H1. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
-        -- simpl in H1. rewrite eqb_eq in G2. congruence.
-        -- simpl in H1. rewrite eqb_eq in G1. subst l0.
-           apply l_in_f_true_iff in H0 as [c' [Hx_in_c' Hc_in_f']].
+        -- simpl in H1. rewrite Lit.eqb_eq in G2. congruence.
+        -- simpl in H1. rewrite Lit.eqb_eq in G1. subst l0.
+           apply CNF.l_in_f_true_iff in H0 as [c' [Hx_in_c' Hc_in_f']].
            assert (l_in_f f l = true).
-          ++ apply l_in_f_true_iff. exists c'. rewrite involutive in Hx_in_c'. intuition.
+          ++ apply CNF.l_in_f_true_iff. exists c'. rewrite Neg.involutive in Hx_in_c'. intuition.
           ++ congruence.
-        -- simpl in H1. rewrite eqb_eq in G2. congruence.
+        -- simpl in H1. rewrite Lit.eqb_eq in G2. congruence.
         -- assumption.
 Qed.
 
 Equations eqb_by_atom (la la': Lit * Ann): bool :=
-eqb_by_atom (l, _) (l', _) := Atom.eqb (extract l) (extract l'). 
+eqb_by_atom (l, _) (l', _) := extract l =? extract l'. 
 
 Equations dedupe (m: PA): PA :=
 dedupe m := dedupe_by eqb_by_atom m.
 
 Lemma extract_neqb_iff: forall (l l': Lit),
-  l =? l' = false ->
-  l =? ¬l' = false ->
-  Atom.eqb (extract l) (extract l') = false.
-Proof. intros. funelim (l =? l'); now simp extract. Qed.
+  (l =? l') = false ->
+  (l =? ¬l') = false ->
+  (extract l =? extract l') = false.
+Proof. intros. destruct l, l'; simp extract neg in *; now simpl in *. Qed.
 
 Lemma dedupe_l_aux: forall (m: PA) (l l': Lit) (a: Ann),
-  l =? l' = false ->
-  l =? ¬l' = false ->
+  (l =? l') = false ->
+  (l =? ¬l') = false ->
   l_eval m l = l_eval (filter (neqb_of eqb_by_atom (l', a)) m) l.
 Proof.
   induction m as [|[l a] m IH].
   - intros. reflexivity.
   - intros. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
-    + rewrite eqb_eq in G1. subst l0. now rewrite self_neqb_neg in G2.
-    + rewrite eqb_eq in G1. subst l0. simpl. simp neqb_of.
-      simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
+    + rewrite Lit.eqb_eq in G1. subst l0. now rewrite Neg.self_neqb_neg in G2.
+    + rewrite Lit.eqb_eq in G1. subst l0. simpl. simp neqb_of.
+      simp eqb_by_atom. assert ((extract l' =? extract l) = false).
       * rewrite Atom.eqb_sym. now apply extract_neqb_iff.
-      * rewrite H1. simpl. simp l_eval. rewrite eqb_refl. now rewrite self_neqb_neg.
-    + rewrite eqb_eq in G2. subst l0. simpl. simp neqb_of.
-      simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
-      * rewrite Atom.eqb_sym. rewrite <- eqb_compat in H0. rewrite eqb_compat in H. 
-        rewrite involutive in H. now apply extract_neqb_iff.
-      * rewrite H1. simpl. simp l_eval. rewrite eqb_refl. rewrite eqb_sym. now rewrite self_neqb_neg.
-    + simpl. simp neqb_of. simp eqb_by_atom. destruct (negb (Atom.eqb (extract l') (extract l))).
+      * rewrite H1. simpl. simp l_eval. rewrite Lit.eqb_refl. now rewrite Neg.self_neqb_neg.
+    + rewrite Lit.eqb_eq in G2. subst l0. simpl. simp neqb_of.
+      simp eqb_by_atom. assert ((extract l' =? extract l) = false).
+      * rewrite Atom.eqb_sym. rewrite <- Neg.eqb_compat in H0. rewrite Neg.eqb_compat in H. 
+        rewrite Neg.involutive in H. now apply extract_neqb_iff.
+      * rewrite H1. simpl. simp l_eval. rewrite Lit.eqb_refl. rewrite Lit.eqb_sym. now rewrite Neg.self_neqb_neg.
+    + simpl. simp neqb_of. simp eqb_by_atom. destruct (negb (extract l' =? extract l)).
       * simp l_eval. rewrite G1. rewrite G2. simpl. now apply IH.
       * now apply IH.
 Qed.
@@ -418,27 +374,20 @@ Qed.
 Lemma dedupe_c: forall (m: PA) (c: Clause),
   c_eval m c = Some true -> c_eval (dedupe m) c = Some true.
 Proof.
-  intros. induction c as [|l c IH].
+  intros m c Hc. rewrite c_eval_true_iff in *. destruct Hc as [l [Hin Hl]].
+  exists l. split.
   - assumption.
-  - simp c_eval in H. destruct (l_eval m l) as [[|]|] eqn:Hl.
-    + apply dedupe_l in Hl. simp c_eval. now rewrite Hl.
-    + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc; try easy.
-      simp c_eval. apply dedupe_l in Hl. apply IH in H. rewrite Hl. now rewrite H.
-    + simpl in H. destruct (c_eval m c) as [[|]|] eqn:Hc; try easy.
-      simp c_eval. apply dedupe_l in Hl. apply IH in H. rewrite Hl. now rewrite H.
+  - now apply dedupe_l.
 Qed.
 
 Lemma dedupe_f: forall (m: PA) (f: CNF),
   f_eval m f = Some true -> f_eval (dedupe m) f = Some true.
 Proof.
-  intros. induction f as [|c f IH].
-  - assumption.
-  - apply f_eval_cons in H as [Hf Hc]. apply IH in Hf. apply dedupe_c in Hc.
-    simp f_eval. rewrite Hf. now rewrite Hc.
+  intros m f Hf. rewrite f_eval_true_iff in *. intros c Hin. apply dedupe_c. now apply Hf.
 Qed.
 
 Lemma dedupe_all_def: forall (m: PA) (f: CNF) (l: Lit),
-  (exists (c: Clause), In l c /\ In c f) -> 
+  (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> 
   Def m l ->
   Def (dedupe m) l.
 Proof. unfold Def. intros. destruct H0. apply dedupe_l in H0. now exists x. Qed.
@@ -479,7 +428,7 @@ Proof.
 Qed.
 
 Lemma normalize_all_def: forall (m: PA) (f: CNF) (l: Lit),
-  (exists (c: Clause), In l c /\ In c f) -> Def (normalize m f) l.
+  (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> Def (normalize m f) l.
 Proof.
   intros. simp normalize.
   apply (dedupe_all_def _ f).
