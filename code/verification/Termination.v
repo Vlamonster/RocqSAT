@@ -12,31 +12,13 @@ From RocqSAT Require Import State.
 From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
 From RocqSAT Require Import Measure.
-From RocqSAT.rules Require Import Fail.
-From RocqSAT.rules Require Import Unit.
-From RocqSAT.rules Require Import Decide.
-From RocqSAT.rules Require Import Backtrack.
-From RocqSAT.rules Require Import Pure.
 
-(* Every transition decreases the measure, as long as every rule does. *)
+(* Every transition decreases the measure. *)
 Lemma trans__state_lt: forall (rs: list Rule) (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
-  Forall Decreasing rs ->
   state m f Hwf ==>[rs] s' -> state m f Hwf >>[f] s'.
 Proof.
-  intros rs m f s' Hwf Hrs Htrans.
-  apply trans_rule in Htrans as [r [Hr Hstep]].
-  rewrite Forall_forall in Hrs. now apply (Hrs r Hr m f s' Hwf).
-Qed.
-
-Lemma dpll_decreasing: Forall Decreasing DPLL.
-Proof.
-  repeat apply Forall_cons.
-  - exact fail_state_lt.
-  - exact unit_state_lt.
-  - exact decide_state_lt.
-  - exact backtrack_state_lt.
-  - exact pure_state_lt.
-  - apply Forall_nil.
+  intros rs m f s' Hwf Htrans.
+  apply trans_rule in Htrans as [r [_ Hstep]]. now apply (rule_decreasing r m f s' Hwf).
 Qed.
 
 (* Thanks to Gaetan Gilbert *)
@@ -101,9 +83,9 @@ Equations cnf (s: State): option CNF :=
 cnf fail          := None;
 cnf (state _ f _) := Some f.
 
-(* From here on, rs is a set of rules that all keep the formula and decrease the measure. *)
+(* From here on, rs is a set of rules that all keep the formula: the measure is relative to a fixed formula. *)
 Section Termination.
-  Context (rs: list Rule) (Hkeep: Forall KeepsFormula rs) (Hrs: Forall Decreasing rs).
+  Context (rs: list Rule) (Hkeep: Forall (fun (r: Rule) => KeepsFormula (step r)) rs).
 
 (* A transition from a state with a formula keeps the formula (or ends in fail) and decreases the measure. *)
 Lemma to_statelt s s' :

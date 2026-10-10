@@ -18,7 +18,7 @@ From RocqSAT.rules Require Import Pure.
 Inductive Trans (rs: list Rule): relation State :=
 | t_step (r: Rule) (m: PA) (f: CNF) (Hwf: WellFormed m f) (s': State):
   In r rs ->
-  r (state m f Hwf) s' ->
+  step r (state m f Hwf) s' ->
   Trans rs (state m f Hwf) s'.
 
 Arguments t_step {rs}.
@@ -43,7 +43,7 @@ Open Scope trans_scope.
 
 (* A transition from a state is a step of one of the rules from that same state. *)
 Lemma trans_rule: forall (rs: list Rule) (m: PA) (f: CNF) (Hwf: WellFormed m f) (s': State),
-  state m f Hwf ==>[rs] s' -> exists (r: Rule), In r rs /\ r (state m f Hwf) s'.
+  state m f Hwf ==>[rs] s' -> exists (r: Rule), In r rs /\ step r (state m f Hwf) s'.
 Proof.
   intros rs m f Hwf s' Htrans. remember (state m f Hwf) as s eqn:Hs.
   destruct Htrans as [r m' f' Hwf' s' Hr Hstep]. now exists r.
@@ -134,7 +134,7 @@ Proof. intros. apply rt_refl. Qed.
 
 (* Transitions never change the formula, as long as no rule does. *)
 Lemma trans_same_formula: forall (rs: list Rule) (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'),
-  Forall KeepsFormula rs ->
+  Forall (fun (r: Rule) => KeepsFormula (step r)) rs ->
   state m f Hwf ==>[rs] state m' f' Hwf' -> f = f'.
 Proof.
   intros rs m m' f f' Hwf Hwf' Hrs Htrans.
@@ -142,7 +142,7 @@ Proof.
   rewrite Forall_forall in Hrs. now apply (Hrs r Hr m m' f f' Hwf Hwf').
 Qed.
 
-Lemma dpll_keeps_formula: Forall KeepsFormula DPLL.
+Lemma dpll_keeps_formula: Forall (fun (r: Rule) => KeepsFormula (step r)) DPLL.
 Proof.
   repeat apply Forall_cons.
   - exact fail_keeps_formula.
@@ -152,7 +152,6 @@ Proof.
   - exact pure_keeps_formula.
   - apply Forall_nil.
 Qed.
-
 
 (* Likewise for derivations. *)
 Lemma derivation_same_formula: forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'), 
@@ -171,21 +170,18 @@ Proof.
       * exact dpll_keeps_formula.
 Qed.
 
-(* Transitions, and hence derivations, only change the formula to an equivalent one, as long as no rule does otherwise. *)
+(* Transitions, and hence derivations, only change the formula to an equivalent one. *)
 Lemma trans_equivalent: forall (rs: list Rule) (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'),
-  Forall PreservesEquivalence rs ->
   state m f Hwf ==>[rs] state m' f' Hwf' -> Equivalent f f'.
 Proof.
-  intros rs m m' f f' Hwf Hwf' Hrs Htrans.
-  apply trans_rule in Htrans as [r [Hr Hstep]].
-  rewrite Forall_forall in Hrs. now apply (Hrs r Hr m m' f f' Hwf Hwf').
+  intros rs m m' f f' Hwf Hwf' Htrans.
+  apply trans_rule in Htrans as [r [_ Hstep]]. now apply (rule_equivalence r m m' f f' Hwf Hwf').
 Qed.
 
 Lemma derivation_equivalent: forall (rs: list Rule) (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'),
-  Forall PreservesEquivalence rs ->
   state m f Hwf ==>*[rs] state m' f' Hwf' -> Equivalent f f'.
 Proof.
-  intros rs m m' f f' Hwf Hwf' Hrs H. apply clos_rt_rtn1_iff in H.
+  intros rs m m' f f' Hwf Hwf' H. apply clos_rt_rtn1_iff in H.
   remember (state m f Hwf) as s eqn:Heqs.
   remember (state m' f' Hwf') as s' eqn:Heqs'.
   generalize dependent m'. generalize dependent f'.
@@ -197,9 +193,6 @@ Proof.
       * now apply (IHclos_refl_trans_n1 f0 m0 Hwf0).
       * now apply (trans_equivalent rs m0 m' f0 f' Hwf0 Hwf').
 Qed.
-
-Lemma dpll_equivalence: Forall PreservesEquivalence DPLL.
-Proof. apply (Forall_impl _ keeps_formula_equivalence dpll_keeps_formula). Qed.
 
 (* A derivation that ends in fail passes through a state that steps to fail directly. *)
 Lemma fail_predecessor: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),

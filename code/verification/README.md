@@ -18,16 +18,16 @@ qualified by that directory, e.g. `From RocqSAT.rules Require Import Unit.`
 
 ## Main results
 
-| Theorem                          | File                        | Statement (informally)                                                                        |
-|----------------------------------|-----------------------------|-----------------------------------------------------------------------------------------------|
-| `final_exists`                   | `Satisfiability.v`          | From the initial state, some final state is reachable.                                        |
-| `final_model`                    | `Satisfiability.v`          | A final state other than `fail` is a model of the formula.                                    |
-| `final_sat_refl`                 | `Satisfiability.v`          | A formula is satisfiable iff a final non-`fail` state is reachable.                           |
-| `final_unsat_refl`               | `Satisfiability.v`          | A formula is unsatisfiable iff `fail` is reachable.                                           |
-| `sat_decidable`                  | `Satisfiability.v`          | Every formula is satisfiable or unsatisfiable.                                                |
-| `strict_derivation_well_founded` | `Termination.v`             | If every rule keeps the formula and decreases the measure, there are no infinite derivations. |
-| `derivation_entails`             | `entailment/Preservation.v` | If every rule preserves entailment, so does every derivation.                                 |
-| `next_state_strategy`            | `Strategy.v`                | The concrete solver step is a valid strategy.                                                 |
+| Theorem                          | File                        | Statement (informally)                                              |
+|----------------------------------|-----------------------------|---------------------------------------------------------------------|
+| `final_exists`                   | `Satisfiability.v`          | From the initial state, some final state is reachable.              |
+| `final_model`                    | `Satisfiability.v`          | A final state other than `fail` is a model of the formula.          |
+| `final_sat_refl`                 | `Satisfiability.v`          | A formula is satisfiable iff a final non-`fail` state is reachable. |
+| `final_unsat_refl`               | `Satisfiability.v`          | A formula is unsatisfiable iff `fail` is reachable.                 |
+| `sat_decidable`                  | `Satisfiability.v`          | Every formula is satisfiable or unsatisfiable.                      |
+| `strict_derivation_well_founded` | `Termination.v`             | If every rule keeps the formula, there are no infinite derivations. |
+| `derivation_entails`             | `entailment/Preservation.v` | Every derivation preserves entailment.                              |
+| `next_state_strategy`            | `Strategy.v`                | The concrete solver step is a valid strategy.                       |
 
 ## Module dependencies
 
@@ -82,35 +82,37 @@ the helper `utils/Dedupe`.
 
 ## Adding a rule
 
-A rule is a relation on states, `Rule := relation State`. `Trans rs` only takes steps
-from a non-`fail` state, so `fail` is final whatever the rules say about it. The
-general results take the properties of the rules as hypotheses on the rule set:
+A rule is a record `Rule` bundling a relation on states, `step`, with the properties
+every rule must have:
 
-- `trans_equivalent`/`derivation_equivalent` need `Forall PreservesEquivalence rs`:
-  the formula only changes to an equivalent one. This is the invariant on the formula
-  that soundness uses.
-- `trans_entails`/`derivation_entails` need `Forall PreservesEntails rs`.
-- `trans__state_lt` needs `Forall Decreasing rs`, and `trans_well_founded`/
-  `strict_derivation_well_founded` also need `Forall KeepsFormula rs`, because the
-  measure is relative to a fixed formula.
+- `rule_equivalence: PreservesEquivalence step`: the formula only changes to an
+  equivalent one. This is the invariant on the formula that soundness uses.
+- `rule_entails: PreservesEntails step`: the entailment invariant is preserved.
+- `rule_decreasing: Decreasing step`: the termination measure decreases.
+- `rule_model_final: ModelFinal step`: the rule cannot fire from a total model.
 
-A rule that keeps the formula (`KeepsFormula`) preserves equivalence for free
+`Trans rs` only takes steps from a non-`fail` state, so `fail` is final whatever the
+rules say about it. Because the properties come with the rules, the general results
+(`derivation_equivalent`, `derivation_entails`, `trans__state_lt`, …) hold for any
+rule set. The exception is `trans_well_founded`/`strict_derivation_well_founded`,
+which also need every rule to keep the formula (`KeepsFormula`), because the measure
+is relative to a fixed formula.
+
+A rule that keeps the formula preserves equivalence for free
 (`keeps_formula_equivalence`); all current rules are of this kind.
 
 To add a rule:
 
-1. Create `rules/<Rule>.v` with the rule as an inductive of type `Rule`, and prove
-   the properties you need (`KeepsFormula` or `PreservesEquivalence`,
-   `PreservesEntails`, `Decreasing`, `ModelFinal`). Nothing imports the file yet,
-   so this does not affect the rest of the development.
+1. Create `rules/<Rule>.v` with the relation `<Rule>Step` as an inductive, prove its
+   properties, and bundle them as `<Rule>: Rule`. Nothing imports the file yet, so this
+   does not affect the rest of the development.
 2. Import it in `Trans.v` and use it in a rule set, e.g. a new list next to `DPLL`.
-3. For that rule set, prove the `Forall`s from the per-rule lemmas, as
-   `dpll_keeps_formula`, `dpll_equivalence`, `dpll_entails`, `dpll_decreasing` and
-   `dpll_model_final` do for `DPLL`.
+3. For termination, prove that every rule of that set keeps the formula, as
+   `dpll_keeps_formula` does for `DPLL`.
 
 Adding the rule to `DPLL` itself also requires updating the DPLL-specific proofs that
 case on its rules: `final_dpll_basic`, `final_unsat_refl` (only `Fail` reaches `fail`)
-and the `dpll_*` lemmas.
+and `dpll_keeps_formula`.
 
 ## File index
 
@@ -168,17 +170,18 @@ only preserve models.
 
 ### The rules
 
-| File     | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Rule.v` | The type `Rule` of rules (relations on states); `KeepsFormula` (the rule never changes the formula), `PreservesEquivalence` (the rule only changes the formula to an equivalent one) with `keeps_formula_equivalence`, `PreservesEntails` (the rule preserves the entailment invariant, relative to the formula of each state), `Decreasing` (the rule decreases the termination measure), and `ModelFinal` (the rule cannot fire from a model that defines every literal of the formula). |
+| File     | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Rule.v` | The properties of a relation on states: `KeepsFormula` (the rule never changes the formula), `PreservesEquivalence` (the rule only changes the formula to an equivalent one) with `keeps_formula_equivalence`, `PreservesEntails` (the rule preserves the entailment invariant, relative to the formula of each state), `Decreasing` (the rule decreases the termination measure), and `ModelFinal` (the rule cannot fire from a model that defines every literal of the formula); the record `Rule`, a relation (`step`) with the last four properties. |
 
-Each file in `rules/` defines its rule (`r_<rule>` is its only constructor) and proves the four
-properties that the main theorems combine:
+Each file in `rules/` defines its relation `<Rule>Step` (`r_<rule>` is its only constructor),
+proves its properties, and bundles them as `<Rule>: Rule`:
 
-- `<rule>_keeps_formula: KeepsFormula <Rule>` (used in `Trans.v` for `dpll_equivalence`, and in `Termination.v`),
-- `<rule>_entails: PreservesEntails <Rule>` (used in `entailment/Preservation.v`),
-- `<rule>_state_lt: Decreasing <Rule>` (used in `Termination.v`),
-- `<rule>_model_final: ModelFinal <Rule>` (used in `Satisfiability.v`).
+- `<rule>_keeps_formula: KeepsFormula <Rule>Step`, which gives `rule_equivalence` via
+  `keeps_formula_equivalence` (and is used by `dpll_keeps_formula` for termination),
+- `<rule>_entails: PreservesEntails <Rule>Step`,
+- `<rule>_state_lt: Decreasing <Rule>Step`,
+- `<rule>_model_final: ModelFinal <Rule>Step`.
 
 | File                | Rule                                                                                                                                                                                           |
 |---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -190,11 +193,11 @@ properties that the main theorems combine:
 
 ### The transition system
 
-| File                        | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-|-----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Trans.v`                   | `Trans rs`, the transition relation of a list of rules (`t_step`: a step of one of the rules from a non-`fail` state), with notations `s ==>[rs] s'`, `==>*[rs]`, `==>+[rs]`, and `==>`/`==>*`/`==>+` for the full system `DPLL`; the smaller rule set `Basic`; `trans_rule`, `trans_union` and `trans_incl`; final states `Final rs` and `final_dpll_basic`; `trans_same_formula`/`derivation_same_formula` and `dpll_keeps_formula`; `trans_equivalent`/`derivation_equivalent` and `dpll_equivalence`; `fail_predecessor`. |
-| `entailment/Preservation.v` | `trans_entails` and `derivation_entails`: if every rule preserves entailment, so does every transition and derivation; `dpll_entails` for `DPLL`.                                                                                                                                                                                                                                                                                                                                                                             |
-| `Termination.v`             | `trans__state_lt`: if every rule decreases the measure, so does every transition; from that, if every rule also keeps the formula, `trans_well_founded` and `strict_derivation_well_founded`; `dpll_decreasing` for `DPLL`.                                                                                                                                                                                                                                                                                                   |
+| File                        | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Trans.v`                   | `Trans rs`, the transition relation of a list of rules (`t_step`: a step of one of the rules from a non-`fail` state), with notations `s ==>[rs] s'`, `==>*[rs]`, `==>+[rs]`, and `==>`/`==>*`/`==>+` for the full system `DPLL` (of the bundled rules `Fail`, `Unit`, …); the smaller rule set `Basic`; `trans_rule`, `trans_union` and `trans_incl`; final states `Final rs` and `final_dpll_basic`; `trans_same_formula`/`derivation_same_formula` and `dpll_keeps_formula`; `trans_equivalent`/`derivation_equivalent`; `fail_predecessor`. |
+| `entailment/Preservation.v` | `trans_entails` and `derivation_entails`: every transition and derivation preserves entailment.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `Termination.v`             | `trans__state_lt`: every transition decreases the measure; from that, if every rule keeps the formula, `trans_well_founded` and `strict_derivation_well_founded`.                                                                                                                                                                                                                                                                                                                                                                                         |
 
 ### Normalization
 
@@ -211,6 +214,6 @@ properties that the main theorems combine:
 
 ### Main results
 
-| File               | Contents                                                                        |
-|--------------------|---------------------------------------------------------------------------------|
-| `Satisfiability.v` | `Sat`, `Unsat` and `Total`; `dpll_model_final`; the main theorems listed above. |
+| File               | Contents                                                        |
+|--------------------|-----------------------------------------------------------------|
+| `Satisfiability.v` | `Sat`, `Unsat` and `Total`, and the main theorems listed above. |

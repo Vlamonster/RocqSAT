@@ -15,18 +15,18 @@ From RocqSAT.entailment Require Import Entails.
 From RocqSAT Require Import Measure.
 
 (* If a clause is false except for one unassigned literal, assign it to satisfy the clause. *)
-Inductive Unit: Rule :=
+Inductive UnitStep: relation State :=
 | r_unit (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
   Clause.In l c ->
   CNF.In c f ->
   c_eval m (Clause.remove l c) = Some false ->
   Undef m l ->
-  Unit (state m f Hwf) (state (m ++p l) f Hwf').
+  UnitStep (state m f Hwf) (state (m ++p l) f Hwf').
 
-Lemma unit_keeps_formula: KeepsFormula Unit.
+Lemma unit_keeps_formula: KeepsFormula UnitStep.
 Proof. intros m m' f f' Hwf Hwf' Hstep. now inversion Hstep. Qed.
 
-Lemma unit_entails: PreservesEntails Unit.
+Lemma unit_entails: PreservesEntails UnitStep.
 Proof.
   intros m m' f f' Hwf Hwf' Hstep Hentails.
   inversion Hstep as [? ? c_unit l_unit ? ? Hl_in_c Hc_in_f Hconflict Hundef]; subst.
@@ -42,7 +42,7 @@ Proof.
   - assumption.
 Qed.
 
-Lemma unit_state_lt: Decreasing Unit.
+Lemma unit_state_lt: Decreasing UnitStep.
 Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [? ? c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef]; subst.
@@ -50,7 +50,7 @@ Proof.
   now apply prefix_prop.
 Qed.
 
-Lemma unit_model_final: ModelFinal Unit.
+Lemma unit_model_final: ModelFinal UnitStep.
 Proof.
   intros m f Hwf Heq Hall_def [s Hstep].
   inversion Hstep as [? ? c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef]; subst.
@@ -58,3 +58,12 @@ Proof.
   - apply Hall_def. now exists c_unit.
   - now apply def_undef in H.
 Qed.
+
+(* Unit as a rule of the transition system. *)
+Definition Unit: Rule := {|
+  step := UnitStep;
+  rule_equivalence := keeps_formula_equivalence UnitStep unit_keeps_formula;
+  rule_entails := unit_entails;
+  rule_decreasing := unit_state_lt;
+  rule_model_final := unit_model_final
+|}.

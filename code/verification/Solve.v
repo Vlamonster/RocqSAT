@@ -18,7 +18,7 @@ Unset Equations With Funext.
 Section Solve.
   Context (f: CNF) (next: State -> option State) (Hstrat: Strategy next).
 
-  Instance strict_derivation_well_founded: WellFounded (flip (DerivationStrict DPLL)) := strict_derivation_well_founded DPLL dpll_keeps_formula dpll_decreasing.
+  Instance strict_derivation_well_founded: WellFounded (flip (DerivationStrict DPLL)) := strict_derivation_well_founded DPLL dpll_keeps_formula.
 
   (* Apply the strategy until it stops. This terminates because every step is a strict derivation (strict_derivation_well_founded). *)
   Equations solve_aux (s: State) (H: state [] f (initial_well_formed f) ==>* s): State by wf s (flip (DerivationStrict DPLL)) :=

@@ -17,14 +17,14 @@ From RocqSAT.entailment Require Import Entails.
 From RocqSAT Require Import Measure.
 
 (* Backtrack by flipping the most recent decision literal. *)
-Inductive Backtrack: Rule :=
+Inductive BacktrackStep: relation State :=
 | r_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p (¬l)) f):
   CNF.In c f ->
   c_eval (m ++d l ++a n) c = Some false ->
   NoDecisions n ->
-  Backtrack (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf').
+  BacktrackStep (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf').
 
-Lemma backtrack_keeps_formula: KeepsFormula Backtrack.
+Lemma backtrack_keeps_formula: KeepsFormula BacktrackStep.
 Proof. intros m m' f f' Hwf Hwf' Hstep. now inversion Hstep. Qed.
 
 (* With a conflict after deciding l, no model of the formula and m makes l true. *)
@@ -61,7 +61,7 @@ Proof.
     + simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
 Qed.
 
-Lemma backtrack_entails: PreservesEntails Backtrack.
+Lemma backtrack_entails: PreservesEntails BacktrackStep.
 Proof.
   intros m m' f f' Hwf Hwf' Hstep Hentails.
   inversion Hstep as [m_split n_split ? c_conflict l_split ? ? Hc_in_f Hconflict Hno_dec]; subst.
@@ -73,7 +73,7 @@ Proof.
   - apply (entails_prefix f' m_split [(l_split, dec)]). now apply entails_prefix in Hentails.
 Qed.
 
-Lemma backtrack_state_lt: Decreasing Backtrack.
+Lemma backtrack_state_lt: Decreasing BacktrackStep.
 Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [m_split n_split ? c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec]; subst.
@@ -83,7 +83,7 @@ Proof.
   - assumption.
 Qed.
 
-Lemma backtrack_model_final: ModelFinal Backtrack.
+Lemma backtrack_model_final: ModelFinal BacktrackStep.
 Proof.
   intros m f Hwf Heq Hall_def [s Hstep].
   inversion Hstep as [m_split n_split ? c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec]; subst.
@@ -91,3 +91,12 @@ Proof.
   - apply f_eval_false_iff. now exists c_conflict.
   - congruence.
 Qed.
+
+(* Backtrack as a rule of the transition system. *)
+Definition Backtrack: Rule := {|
+  step := BacktrackStep;
+  rule_equivalence := keeps_formula_equivalence BacktrackStep backtrack_keeps_formula;
+  rule_entails := backtrack_entails;
+  rule_decreasing := backtrack_state_lt;
+  rule_model_final := backtrack_model_final
+|}.

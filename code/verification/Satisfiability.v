@@ -17,28 +17,14 @@ From RocqSAT Require Import Normalization.
 From RocqSAT.entailment Require Import Entails.
 From RocqSAT.entailment Require Import Preservation.
 From RocqSAT.rules Require Import Fail.
-From RocqSAT.rules Require Import Unit.
 From RocqSAT.rules Require Import Decide.
 From RocqSAT.rules Require Import Backtrack.
-From RocqSAT.rules Require Import Pure.
 
 (* m assigns a value to every literal occurring in f. *)
 Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), Clause.In l c -> CNF.In c f -> Def m l.
 
 Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
 Definition Unsat (f: CNF): Prop := ~ Sat f.
-
-(* No DPLL rule can fire from a total model. *)
-Lemma dpll_model_final: Forall ModelFinal DPLL.
-Proof.
-  repeat apply Forall_cons.
-  - exact fail_model_final.
-  - exact unit_model_final.
-  - exact decide_model_final.
-  - exact backtrack_model_final.
-  - exact pure_model_final.
-  - apply Forall_nil.
-Qed.
 
 Theorem final_exists: forall (f: CNF),
   exists (s: State), state [] f (initial_well_formed f) ==>* s /\ Final DPLL s.
@@ -104,9 +90,8 @@ Proof.
     exists m', Hwf. split.
     + assumption.
     + unfold Final. unfold not. intros [s Htrans].
-      pose proof dpll_model_final as Hrs. rewrite Forall_forall in Hrs.
-      apply trans_rule in Htrans as [r [Hr Hstep]].
-      apply (Hrs r Hr m' f Hwf Heq Hall_def). now exists s.
+      apply trans_rule in Htrans as [r [_ Hstep]].
+      apply (rule_model_final r m' f Hwf Heq Hall_def). now exists s.
 Qed.
 
 (* A formula is unsatisfiable exactly when fail is reachable. *)
@@ -117,8 +102,8 @@ Proof.
   - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [f' [Hwf [Hderivation Htrans]]]].
     apply trans_rule in Htrans as [r [Hr Hstep]].
     destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]]; inversion Hstep as [? ? c ? Hc_in_f Hconflict Hno_dec]; subst.
-    pose proof (derivation_equivalent DPLL _ _ _ _ _ _ dpll_equivalence Hderivation) as [Hff' _].
-    apply (derivation_entails DPLL _ _ _ _ _ _ dpll_entails) in Hderivation.
+    pose proof (derivation_equivalent DPLL _ _ _ _ _ _ Hderivation) as [Hff' _].
+    apply (derivation_entails DPLL _ _ _ _ _ _) in Hderivation.
     + unfold Unsat. unfold Sat. unfold not. intros [m' Hsat]. apply Hff' in Hsat.
       destruct (entails_extend f' [] m m') as [m'' Hm''].
       * now rewrite app_nil_r.
@@ -133,7 +118,7 @@ Proof.
   - intros Hunsat. destruct (final_exists f) as [[|m f' Hwf] [Hderivation Hfinal]].
     + now split.
     + exfalso. apply Hunsat. exists m. apply final_model in Hfinal.
-      apply (derivation_equivalent DPLL _ _ _ _ _ _ dpll_equivalence) in Hderivation as [_ Hf'f].
+      apply (derivation_equivalent DPLL _ _ _ _ _ _) in Hderivation as [_ Hf'f].
       now apply Hf'f.
 Qed.
 
@@ -142,6 +127,6 @@ Proof.
   intros. destruct (final_exists f) as [[|m f' Hwf] [Hderivation Hfinal]].
   - right. now apply final_unsat_refl.
   - left. exists m. apply final_model in Hfinal.
-    apply (derivation_equivalent DPLL _ _ _ _ _ _ dpll_equivalence) in Hderivation as [_ Hf'f].
+    apply (derivation_equivalent DPLL _ _ _ _ _ _) in Hderivation as [_ Hf'f].
     now apply Hf'f.
 Qed.
