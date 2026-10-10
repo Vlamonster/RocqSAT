@@ -16,7 +16,7 @@ Inductive FailStep: relation State :=
   NoDecisions m ->
   FailStep (state m f) fail.
 
-Lemma fail_keeps_formula: KeepsFormula FailStep.
+Lemma fail_same_formula: PreservesFormula FailStep.
 Proof. intros m m' f f' Hstep. inversion Hstep. Qed.
 
 Lemma fail_well_formed: PreservesWellFormed FailStep.
@@ -43,7 +43,7 @@ Qed.
 (* Fail as a rule of the transition system. *)
 Definition Fail: Rule := {|
   step := FailStep;
-  rule_equivalence := keeps_formula_equivalence FailStep fail_keeps_formula;
+  rule_equivalence := preserves_formula_equivalence FailStep fail_same_formula;
   rule_well_formed := fail_well_formed;
   rule_entails := fail_entails;
   rule_decreasing := fail_state_lt;

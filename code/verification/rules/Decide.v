@@ -21,7 +21,7 @@ Inductive DecideStep: relation State :=
   Undef m l ->
   DecideStep (state m f) (state (m ++d l) f).
 
-Lemma decide_keeps_formula: KeepsFormula DecideStep.
+Lemma decide_same_formula: PreservesFormula DecideStep.
 Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
 
 Lemma decide_well_formed: PreservesWellFormed DecideStep.
@@ -67,7 +67,7 @@ Qed.
 (* Decide as a rule of the transition system. *)
 Definition Decide: Rule := {|
   step := DecideStep;
-  rule_equivalence := keeps_formula_equivalence DecideStep decide_keeps_formula;
+  rule_equivalence := preserves_formula_equivalence DecideStep decide_same_formula;
   rule_well_formed := decide_well_formed;
   rule_entails := decide_entails;
   rule_decreasing := decide_state_lt;

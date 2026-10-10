@@ -100,7 +100,7 @@ Qed.
 
 (* From here on, rs is a set of rules that all keep the formula: the measure is relative to a fixed formula. *)
 Section Termination.
-  Context (rs: list Rule) (Hkeep: Forall (fun (r: Rule) => KeepsFormula (step r)) rs).
+  Context (rs: list Rule) (Hkeep: Forall (fun (r: Rule) => PreservesFormula (step r)) rs).
 
 (* A transition from a state with a formula keeps the formula (or ends in fail) and decreases the measure. *)
 Lemma to_statelt s s' :
@@ -116,8 +116,10 @@ Proof.
   - split.
     + destruct s'.
       * now left.
-      * right. apply (trans_same_formula rs _ _ _ _ Hkeep) in H. now subst.
-    + now apply (trans__state_lt rs).
+      * right. apply trans_same_formula in H.
+        -- now subst.
+        -- assumption.
+    + now apply trans__state_lt in H.
 Qed.
 
 (* Variant of to_statelt for a target state with formula f. *)

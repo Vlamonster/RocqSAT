@@ -24,7 +24,7 @@ Inductive BacktrackStep: relation State :=
   NoDecisions n ->
   BacktrackStep (state (m ++d l ++a n) f) (state (m ++p (¬l)) f).
 
-Lemma backtrack_keeps_formula: KeepsFormula BacktrackStep.
+Lemma backtrack_same_formula: PreservesFormula BacktrackStep.
 Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
 
 Lemma backtrack_well_formed: PreservesWellFormed BacktrackStep.
@@ -123,7 +123,7 @@ Qed.
 (* Backtrack as a rule of the transition system. *)
 Definition Backtrack: Rule := {|
   step := BacktrackStep;
-  rule_equivalence := keeps_formula_equivalence BacktrackStep backtrack_keeps_formula;
+  rule_equivalence := preserves_formula_equivalence BacktrackStep backtrack_same_formula;
   rule_well_formed := backtrack_well_formed;
   rule_entails := backtrack_entails;
   rule_decreasing := backtrack_state_lt;

@@ -23,7 +23,7 @@ Inductive UnitStep: relation State :=
   Undef m l ->
   UnitStep (state m f) (state (m ++p l) f).
 
-Lemma unit_keeps_formula: KeepsFormula UnitStep.
+Lemma unit_same_formula: PreservesFormula UnitStep.
 Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
 
 Lemma unit_well_formed: PreservesWellFormed UnitStep.
@@ -73,7 +73,7 @@ Qed.
 (* Unit as a rule of the transition system. *)
 Definition Unit: Rule := {|
   step := UnitStep;
-  rule_equivalence := keeps_formula_equivalence UnitStep unit_keeps_formula;
+  rule_equivalence := preserves_formula_equivalence UnitStep unit_same_formula;
   rule_well_formed := unit_well_formed;
   rule_entails := unit_entails;
   rule_decreasing := unit_state_lt;

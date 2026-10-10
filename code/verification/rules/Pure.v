@@ -23,7 +23,7 @@ Inductive PureStep: relation State :=
   Undef m l ->
   PureStep (state m f) (state (m ++p l) f).
 
-Lemma pure_keeps_formula: KeepsFormula PureStep.
+Lemma pure_same_formula: PreservesFormula PureStep.
 Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
 
 Lemma pure_well_formed: PreservesWellFormed PureStep.
@@ -84,7 +84,7 @@ Qed.
 (* Pure as a rule of the transition system. *)
 Definition Pure: Rule := {|
   step := PureStep;
-  rule_equivalence := keeps_formula_equivalence PureStep pure_keeps_formula;
+  rule_equivalence := preserves_formula_equivalence PureStep pure_same_formula;
   rule_well_formed := pure_well_formed;
   rule_entails := pure_entails;
   rule_decreasing := pure_state_lt;

@@ -97,14 +97,15 @@ every rule must have:
 `Trans rs` only takes steps from a non-`fail` state, so `fail` is final whatever the
 rules say about it. States do not carry well-formedness proofs and `Trans` does not
 require them: well-formedness is an invariant (`derivation_well_formed`), and
-termination is stated for derivations from well-formed states. Because the properties come with the rules, the general results
-(`derivation_equivalent`, `derivation_entails`, `trans__state_lt`, …) hold for any
-rule set. The exception is `trans_well_founded`/`strict_derivation_well_founded`,
-which also need every rule to keep the formula (`KeepsFormula`), because the measure
-is relative to a fixed formula.
+termination is stated for derivations from well-formed states. Because the
+properties come with the rules, the general results (`derivation_equivalent`,
+`derivation_entails`, `trans__state_lt`, …) hold for any rule set. The exception is
+`trans_well_founded`/`strict_derivation_well_founded`, which also need every rule to
+keep the formula (`PreservesFormula`), because the measure is relative to a fixed
+formula.
 
 A rule that keeps the formula preserves equivalence for free
-(`keeps_formula_equivalence`); all current rules are of this kind.
+(`preserves_formula_equivalence`); all current rules are of this kind.
 
 To add a rule:
 
@@ -113,11 +114,11 @@ To add a rule:
    does not affect the rest of the development.
 2. Import it in `Trans.v` and use it in a rule set, e.g. a new list next to `DPLL`.
 3. For termination, prove that every rule of that set keeps the formula, as
-   `dpll_keeps_formula` does for `DPLL`.
+   `dpll_same_formula` does for `DPLL`.
 
 Adding the rule to `DPLL` itself also requires updating the DPLL-specific proofs that
 case on its rules: `final_dpll_basic`, `final_unsat_refl` (only `Fail` reaches `fail`)
-and `dpll_keeps_formula`.
+and `dpll_same_formula`.
 
 ## File index
 
@@ -171,15 +172,15 @@ only preserve models.
 
 ### The rules
 
-| File     | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Rule.v` | The properties of a relation on states: `KeepsFormula` (the rule never changes the formula), `PreservesEquivalence` (the rule only changes the formula to an equivalent one) with `keeps_formula_equivalence`, `PreservesWellFormed` (the rule keeps states well-formed), `PreservesEntails` (the rule preserves the entailment invariant, relative to the formula of each state), `Decreasing` (from a well-formed state, the rule decreases the termination measure), and `ModelFinal` (the rule cannot fire from a model that defines every literal of the formula); the record `Rule`, a relation (`step`) with all properties except `KeepsFormula`. |
+| File     | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Rule.v` | The properties of a relation on states: `PreservesFormula` (the rule never changes the formula), `PreservesEquivalence` (the rule only changes the formula to an equivalent one) with `preserves_formula_equivalence`, `PreservesWellFormed` (the rule keeps states well-formed), `PreservesEntails` (the rule preserves the entailment invariant, relative to the formula of each state), `Decreasing` (from a well-formed state, the rule decreases the termination measure), and `ModelFinal` (the rule cannot fire from a model that defines every literal of the formula); the record `Rule`, a relation (`step`) with all properties except `PreservesFormula`. |
 
 Each file in `rules/` defines its relation `<Rule>Step` (`r_<rule>` is its only constructor),
 proves its properties, and bundles them as `<Rule>: Rule`:
 
-- `<rule>_keeps_formula: KeepsFormula <Rule>Step`, which gives `rule_equivalence` via
-  `keeps_formula_equivalence` (and is used by `dpll_keeps_formula` for termination),
+- `<rule>_same_formula: PreservesFormula <Rule>Step`, which gives `rule_equivalence` via
+  `preserves_formula_equivalence` (and is used by `dpll_same_formula` for termination),
 - `<rule>_well_formed: PreservesWellFormed <Rule>Step`,
 - `<rule>_entails: PreservesEntails <Rule>Step`,
 - `<rule>_state_lt: Decreasing <Rule>Step`,
@@ -195,10 +196,10 @@ proves its properties, and bundles them as `<Rule>: Rule`:
 
 ### The transition system
 
-| File            | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Trans.v`       | `Trans rs`, the transition relation of a list of rules (`t_step`: a step of one of the rules from a non-`fail` state), with notations `s ==>[rs] s'`, `==>*[rs]`, `==>+[rs]`, and `==>`/`==>*`/`==>+` for the full system `DPLL` (of the bundled rules `Fail`, `Unit`, …); the smaller rule set `Basic`; `trans_rule`, `trans_union` and `trans_incl`; `derivation_invariant` (a property of assignments preserved by every transition between states is preserved by derivations, used for the `derivation_*` lemmas); final states `Final rs` and `final_dpll_basic`; `trans_well_formed`/`derivation_well_formed`; `trans_same_formula`/`derivation_same_formula` and `dpll_keeps_formula`; `trans_equivalent`/`derivation_equivalent`; `trans_entails`/`derivation_entails` (every transition and derivation preserves entailment); `fail_predecessor`. |
-| `Termination.v` | `trans__state_lt`: every transition from a well-formed state decreases the measure; `WellFormedTrans rs`, the transitions from well-formed states, and `strict_derivation_well_formed_trans`, which turns a strict derivation from a well-formed state into one of these; from that, if every rule keeps the formula, `trans_well_founded` and `strict_derivation_well_founded`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| File            | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Trans.v`       | `Trans rs`, the transition relation of a list of rules (`t_step`: a step of one of the rules from a non-`fail` state), with notations `s ==>[rs] s'`, `==>*[rs]`, `==>+[rs]`, and `==>`/`==>*`/`==>+` for the full system `DPLL` (of the bundled rules `Fail`, `Unit`, …); the smaller rule set `Basic`; `trans_rule`, `trans_union` and `trans_incl`; `derivation_invariant` (a property of assignments preserved by every transition between states is preserved by derivations, used for the `derivation_*` lemmas); final states `Final rs` and `final_dpll_basic`; `trans_well_formed`/`derivation_well_formed`; `trans_same_formula`/`derivation_same_formula` and `dpll_same_formula`; `trans_equivalent`/`derivation_equivalent`; `trans_entails`/`derivation_entails` (every transition and derivation preserves entailment); `fail_predecessor`. |
+| `Termination.v` | `trans__state_lt`: every transition from a well-formed state decreases the measure; `WellFormedTrans rs`, the transitions from well-formed states, and `strict_derivation_well_formed_trans`, which turns a strict derivation from a well-formed state into one of these; from that, if every rule keeps the formula, `trans_well_founded` and `strict_derivation_well_founded`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ### Normalization
 

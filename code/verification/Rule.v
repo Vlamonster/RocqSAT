@@ -12,7 +12,7 @@ From RocqSAT Require Import Entails.
 From RocqSAT Require Import Measure.
 
 (* The rule never changes the formula. *)
-Definition KeepsFormula (r: relation State): Prop := forall (m m': PA) (f f': CNF),
+Definition PreservesFormula (r: relation State): Prop := forall (m m': PA) (f f': CNF),
   r (state m f) (state m' f') -> f = f'.
 
 (* The rule only changes the formula to an equivalent one. *)
@@ -38,7 +38,7 @@ Definition ModelFinal (r: relation State): Prop := forall (m: PA) (f: CNF),
   ~ exists (s: State), r (state m f) s.
 
 (* A rule that keeps the formula trivially preserves equivalence. *)
-Lemma keeps_formula_equivalence: forall (r: relation State), KeepsFormula r -> PreservesEquivalence r.
+Lemma preserves_formula_equivalence: forall (r: relation State), PreservesFormula r -> PreservesEquivalence r.
 Proof.
   intros r Hkeep m m' f f' Hstep. apply Hkeep in Hstep as <-. apply equivalent_refl.
 Qed.

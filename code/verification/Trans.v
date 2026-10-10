@@ -149,7 +149,7 @@ Qed.
 
 (* Transitions never change the formula, as long as no rule does. *)
 Lemma trans_same_formula: forall (rs: list Rule) (m m': PA) (f f': CNF),
-  Forall (fun (r: Rule) => KeepsFormula (step r)) rs ->
+  Forall (fun (r: Rule) => PreservesFormula (step r)) rs ->
   state m f ==>[rs] state m' f' -> f = f'.
 Proof.
   intros rs m m' f f' Hrs Htrans.
@@ -157,14 +157,14 @@ Proof.
   rewrite Forall_forall in Hrs. apply Hrs in Hr. now apply Hr in Hstep.
 Qed.
 
-Lemma dpll_keeps_formula: Forall (fun (r: Rule) => KeepsFormula (step r)) DPLL.
+Lemma dpll_same_formula: Forall (fun (r: Rule) => PreservesFormula (step r)) DPLL.
 Proof.
   repeat apply Forall_cons.
-  - apply fail_keeps_formula.
-  - apply unit_keeps_formula.
-  - apply decide_keeps_formula.
-  - apply backtrack_keeps_formula.
-  - apply pure_keeps_formula.
+  - apply fail_same_formula.
+  - apply unit_same_formula.
+  - apply decide_same_formula.
+  - apply backtrack_same_formula.
+  - apply pure_same_formula.
   - apply Forall_nil.
 Qed.
 
@@ -176,7 +176,7 @@ Proof.
   apply (derivation_invariant DPLL (fun (_: PA) (g: CNF) => f = g)) with (m := m) (m' := m') (f := f).
   - intros m0 m1 f0 f1 Htrans <-. apply trans_same_formula in Htrans.
     + assumption.
-    + apply dpll_keeps_formula.
+    + apply dpll_same_formula.
   - assumption.
   - reflexivity.
 Qed.
