@@ -45,8 +45,8 @@ score_total m f := S (max_atom_f f) - length m.
 
 (* fail is below every other state. *)
 Inductive FailLt: relation State :=
-| f_fail (m: PA) (f: CNF) (Hwf: WellFormed m f):
-  FailLt fail (state m f Hwf).
+| f_fail (m: PA) (f: CNF):
+  FailLt fail (state m f).
 
 Lemma fail_lt_well_founded: well_founded FailLt.
 Proof.
@@ -162,7 +162,7 @@ Qed.
 (* The measure of a state: its score and score_total. *)
 Equations state_measure (s: State): list nat * nat :=
 state_measure fail          := ([]       , 0              );
-state_measure (state m f _) := (score m f, score_total m f).
+state_measure (state m f)   := (score m f, score_total m f).
 
 (* StateLt f s' s, written s >>[f] s': s' is fail and s is not, or s' has a smaller measure than s. *)
 Definition StateLt (f: CNF): relation State := union _ FailLt (MR (StateLexLt f) state_measure).
@@ -174,7 +174,7 @@ Notation "s '>>+[' f ']' s'" := (StateLtTransClos f s' s) (at level 40, format "
 Lemma state_lt_well_founded: forall (f: CNF), well_founded (StateLt f).
 Proof.
   intros. apply wf_union.
-  - unfold commut. intros. inversion H. subst. exists (state m f0 Hwf).
+  - unfold commut. intros. inversion H. subst. exists (state m f0).
     + unfold MR in H0. simp state_measure in H0. inversion H0.
       * subst. inversion H3.
       * subst. inversion H3.
@@ -209,7 +209,7 @@ Qed.
 
 (* Hence every atom on a well-formed trail is at most max_atom_f f. *)
 Lemma well_formed_atom_le: forall (m: PA) (f: CNF) (p: Atom),
-  WellFormed m f ->
+  WellFormed (state m f) ->
   In p (map extract (map fst m)) ->
   p <= max_atom_f f.
 Proof.
@@ -240,7 +240,7 @@ Qed.
 
 (* So a well-formed trail has at most max_atom_f f + 1 literals. *)
 Lemma well_formed_length_le: forall (m: PA) (f: CNF),
-  WellFormed m f ->
+  WellFormed (state m f) ->
   length m <= S (max_atom_f f).
 Proof.
   intros m f Hwf. assert (Heq: length m = length (map extract (map fst m))).
@@ -260,7 +260,7 @@ Proof.
 Qed.
 
 Lemma score_aux_length_le: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (n x: nat),
-  WellFormed ((l, a) :: m) f ->
+  WellFormed (state ((l, a) :: m) f) ->
   length (score_aux m n x) <= S (max_atom_f f).
 Proof.
   intros. 
@@ -285,7 +285,7 @@ Qed.
 
 (* A decision does not change the score: the new level adds an entry equal to the padding value. *)
 Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
-  WellFormed (m ++d l) f ->
+  WellFormed (state (m ++d l) f) ->
   score (m ++d l) f = score m f.
 Proof.
   intros. simp score. simpl. simp score_aux. simpl.
@@ -303,7 +303,7 @@ Qed.
 
 (* A decision does decrease score_total, since it assigns one more literal. *)
 Lemma total_decide: forall (m: PA) (f: CNF) (l: Lit),
-  WellFormed (m ++d l) f ->
+  WellFormed (state (m ++d l) f) ->
   TotalLt (score_total (m ++d l) f) (score_total m f).
 Proof.
   intros m f l Hwf. pose proof (well_formed_length_le (m ++d l) f Hwf).
@@ -352,7 +352,7 @@ Proof.
 Qed.
 
 Lemma prefix_shift: forall (m: PA) (f: CNF) (x: nat),
-  WellFormed m f ->
+  WellFormed (state m f) ->
   x + length m <= max_atom_f f ->
   PrefixLt (S (S (max_atom_f f))) 
            (rev (score_aux m (S (max_atom_f f)) (S x)))
@@ -427,7 +427,7 @@ Qed.
 
 (* A propagation decreases the score. *)
 Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
-  WellFormed (m ++p l) f ->
+  WellFormed (state (m ++p l) f) ->
   PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score m f).
 Proof.
   intros m f l Hwf. 
@@ -458,8 +458,8 @@ Qed.
 
 (* Backtracking, which replaces a decision and everything after it by a propagated literal, decreases the score. *)
 Lemma prefix_app: forall (m n: PA) (f: CNF) (l l': Lit),
-  WellFormed (m ++p l) f ->
-  WellFormed (m ++d l' ++a n) f ->
+  WellFormed (state (m ++p l) f) ->
+  WellFormed (state (m ++d l' ++a n) f) ->
   PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score (m ++d l' ++a n) f).
 Proof.
   intros m n f l l' Hwf Hwf'. simp score. simpl. apply prefix_repeat.

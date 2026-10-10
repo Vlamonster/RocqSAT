@@ -428,7 +428,7 @@ Proof. intros. simp normalize. apply dedupe_bounded. apply bound_bounded. Qed.
 Lemma normalize_no_duplicates: forall (m: PA) (f: CNF), NoDuplicates (normalize m f).
 Proof. intros. simp normalize. apply dedupe_no_duplicates. Qed.
 
-Lemma normalize_well_formed: forall (m: PA) (f: CNF), WellFormed (normalize m f) f.
+Lemma normalize_well_formed: forall (m: PA) (f: CNF), WellFormed (state (normalize m f) f).
 Proof.
   unfold WellFormed. intros. split.
   - apply normalize_no_duplicates.
@@ -437,16 +437,15 @@ Qed.
 
 (* Every well-formed assignment that consists of decisions only is reachable from the initial state. *)
 Lemma normalize_derivation_aux: forall (m: PA) (f: CNF),
-  WellFormed m f ->
-  (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) -> 
-  exists (Hwf': WellFormed m f), 
-    state [] f (initial_well_formed f) ==>* state m f Hwf'.
+  WellFormed (state m f) ->
+  (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) ->
+  state [] f ==>* state m f.
 Proof.
   induction m as [|[l a] m IH].
-  - intros. exists (initial_well_formed f). apply rt_refl.
+  - intros. apply rt_refl.
   - intros. destruct a.
-    + apply well_formed_tail in H as H'. apply IH in H' as [Hwf' Htrans].
-      * exists H. apply rt_trans with (y := state m f Hwf').
+    + apply well_formed_tail in H as H'. apply IH in H' as Htrans.
+      * apply rt_trans with (y := state m f).
         -- assumption.
         -- apply rt_step. destruct H as [Hno_dup Hbounded].
            unfold Bounded in Hbounded.
@@ -468,8 +467,7 @@ Qed.
 
 (* Hence the normalization of any assignment is reachable from the initial state. *)
 Lemma normalize_derivation: forall (m: PA) (f: CNF),
-  exists (Hwf: WellFormed (normalize m f) f), 
-    state [] f (initial_well_formed f) ==>* state (normalize m f) f Hwf.
+  state [] f ==>* state (normalize m f) f.
 Proof.
   intros. apply normalize_derivation_aux.
   - apply normalize_well_formed.

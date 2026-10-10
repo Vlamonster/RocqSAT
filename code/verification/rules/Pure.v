@@ -16,20 +16,33 @@ From RocqSAT Require Import Measure.
 
 (* Adds a literal that only occurs positively. *)
 Inductive PureStep: relation State :=
-| r_pure (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
+| r_pure (m: PA) (f: CNF) (c: Clause) (l: Lit):
   Clause.In l c ->
   CNF.In c f ->
   (forall (c': Clause), CNF.In c' f -> ~ Clause.In (¬l) c') ->
   Undef m l ->
-  PureStep (state m f Hwf) (state (m ++p l) f Hwf').
+  PureStep (state m f) (state (m ++p l) f).
 
 Lemma pure_keeps_formula: KeepsFormula PureStep.
-Proof. intros m m' f f' Hwf Hwf' Hstep. now inversion Hstep. Qed.
+Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
+
+Lemma pure_well_formed: PreservesWellFormed PureStep.
+Proof.
+  intros m m' f f' Hstep Hwf.
+  inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
+  unfold WellFormed. split.
+  - apply nodup_cons.
+    + apply Hwf.
+    + assumption.
+  - apply bounded_cons.
+    + apply Hwf.
+    + apply CNF.l_in_f_true_iff. exists c_pure. intuition.
+Qed.
 
 Lemma pure_entails: PreservesEntails PureStep.
 Proof.
-  intros m m' f f' Hwf Hwf' Hstep Hentails.
-  inversion Hstep as [? ? c_pure l_pure ? ? Hl_in_c Hc_in_f Hpure Hundef]; subst.
+  intros m m' f f' Hstep Hentails.
+  inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
   apply e_pure.
   - intros m'' Hm''. apply model_union_iff in Hm'' as [Hf Hm]. apply model_union_iff. split.
     + apply f_eval_true_iff. intros c Hc. apply c_eval_true_iff.
@@ -56,15 +69,16 @@ Qed.
 Lemma pure_state_lt: Decreasing PureStep.
 Proof.
   intros m f s' Hwf Hstep.
-  inversion Hstep as [? ? c_pure l_pure ? Hwf' Hl_in_c Hc_in_f Hpure Hundef]; subst.
+  inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
+  pose proof (pure_well_formed _ _ _ _ Hstep Hwf) as Hwf'.
   unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
   now apply prefix_prop.
 Qed.
 
 Lemma pure_model_final: ModelFinal PureStep.
 Proof.
-  intros m f Hwf Heq Hall_def [s Hstep].
-  inversion Hstep as [? ? c_pure l_pure ? Hwf' Hl_in_c Hc_in_f Hpure Hundef]; subst.
+  intros m f Heq Hall_def [s Hstep].
+  inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
   assert (Def m l_pure).
   - apply Hall_def. now exists c_pure.
   - now apply def_undef in H.
@@ -74,6 +88,7 @@ Qed.
 Definition Pure: Rule := {|
   step := PureStep;
   rule_equivalence := keeps_formula_equivalence PureStep pure_keeps_formula;
+  rule_well_formed := pure_well_formed;
   rule_entails := pure_entails;
   rule_decreasing := pure_state_lt;
   rule_model_final := pure_model_final

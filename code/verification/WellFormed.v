@@ -8,6 +8,7 @@ From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import State.
 
 (* No atom is assigned more than once, in either polarity. *)
 Definition NoDuplicates (m: PA): Prop := 
@@ -18,9 +19,12 @@ Definition Bounded (m: PA) (f: CNF): Prop :=
   forall (l: Lit) (a: Ann), In (l, a) m -> 
   exists (c: Clause), CNF.In c f /\ (Clause.In l c \/ Clause.In (¬l) c).
 
-(* The assignments the transition system works with: no duplicates, and bounded by the formula. *)
-Definition WellFormed (m: PA) (f: CNF): Prop :=
-  NoDuplicates m /\ Bounded m f.
+(* The states the transition system works with: fail, and assignments without duplicates that are bounded by their formula. *)
+Definition WellFormed (s: State): Prop :=
+match s with
+| fail      => True
+| state m f => NoDuplicates m /\ Bounded m f
+end.
 
 Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
   NoDuplicates ((l, a) :: m) -> NoDuplicates m.
@@ -40,7 +44,7 @@ Proof.
   unfold Bounded. intros m f l a Hbounded l' a' Hin. apply (Hbounded l' a'). now right.
 Qed.
 Lemma well_formed_tail: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  WellFormed ((l, a) :: m) f -> WellFormed m f.
+  WellFormed (state ((l, a) :: m) f) -> WellFormed (state m f).
 Proof.
   unfold WellFormed. intros. destruct H. split.
   - now apply nodup_cons__nodup in H.
@@ -106,7 +110,7 @@ Proof.
     + now apply Hbounded in H.
 Qed.
 
-Lemma initial_well_formed: forall (f: CNF), WellFormed [] f.
+Lemma initial_well_formed: forall (f: CNF), WellFormed (state [] f).
 Proof.
   unfold WellFormed, NoDuplicates, Bounded. split.
   - constructor.

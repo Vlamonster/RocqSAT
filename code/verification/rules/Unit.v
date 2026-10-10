@@ -16,20 +16,33 @@ From RocqSAT Require Import Measure.
 
 (* If a clause is false except for one unassigned literal, assign it to satisfy the clause. *)
 Inductive UnitStep: relation State :=
-| r_unit (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
+| r_unit (m: PA) (f: CNF) (c: Clause) (l: Lit):
   Clause.In l c ->
   CNF.In c f ->
   c_eval m (Clause.remove l c) = Some false ->
   Undef m l ->
-  UnitStep (state m f Hwf) (state (m ++p l) f Hwf').
+  UnitStep (state m f) (state (m ++p l) f).
 
 Lemma unit_keeps_formula: KeepsFormula UnitStep.
-Proof. intros m m' f f' Hwf Hwf' Hstep. now inversion Hstep. Qed.
+Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
+
+Lemma unit_well_formed: PreservesWellFormed UnitStep.
+Proof.
+  intros m m' f f' Hstep Hwf.
+  inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
+  unfold WellFormed. split.
+  - apply nodup_cons.
+    + apply Hwf.
+    + assumption.
+  - apply bounded_cons.
+    + apply Hwf.
+    + apply CNF.l_in_f_true_iff. exists c_unit. intuition.
+Qed.
 
 Lemma unit_entails: PreservesEntails UnitStep.
 Proof.
-  intros m m' f f' Hwf Hwf' Hstep Hentails.
-  inversion Hstep as [? ? c_unit l_unit ? ? Hl_in_c Hc_in_f Hconflict Hundef]; subst.
+  intros m m' f f' Hstep Hentails.
+  inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
   apply e_propagate.
   - intros m'' Hm''. apply model_unit_cnf_iff.
     apply model_union_iff in Hm'' as [Hf Hm].
@@ -45,15 +58,16 @@ Qed.
 Lemma unit_state_lt: Decreasing UnitStep.
 Proof.
   intros m f s' Hwf Hstep.
-  inversion Hstep as [? ? c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef]; subst.
+  inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
+  pose proof (unit_well_formed _ _ _ _ Hstep Hwf) as Hwf'.
   unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
   now apply prefix_prop.
 Qed.
 
 Lemma unit_model_final: ModelFinal UnitStep.
 Proof.
-  intros m f Hwf Heq Hall_def [s Hstep].
-  inversion Hstep as [? ? c_unit l_unit ? Hwf' Hl_in_c Hc_in_f Hconflict Hundef]; subst.
+  intros m f Heq Hall_def [s Hstep].
+  inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
   assert (Def m l_unit).
   - apply Hall_def. now exists c_unit.
   - now apply def_undef in H.
@@ -63,6 +77,7 @@ Qed.
 Definition Unit: Rule := {|
   step := UnitStep;
   rule_equivalence := keeps_formula_equivalence UnitStep unit_keeps_formula;
+  rule_well_formed := unit_well_formed;
   rule_entails := unit_entails;
   rule_decreasing := unit_state_lt;
   rule_model_final := unit_model_final

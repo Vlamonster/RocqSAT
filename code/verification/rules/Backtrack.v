@@ -18,14 +18,42 @@ From RocqSAT Require Import Measure.
 
 (* Backtrack by flipping the most recent decision literal. *)
 Inductive BacktrackStep: relation State :=
-| r_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p (¬l)) f):
+| r_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit):
   CNF.In c f ->
   c_eval (m ++d l ++a n) c = Some false ->
   NoDecisions n ->
-  BacktrackStep (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf').
+  BacktrackStep (state (m ++d l ++a n) f) (state (m ++p (¬l)) f).
 
 Lemma backtrack_keeps_formula: KeepsFormula BacktrackStep.
-Proof. intros m m' f f' Hwf Hwf' Hstep. now inversion Hstep. Qed.
+Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
+
+Lemma backtrack_well_formed: PreservesWellFormed BacktrackStep.
+Proof.
+  intros m m' f f' Hstep Hwf.
+  inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
+  unfold WellFormed in *. split.
+  - destruct Hwf as [Hnodup _]. apply (nodup_app__nodup (m_split ++d l_split)) in Hnodup.
+    assert (Hnodup': NoDuplicates m_split).
+    + now apply (nodup_cons__nodup) in Hnodup.
+    + apply nodup_cons__undef in Hnodup as Hundef.
+      apply l_eval_neg_none_iff in Hundef.
+      apply (nodup_cons _ _ _ Hnodup' Hundef).
+  - destruct Hwf as [_ Hbounded]. apply (bounded_incl (m_split ++d l_split)) in Hbounded.
+    + assert (Hbounded': Bounded m_split f').
+      * apply (bounded_incl m_split) in Hbounded.
+        -- assumption.
+        -- apply incl_tl. apply incl_refl.
+      * assert (In (l_split, dec) (m_split ++d l_split)).
+        -- now left.
+        -- apply Hbounded in H as [c [Hc_in_f' [Hl_in_c|Hnegl_in_c]]].
+          ++ intros l' a' Hin. destruct Hin.
+            ** injection H as <- <-. exists c. rewrite Neg.involutive. intuition.
+            ** now apply Hbounded' in H.
+          ++ intros l' a' Hin. destruct Hin.
+            ** injection H as <- <-. exists c. intuition.
+            ** now apply Hbounded' in H.
+    + apply incl_appr. apply incl_refl.
+Qed.
 
 (* With a conflict after deciding l, no model of the formula and m makes l true. *)
 Lemma backtrack_no_model: forall (m n: PA) (f: CNF) (l: Lit) (m': PA),
@@ -63,8 +91,8 @@ Qed.
 
 Lemma backtrack_entails: PreservesEntails BacktrackStep.
 Proof.
-  intros m m' f f' Hwf Hwf' Hstep Hentails.
-  inversion Hstep as [m_split n_split ? c_conflict l_split ? ? Hc_in_f Hconflict Hno_dec]; subst.
+  intros m m' f f' Hstep Hentails.
+  inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
   apply e_propagate.
   - apply (backtrack_neg m_split n_split f' l_split).
     + assumption.
@@ -76,7 +104,8 @@ Qed.
 Lemma backtrack_state_lt: Decreasing BacktrackStep.
 Proof.
   intros m f s' Hwf Hstep.
-  inversion Hstep as [m_split n_split ? c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec]; subst.
+  inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
+  pose proof (backtrack_well_formed _ _ _ _ Hstep Hwf) as Hwf'.
   unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
   apply prefix_app.
   - assumption.
@@ -85,8 +114,8 @@ Qed.
 
 Lemma backtrack_model_final: ModelFinal BacktrackStep.
 Proof.
-  intros m f Hwf Heq Hall_def [s Hstep].
-  inversion Hstep as [m_split n_split ? c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec]; subst.
+  intros m f Heq Hall_def [s Hstep].
+  inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
   assert (f_eval (m_split ++d l_split ++a n_split) f = Some false).
   - apply f_eval_false_iff. now exists c_conflict.
   - congruence.
@@ -96,6 +125,7 @@ Qed.
 Definition Backtrack: Rule := {|
   step := BacktrackStep;
   rule_equivalence := keeps_formula_equivalence BacktrackStep backtrack_keeps_formula;
+  rule_well_formed := backtrack_well_formed;
   rule_entails := backtrack_entails;
   rule_decreasing := backtrack_state_lt;
   rule_model_final := backtrack_model_final
