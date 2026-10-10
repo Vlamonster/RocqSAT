@@ -46,7 +46,8 @@ Proof.
       destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
       (* t_backtrack *)
       * exists (state (m_split ++p (¬l_split)) f (backtrack_well_formed m m_split f l_split Hsplit Hwf)).
-        pose proof (split_decomp m m_split l_split Hsplit) as [n_split [-> Hno_dec]].
+        pose proof Hsplit as Hdecomp.
+        apply split_last_decision_some_iff in Hdecomp as [n_split [-> Hno_dec]].
         apply (t_backtrack m_split n_split f c_conflict l_split Hwf).
         -- right. right. right. now left.
         -- now apply find_conflict_c_in_f in Hfind_conflict.
@@ -57,7 +58,7 @@ Proof.
         -- now left.
         -- now apply find_conflict_c_in_f in Hfind_conflict.
         -- now apply find_conflict_conflicting in Hfind_conflict.
-        -- now apply split_none_iff.
+        -- now apply split_last_decision_none_iff.
   (* t_decide *)
   - exfalso. apply H. apply undef_decision_exists in Heq as [l_decide Hfind_dec].
     exists (state (m ++d l_decide) f (decide_well_formed _ _ _ Hfind_dec Hwf)).

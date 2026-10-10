@@ -1,8 +1,6 @@
 From Stdlib Require Import List.
 Import ListNotations.
 
-From Equations Require Import Equations.
-
 From RocqSAT Require Import Lit.
 
 (* An annotation on a literal (Lit * Ann) describing how its value was assigned. *)
@@ -23,38 +21,45 @@ Open Scope pa_scope.
 Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
 
 (* Splits off the most recent decision literal, if any. *)
-Equations split_last_decision (m: PA): option (PA * Lit) :=
-split_last_decision [] := None;
-split_last_decision (m ++d l) := Some (m, l);
-split_last_decision (m ++p l) := split_last_decision m.
+Fixpoint split_last_decision (m: PA): option (PA * Lit) :=
+match m with
+| []      => None
+| m ++d l => Some (m, l)
+| m ++p l => split_last_decision m
+end.
 
-(* If l' is the most recent decision in m, then m is m' ++d l' followed by literals that are all propagations. *)
-Lemma split_decomp: forall (m m': PA) (l': Lit),
-  split_last_decision m = Some (m', l') -> exists (n': PA), m = m' ++d l' ++a n' /\ NoDecisions n'.
+Lemma split_last_decision_some_iff: forall (m m': PA) (l': Lit),
+  split_last_decision m = Some (m', l') <-> exists (n': PA), m = m' ++d l' ++a n' /\ NoDecisions n'.
 Proof.
-  unfold NoDecisions. unfold not. intros. funelim (split_last_decision m).
-  - discriminate.
-  - rewrite <- Heqcall in H. injection H as <- <-. exists []. intuition. now destruct H.
-  - rewrite <- Heqcall in H0. destruct (H m' l' H0). destruct H1. rewrite H1. exists (x ++p l).
-    intuition. apply H2. destruct H3. destruct H3.
+  intros m m' l'. split.
+  - induction m as [|[l [|]] m IH]; simpl.
     + discriminate.
-    + now exists x0.
+    + intros Hsplit. injection Hsplit as <- <-. exists []. split.
+      * reflexivity.
+      * intros [l'' []].
+    + intros Hsplit. apply IH in Hsplit as [n' [Heq Hno_dec]]. exists (n' ++p l). split.
+      * now rewrite Heq.
+      * intros [l'' [Heq'|Hin]].
+        -- discriminate.
+        -- apply Hno_dec. now exists l''.
+  - intros [n' [-> Hno_dec]]. induction n' as [|[l [|]] n' IH]; simpl.
+    + reflexivity.
+    + exfalso. apply Hno_dec. exists l. now left.
+    + apply IH. intros [l'' Hin]. apply Hno_dec. exists l''. now right.
 Qed.
 
-Lemma split_none_iff: forall (m: PA), split_last_decision m = None <-> NoDecisions m.
-Proof. 
-  unfold NoDecisions. unfold not. intros. split.
-  - intros. funelim (split_last_decision m).
-    + destruct H0. destruct H0.
-    + discriminate.
-    + destruct H1. destruct H1.
-      * discriminate.
-      * apply (H m H0).
-        -- now exists x.
-        -- reflexivity.
-        -- reflexivity.
-  - intros. funelim (split_last_decision m).
+Lemma split_last_decision_none_iff: forall (m: PA), split_last_decision m = None <-> NoDecisions m.
+Proof.
+  induction m as [|[l [|]] m IH]; simpl.
+  - split.
+    + intros _ [l []].
     + reflexivity.
-    + exfalso. apply H. exists l. now left.
-    + apply H. intros. apply H0. destruct H1. exists x. now right.
+  - split.
+    + discriminate.
+    + intros Hno_dec. exfalso. apply Hno_dec. exists l. now left.
+  - rewrite IH. split.
+    + intros Hno_dec [l' [Heq|Hin]].
+      * discriminate.
+      * apply Hno_dec. now exists l'.
+    + intros Hno_dec [l' Hin]. apply Hno_dec. exists l'. now right.
 Qed.

@@ -248,7 +248,7 @@ Lemma backtrack_well_formed: forall (m m': PA) (f: CNF) (l: Lit),
   split_last_decision m = Some (m', l) ->
   WellFormed m f -> WellFormed (m' ++p (¬l)) f.
 Proof.
-  unfold WellFormed. intros m m' f l Heq Hwf. apply split_decomp in Heq as [n [Heq _]].
+  unfold WellFormed. intros m m' f l Heq Hwf. apply split_last_decision_some_iff in Heq as [n [Heq _]].
   rewrite Heq in Hwf. split.
   - destruct Hwf as [Hnodup _]. apply (nodup_app__nodup (m' ++d l)) in Hnodup.
     assert (Hnodup': NoDuplicates m').
@@ -342,7 +342,8 @@ Proof.
     + destruct (inspect (split_last_decision m)) as [[(m_split, l_split)|] split_last_decision].
       (* t_backtrack *)
       * injection Heqcall as <-.
-        destruct (split_decomp _ _ _ split_last_decision) as [n_split [-> no_dec]].
+        pose proof split_last_decision as Hdecomp.
+        apply split_last_decision_some_iff in Hdecomp as [n_split [-> no_dec]].
         apply (t_backtrack m_split n_split f c_conflict l_split).
         -- right. right. right. now left.
         -- now apply (find_conflict_c_in_f (m_split ++d l_split ++a n_split) f c_conflict).
@@ -353,7 +354,7 @@ Proof.
         -- now left.
         -- now apply (find_conflict_c_in_f m f c_conflict).
         -- now apply (find_conflict_conflicting m f c_conflict).
-        -- now apply (split_none_iff m).
+        -- now apply (split_last_decision_none_iff m).
     + destruct (inspect (find_unit m f)) as [[(c_unit, l_unit)|] find_unit].
       (* t_unit *)
       * injection Heqcall as <-. apply (t_unit m f c_unit l_unit).
