@@ -1,11 +1,21 @@
-From Stdlib Require Import Basics Nat Arith List Relations Wellfounded Lia.
+From Stdlib Require Import Basics.
+From Stdlib Require Import Nat.
+From Stdlib Require Import Arith.
+From Stdlib Require Import List.
+From Stdlib Require Import Relations.
+From Stdlib Require Import Wellfounded.
+From Stdlib Require Import Lia.
 Import ListNotations.
 
 From Equations Require Import Equations.
 
-From RocqSAT Require Import Atom Lit Neg Evaluation Trans WellFormed.
-From RocqSAT Require Clause CNF.
-Import Clause.Definitions CNF.Definitions.
+From RocqSAT Require Import Atom.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import WellFormed.
 
 Ltac slia := simpl in *; lia.
 

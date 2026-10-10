@@ -1,11 +1,17 @@
-From Stdlib Require Import List Bool Relations.
+From Stdlib Require Import List.
+From Stdlib Require Import Relations.
 Import ListNotations.
 
 From Equations Require Import Equations.
 
-From RocqSAT Require Import Atom Lit Neg Evaluation Trans WellFormed Dedupe.
-From RocqSAT Require Clause CNF.
-Import Clause.Definitions CNF.Definitions.
+From RocqSAT Require Import Atom.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Dedupe.
 
 Definition c_totalize (m: PA) (c: Clause): PA.
 Proof. Admitted.
@@ -33,9 +39,9 @@ Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
   Undef m l' -> l_eval m l = Some b -> l_eval ((l', a) :: m) l = Some b.
 Proof.
   unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
-  - exfalso. rewrite eqb_eq in G2. subst l'. now rewrite self_neqb_neg in G1.
-  - exfalso. rewrite eqb_eq in G1. subst l. apply (l_eval_neg_none_iff m l') in H. congruence.
-  - exfalso. rewrite eqb_eq in G2. subst l'. congruence.
+  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. now rewrite Neg.self_neqb_neg in G1.
+  - exfalso. rewrite Lit.eqb_eq in G1. subst l. apply (l_eval_neg_none_iff m l') in H. congruence.
+  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. congruence.
   - assumption.
 Qed.
 
@@ -86,8 +92,8 @@ Proof.
   simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
   - reflexivity.
   - reflexivity.
-  - simpl. rewrite eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
-    apply H0 in H1. apply l_eval_neg_some_iff in H1. rewrite involutive in H1. congruence.
+  - simpl. rewrite Lit.eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
+    apply H0 in H1. apply l_eval_neg_some_iff in H1. rewrite Neg.involutive in H1. congruence.
   - simpl. rewrite m_eval_true_iff in H0. now apply H0 in H1.
 Qed.
 
@@ -165,7 +171,7 @@ Proof. Admitted.
     + destruct H as [->|H].
       * simp c_totalize. rewrite Hl. simpl.
         exists true. apply c_totalize_l. simp l_eval.
-        rewrite self_neqb_neg. now rewrite eqb_refl.
+        rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
       * simp c_totalize. destruct (l_eval m l').
         -- simpl. now apply IH.
         -- simpl. now apply IH.
@@ -274,7 +280,7 @@ Proof. Admitted.
   intros m c. generalize dependent m. induction c.
   - intros. destruct H.
   - intros. destruct H.
-    + subst a. simp c_eval. simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+    + subst a. simp c_eval. simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
     + apply (IHc m l a0) in H. simp c_eval. rewrite H. 
       now destruct (l_eval ((l, a0) :: m) a) as [[|]|].
 Qed. *)
@@ -283,8 +289,8 @@ Lemma bound_l: forall (m: PA) (f: CNF) (l: Lit),
   l_in_f f l = true -> l_eval m l = Some true -> l_eval (bound m f) l = Some true.
 Proof.
   intros. funelim (l_eval m l); try congruence.
-  - rewrite eqb_eq in Heq. subst l'. simp bound. rewrite H. simpl. simp l_eval.
-    rewrite eqb_refl. now rewrite self_neqb_neg.
+  - rewrite Lit.eqb_eq in Heq. subst l'. simp bound. rewrite H. simpl. simp l_eval.
+    rewrite Lit.eqb_refl. now rewrite Neg.self_neqb_neg.
   - simp bound. destruct (l_in_f f l').
     + simpl. simp l_eval. rewrite Heq. rewrite Heq0. simpl. apply H; try easy. congruence.
     + simpl. apply H; try easy. congruence.
@@ -379,13 +385,13 @@ Proof.
       assert (l_in_f f l0 = true).
       * apply CNF.l_in_f_true_iff. exists c. intuition.
       * simp l_eval in H1. destruct (l0 =? ¬l) eqn:G1, (l0 =? l) eqn:G2.
-        -- simpl in H1. rewrite eqb_eq in G2. congruence.
-        -- simpl in H1. rewrite eqb_eq in G1. subst l0.
+        -- simpl in H1. rewrite Lit.eqb_eq in G2. congruence.
+        -- simpl in H1. rewrite Lit.eqb_eq in G1. subst l0.
            apply CNF.l_in_f_true_iff in H0 as [c' [Hx_in_c' Hc_in_f']].
            assert (l_in_f f l = true).
-          ++ apply CNF.l_in_f_true_iff. exists c'. rewrite involutive in Hx_in_c'. intuition.
+          ++ apply CNF.l_in_f_true_iff. exists c'. rewrite Neg.involutive in Hx_in_c'. intuition.
           ++ congruence.
-        -- simpl in H1. rewrite eqb_eq in G2. congruence.
+        -- simpl in H1. rewrite Lit.eqb_eq in G2. congruence.
         -- assumption.
 Qed.
 
@@ -409,16 +415,16 @@ Proof.
   induction m as [|[l a] m IH].
   - intros. reflexivity.
   - intros. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
-    + rewrite eqb_eq in G1. subst l0. now rewrite self_neqb_neg in G2.
-    + rewrite eqb_eq in G1. subst l0. simpl. simp neqb_of.
+    + rewrite Lit.eqb_eq in G1. subst l0. now rewrite Neg.self_neqb_neg in G2.
+    + rewrite Lit.eqb_eq in G1. subst l0. simpl. simp neqb_of.
       simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
       * rewrite Atom.eqb_sym. now apply extract_neqb_iff.
-      * rewrite H1. simpl. simp l_eval. rewrite eqb_refl. now rewrite self_neqb_neg.
-    + rewrite eqb_eq in G2. subst l0. simpl. simp neqb_of.
+      * rewrite H1. simpl. simp l_eval. rewrite Lit.eqb_refl. now rewrite Neg.self_neqb_neg.
+    + rewrite Lit.eqb_eq in G2. subst l0. simpl. simp neqb_of.
       simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
-      * rewrite Atom.eqb_sym. rewrite <- eqb_compat in H0. rewrite eqb_compat in H. 
-        rewrite involutive in H. now apply extract_neqb_iff.
-      * rewrite H1. simpl. simp l_eval. rewrite eqb_refl. rewrite eqb_sym. now rewrite self_neqb_neg.
+      * rewrite Atom.eqb_sym. rewrite <- Neg.eqb_compat in H0. rewrite Neg.eqb_compat in H. 
+        rewrite Neg.involutive in H. now apply extract_neqb_iff.
+      * rewrite H1. simpl. simp l_eval. rewrite Lit.eqb_refl. rewrite Lit.eqb_sym. now rewrite Neg.self_neqb_neg.
     + simpl. simp neqb_of. simp eqb_by_atom. destruct (negb (Atom.eqb (extract l') (extract l))).
       * simp l_eval. rewrite G1. rewrite G2. simpl. now apply IH.
       * now apply IH.

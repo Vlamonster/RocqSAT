@@ -1,11 +1,12 @@
-From Stdlib Require Import List Bool Morphisms.
+From Stdlib Require Import List.
+From Stdlib Require Import Bool.
 Import ListNotations.
 
 From Equations Require Import Equations.
 
-From RocqSAT Require Import Lit Neg.
-From RocqSAT Require Clause CNF.
-Import Clause.Definitions CNF.Definitions.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
 
 (* An annotation on a literal (Lit * Ann) describing how its value was assigned. *)
 Inductive Ann: Type :=
@@ -129,12 +130,12 @@ Proof.
   - intuition.
   - intuition.
     + discriminate.
-    + apply eqb_eq in Heq. subst. simp l_eval in H. rewrite eqb_refl in H. 
-      rewrite eqb_sym in H. rewrite Neg.self_neqb_neg in H. discriminate.
+    + apply Lit.eqb_eq in Heq. subst. simp l_eval in H. rewrite Lit.eqb_refl in H. 
+      rewrite Lit.eqb_sym in H. rewrite Neg.self_neqb_neg in H. discriminate.
   - intuition.
     + discriminate.
-    + apply eqb_eq in Heq. subst. simp neg in H. rewrite Neg.involutive in H.
-      simp l_eval in H. rewrite eqb_refl in H. rewrite Neg.self_neqb_neg in H. discriminate.
+    + apply Lit.eqb_eq in Heq. subst. simp neg in H. rewrite Neg.involutive in H.
+      simp l_eval in H. rewrite Lit.eqb_refl in H. rewrite Neg.self_neqb_neg in H. discriminate.
   - intuition.
     + simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. rewrite Neg.eqb_compat in Heq.
       rewrite Neg.involutive in Heq. now rewrite Heq.
@@ -149,22 +150,22 @@ Proof.
   intros. split.
   - intros. funelim (l_eval m l).
     + congruence.
-    + rewrite eqb_eq in Heq. subst l'. rewrite H in Heqcall. injection Heqcall as <-.
-      simp l_eval. rewrite eqb_refl. rewrite eqb_compat. rewrite involutive. now rewrite self_neqb_neg.
-    + rewrite eqb_eq in Heq. subst l. rewrite H in Heqcall. injection Heqcall as <-.
-      rewrite involutive. simp l_eval. rewrite eqb_refl. now rewrite self_neqb_neg.
-    + simp l_eval. rewrite <- eqb_compat. rewrite Heq0. rewrite eqb_compat. rewrite involutive.
+    + rewrite Lit.eqb_eq in Heq. subst l'. rewrite H in Heqcall. injection Heqcall as <-.
+      simp l_eval. rewrite Lit.eqb_refl. rewrite Neg.eqb_compat. rewrite Neg.involutive. now rewrite Neg.self_neqb_neg.
+    + rewrite Lit.eqb_eq in Heq. subst l. rewrite H in Heqcall. injection Heqcall as <-.
+      rewrite Neg.involutive. simp l_eval. rewrite Lit.eqb_refl. now rewrite Neg.self_neqb_neg.
+    + simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. rewrite Neg.eqb_compat. rewrite Neg.involutive.
       rewrite Heq. simpl. apply H. congruence.
   - intros. funelim (l_eval m l).
     + discriminate.
-    + rewrite eqb_eq in Heq. subst l'. simp l_eval in H. rewrite eqb_refl in H. rewrite eqb_compat in H.
-      rewrite involutive in H. rewrite self_neqb_neg in H. simpl in H. injection H. intros.
+    + rewrite Lit.eqb_eq in Heq. subst l'. simp l_eval in H. rewrite Lit.eqb_refl in H. rewrite Neg.eqb_compat in H.
+      rewrite Neg.involutive in H. rewrite Neg.self_neqb_neg in H. simpl in H. injection H. intros.
       symmetry in H0. apply negb_false_iff in H0. congruence.
-    + rewrite eqb_eq in Heq. subst l. rewrite involutive in H. simp l_eval in H. rewrite eqb_refl in H.
-      rewrite self_neqb_neg in H. simpl in H. injection H. intros. symmetry in H0.
+    + rewrite Lit.eqb_eq in Heq. subst l. rewrite Neg.involutive in H. simp l_eval in H. rewrite Lit.eqb_refl in H.
+      rewrite Neg.self_neqb_neg in H. simpl in H. injection H. intros. symmetry in H0.
       apply negb_true_iff in H0. congruence.
-    + apply H. simp l_eval in H0. rewrite <- eqb_compat in H0. rewrite Heq0 in H0.
-      rewrite eqb_compat in H0. rewrite involutive in H0. now rewrite Heq in H0.
+    + apply H. simp l_eval in H0. rewrite <- Neg.eqb_compat in H0. rewrite Heq0 in H0.
+      rewrite Neg.eqb_compat in H0. rewrite Neg.involutive in H0. now rewrite Heq in H0.
 Qed.
 
 Lemma l_eval_some_iff: forall (m: PA) (l: Lit), 
@@ -173,8 +174,8 @@ Proof.
   intros. split.
   - intros [b H]. funelim (l_eval m l).
     + congruence.
-    + rewrite eqb_eq in Heq. subst l'. exists a. left. now left.
-    + rewrite eqb_eq in Heq. subst. exists a. right. rewrite involutive. now left.
+    + rewrite Lit.eqb_eq in Heq. subst l'. exists a. left. now left.
+    + rewrite Lit.eqb_eq in Heq. subst. exists a. right. rewrite Neg.involutive. now left.
     + rewrite H0 in Heqcall. apply H in Heqcall as [a' [G|G]].
       * exists a'. left. now right.
       * exists a'. right. now right.
@@ -184,14 +185,14 @@ Proof.
       * now exists true.
       * now exists false.
       * apply (H a0). destruct H0.
-        -- injection H0 as <- <-. now rewrite eqb_refl in Heq0.
+        -- injection H0 as <- <-. now rewrite Lit.eqb_refl in Heq0.
         -- assumption.
     + funelim (l_eval m l).
       * contradiction.
       * now exists true.
       * now exists false.
       * apply (H a0). destruct H0.
-        -- injection H0 as -> ->. rewrite involutive in Heq. now rewrite eqb_refl in Heq.
+        -- injection H0 as -> ->. rewrite Neg.involutive in Heq. now rewrite Lit.eqb_refl in Heq.
         -- assumption.
 Qed.
 
@@ -199,7 +200,7 @@ Lemma l_eval_false_in: forall (m: PA) (l: Lit),
   l_eval m l = Some false -> exists (a: Ann), In (¬l, a) m.
 Proof.
   intros. funelim (l_eval m l); try congruence.
-  - rewrite eqb_eq in Heq. subst l. exists a. rewrite involutive. now left.
+  - rewrite Lit.eqb_eq in Heq. subst l. exists a. rewrite Neg.involutive. now left.
   - rewrite H0 in Heqcall. apply H in Heqcall.
     + destruct Heqcall as [a' Hin]. exists a'. now right.
     + reflexivity.
@@ -295,9 +296,9 @@ Proof.
   apply c_eval_none_iff in H as [_ [l' [Hin' Hl']]].
   rewrite (c_eval_false_iff m (l_remove c l)) in H0.
   destruct (l =? l') eqn:G.
-  - rewrite eqb_eq in G. congruence.
+  - rewrite Lit.eqb_eq in G. congruence.
   - assert (In l' (l_remove c l)).
-    + rewrite eqb_neq in G. now apply l_remove_in_iff.
+    + rewrite Lit.eqb_neq in G. now apply l_remove_in_iff.
     + apply H0 in H. congruence.
 Qed.
 
@@ -306,8 +307,8 @@ Lemma c_eval_remove_false_l: forall (m: PA) (c: Clause) (l: Lit),
 Proof.
   intros m c l Hc Hl. apply c_eval_false_iff. intros l' Hin. rewrite c_eval_false_iff in Hc.
   destruct (l =? l') eqn:Heq.
-  - rewrite eqb_eq in Heq. congruence.
-  - rewrite eqb_neq in Heq. apply Hc. now apply l_remove_in_iff.
+  - rewrite Lit.eqb_eq in Heq. congruence.
+  - rewrite Lit.eqb_neq in Heq. apply Hc. now apply l_remove_in_iff.
 Qed.
 
 Lemma c_eval_remove_none_l: forall (m: PA) (c: Clause) (l: Lit),
@@ -315,8 +316,8 @@ Lemma c_eval_remove_none_l: forall (m: PA) (c: Clause) (l: Lit),
 Proof.
   intros m c l Hin Hc Hl. rewrite c_eval_false_iff in Hc. apply c_eval_none_iff. split.
   - unfold not. intros [l' [Hin' Hl']]. destruct (l =? l') eqn:Heq.
-    + rewrite eqb_eq in Heq. congruence.
-    + rewrite eqb_neq in Heq. assert (In l' (l_remove c l)).
+    + rewrite Lit.eqb_eq in Heq. congruence.
+    + rewrite Lit.eqb_neq in Heq. assert (In l' (l_remove c l)).
       * now apply l_remove_in_iff.
       * apply Hc in H. congruence.
   - now exists l.
@@ -452,7 +453,7 @@ Proof.
   - intros. simpl. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
     + reflexivity.
     + reflexivity.
-    + simpl. rewrite eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
+    + simpl. rewrite Lit.eqb_eq in G2. subst l0. rewrite m_eval_true_iff in H0.
       assert (l_eval m' l = Some true).
       * apply (H0 _ a). now left.
       * apply l_eval_neg_some_iff in H1. simpl in H1. congruence.
@@ -486,9 +487,9 @@ Proof.
   - intros. discriminate.
   - intros. simpl. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2; simpl.
     + reflexivity.
-    + rewrite eqb_eq in G1. subst l. simp l_eval in H.
-      rewrite eqb_refl in H. rewrite eqb_compat in H. rewrite involutive in H.
-      rewrite self_neqb_neg in H. discriminate.
+    + rewrite Lit.eqb_eq in G1. subst l. simp l_eval in H.
+      rewrite Lit.eqb_refl in H. rewrite Neg.eqb_compat in H. rewrite Neg.involutive in H.
+      rewrite Neg.self_neqb_neg in H. discriminate.
     + reflexivity.
     + apply IH. simp l_eval in H. rewrite G1 in H. now rewrite G2 in H.
 Qed.
@@ -502,8 +503,8 @@ Proof.
     simp m_eval. rewrite G. simp l_eval.
     destruct (l =? ¬l0) eqn:G1, (l =? l0) eqn:G2; simpl.
     + reflexivity.
-    + rewrite eqb_eq in G1. subst l. apply l_eval_neg_some_iff in Heq.
-      rewrite involutive in Heq. simpl in Heq. congruence.
+    + rewrite Lit.eqb_eq in G1. subst l. apply l_eval_neg_some_iff in Heq.
+      rewrite Neg.involutive in Heq. simpl in Heq. congruence.
     + reflexivity.
     + apply (l_eval_head _ m'0) in Heq. now rewrite Heq.
 Qed.

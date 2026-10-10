@@ -1,11 +1,16 @@
-From Stdlib Require Import Arith List Relations Lia.
+From Stdlib Require Import List.
+From Stdlib Require Import Relations.
+From Stdlib Require Import Lia.
 Import ListNotations.
 
 From Equations Require Import Equations.
 
-From RocqSAT Require Import Lit Neg Evaluation WellFormed Trans Normalization.
-From RocqSAT Require Clause CNF.
-Import Clause.Definitions CNF.Definitions.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import Normalization.
 
 Inductive Entails: CNF -> PA -> Prop :=
 | e_intro (f: CNF) (n: PA):
@@ -37,7 +42,7 @@ Lemma m_eval_nodup_refl: forall (m: PA),
 Proof.
   induction m as [|[l a] m IH].
   - intros. reflexivity.
-  - intros. simp m_eval. simp l_eval. rewrite eqb_refl. rewrite self_neqb_neg. simpl.
+  - intros. simp m_eval. simp l_eval. rewrite Lit.eqb_refl. rewrite Neg.self_neqb_neg. simpl.
     apply m_eval_extend_undef.
     + now apply nodup_cons__undef in H.
     + apply IH. now apply nodup_cons__nodup in H.
@@ -48,7 +53,7 @@ Lemma m_eval_nodup_extend: forall (m m': PA),
 Proof.
   intros. induction m' as [|[l a] m' IH].
   - reflexivity.
-  - simpl. simp m_eval. simp l_eval. rewrite self_neqb_neg. rewrite eqb_refl. simpl.
+  - simpl. simp m_eval. simp l_eval. rewrite Neg.self_neqb_neg. rewrite Lit.eqb_refl. simpl.
     apply m_eval_head_refl.
     + now apply nodup_cons__undef in H.
     + apply m_eval_nodup_refl. now apply nodup_cons__nodup in H.
@@ -68,10 +73,10 @@ Lemma l_eval_nodup_extend: forall (m m': PA) (l: Lit) (a: Ann),
   NoDuplicates (([(l, a)]) ++a m') -> l_eval (((l, a) :: m) ++a m') l = Some true.
 Proof.
   induction m' as [|[l' a'] m' IH].
-  - intros. simpl. simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+  - intros. simpl. simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
   - intros. simpl. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2; simpl.
     + reflexivity.
-    + rewrite eqb_eq in G1. subst l. simpl in H. apply nodup_cons__undef in H.
+    + rewrite Lit.eqb_eq in G1. subst l. simpl in H. apply nodup_cons__undef in H.
       destruct (proj2 (l_eval_some_iff ([(¬l', a)] ++a m') l')).
       * exists a. right. apply in_or_app. right. apply in_eq.
       * congruence.
@@ -101,7 +106,7 @@ Proof.
             ** apply (nodup_cons__undef _ _ prop). apply (nodup_app__nodup _ n). apply Hwf.
             ** apply m_eval_nodup_refl. apply (nodup_cons__nodup _ l prop).
                apply (nodup_app__nodup _ n). apply Hwf.
-          ++ simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+          ++ simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
       * rewrite <- app_assoc. simpl. now apply f_eval_true_extend.
 Qed.
 
@@ -231,7 +236,7 @@ Proof.
                            rewrite <- H9 in H0. apply wf_app__wf in H0. apply m_eval_head_refl.
                         **** apply (nodup_cons__undef _ _ prop). apply H0.
                         **** apply m_eval_nodup_refl. apply wf_cons__wf in H0. apply H0.
-                      ++++ simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+                      ++++ simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
             ** rewrite <- Heq. rewrite length_app. simpl. lia.
 Qed.
 
@@ -444,7 +449,7 @@ Proof.
                   *** now apply f_eval_extend_undef.
                   *** split.
                     ---- apply H. now apply f_eval_extend_undef.
-                    ---- simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+                    ---- simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
                 +++ assert (f_eval (m_split ++d l_split ++a n_split) f = Some false).
                   *** apply f_eval_false_iff. now exists c_conflict.
                   *** destruct H2 as [m' H2]. apply (f_eval_false_extend _ m') in H3.
@@ -492,7 +497,7 @@ Proof.
                         **** apply l_eval_extend_undef.
                           ----- congruence.
                           ----- rewrite m_eval_true_iff in Hmodel_m. now apply (Hmodel_m _ a).
-                    ---- simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+                    ---- simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
                 +++ assert (f_eval (m_split ++d l_split ++a n_split) f = Some false).
                   *** apply f_eval_false_iff. now exists c_conflict.
                   *** destruct H2 as [m'' H2]. apply (f_eval_false_extend _ m'') in H4.
@@ -538,7 +543,7 @@ Proof.
                         **** destruct H3.
                           ----- now injection H3 as <- <-.
                           ----- rewrite m_eval_true_iff in Hmodel_m. now apply (Hmodel_m _ a).
-                    ---- simp l_eval. rewrite self_neqb_neg. now rewrite eqb_refl.
+                    ---- simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
                 +++ assert (f_eval (m_split ++d l_split ++a n_split) f = Some false).
                   *** apply f_eval_false_iff. now exists c_conflict.
                   *** destruct H3 as [m'' H3]. apply (f_eval_false_extend _ m'') in H5.
@@ -566,7 +571,7 @@ Proof.
       * assumption.
       * simp l_eval. destruct (l =? ¬l_pure) eqn:G1, (l =? l_pure) eqn:G2; simpl.
         -- reflexivity.
-        -- exfalso. apply eqb_eq in G1. subst l. now apply (Hpure c).
+        -- exfalso. apply Lit.eqb_eq in G1. subst l. now apply (Hpure c).
         -- reflexivity.
         -- assumption.
     + intros. reflexivity.

@@ -1,11 +1,16 @@
-From Stdlib Require Import Bool List Relations.
+From Stdlib Require Import List.
+From Stdlib Require Import Relations.
 Import ListNotations.
 
 From Equations Require Import Equations.
 
-From RocqSAT Require Import Lit Neg Evaluation Trans Inspect WellFormed Termination.
-From RocqSAT Require Clause CNF.
-Import Clause.Definitions CNF.Definitions.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import Inspect.
+From RocqSAT Require Import WellFormed.
 
 Definition Strategy (next: State -> option State): Prop :=
   (next fail = None) /\
@@ -142,7 +147,7 @@ Proof. Admitted.
   - now apply find_unit_c_in_f in H.
   - simp l_in_c. apply orb_true_iff. left. apply existsb_exists. exists l. split.
     + now apply find_unit_l_in_c in H.
-    + apply eqb_refl.
+    + apply Lit.eqb_refl.
 Qed. *)
 
 Equations is_undefined_l (m: PA) (l: Lit): bool :=
@@ -220,7 +225,7 @@ Proof. Admitted.
     simp l_in_f. apply existsb_exists. exists c. split.
     + now left.
     + simp l_in_c. apply orb_true_iff. left. destruct Heqcall as [Hin _].
-      apply existsb_exists. exists l. intuition. apply eqb_refl.
+      apply existsb_exists. exists l. intuition. apply Lit.eqb_refl.
   - rewrite H in Heqcall. apply Hind in Heqcall. simp l_in_f in *.
     apply existsb_exists in Heqcall. destruct Heqcall. destruct H0.
     apply existsb_exists. exists x. split.

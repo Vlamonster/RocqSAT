@@ -1,11 +1,16 @@
-From Stdlib Require Import List Relations.
+From Stdlib Require Import List.
 Import ListNotations.
 
-From Equations Require Import Equations.
-
-From RocqSAT Require Import Lit Neg Evaluation WellFormed Trans Solve Strategy Normalization Entails.
-From RocqSAT Require Clause CNF.
-Import Clause.Definitions CNF.Definitions.
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import Solve.
+From RocqSAT Require Import Strategy.
+From RocqSAT Require Import Normalization.
+From RocqSAT Require Import Entails.
 
 Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), Clause.In l c -> CNF.In c f -> Def m l.
 Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.

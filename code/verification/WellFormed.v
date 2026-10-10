@@ -1,11 +1,12 @@
-From Equations Require Import Equations.
-
 From Stdlib Require Import List.
 Import ListNotations.
 
-From RocqSAT Require Import Atom Lit Neg  Evaluation.
-From RocqSAT Require Clause CNF.
-Import Clause.Definitions CNF.Definitions.
+From Equations Require Import Equations.
+
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Evaluation.
 
 Definition NoDuplicates (m: PA): Prop := 
   NoDup (map extract (map fst m)).
@@ -103,10 +104,10 @@ Proof.
     + congruence.
     + simpl in *. destruct H2. 
       * destruct l, l'.
-        -- simp extract in H2. subst p0. now rewrite eqb_refl in Heq0.
-        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite eqb_refl in Heq.
-        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite eqb_refl in Heq.
-        -- simp extract in H2. subst p0. now rewrite eqb_refl in Heq0.
+        -- simp extract in H2. subst p0. now rewrite Lit.eqb_refl in Heq0.
+        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite Lit.eqb_refl in Heq.
+        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite Lit.eqb_refl in Heq.
+        -- simp extract in H2. subst p0. now rewrite Lit.eqb_refl in Heq0.
       * apply (H m l dec).
         -- now inversion H0.
         -- congruence.

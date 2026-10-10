@@ -1,55 +1,72 @@
+From Stdlib Require Import Arith.
+From Stdlib Require Import Bool.
+From Stdlib Require Import Lia.
+From Stdlib Require Import Structures.Orders.
+
 From Equations Require Import Equations.
-From Stdlib Require Import Arith Bool Lia Structures.Orders.
+
 From RocqSAT Require Import Atom.
 
-(* Literals are either positive or negated variants of atoms. *)
-Inductive Lit: Type :=
-| Pos (p: Atom)
-| Neg (p: Atom).
+Module Lit.
+  Module Definitions.
+    (* Literals are either positive or negated variants of atoms. *)
+    Inductive Lit: Type :=
+    | Pos (p: Atom)
+    | Neg (p: Atom).
 
-Equations eqb (l1 l2: Lit): bool :=
-eqb (Pos p1) (Pos p2) := p1 =? p2;
-eqb (Neg p1) (Neg p2) := p1 =? p2;
-eqb _        _        := false.
+    Equations eqb (l1 l2: Lit): bool :=
+    eqb (Pos p1) (Pos p2) := p1 =? p2;
+    eqb (Neg p1) (Neg p2) := p1 =? p2;
+    eqb _        _        := false.
 
-Equations extract (l: Lit): Atom :=
-extract (Pos p) := p;
-extract (Neg p) := p.
+    Equations extract (l: Lit): Atom :=
+    extract (Pos p) := p;
+    extract (Neg p) := p.
 
-Declare Scope lit_scope.
-Infix "=?" := eqb (at level 70): lit_scope.
-Open Scope lit_scope.
+    Declare Scope lit_scope.
+    Infix "=?" := eqb (at level 70): lit_scope.
+    Open Scope lit_scope.
+  End Definitions.
 
-Lemma eqb_refl: forall (l: Lit), (l =? l) = true.
-Proof. destruct l; simp eqb; apply eqb_refl. Qed.
+  Include Definitions.
 
-Lemma eqb_sym: forall (l1 l2: Lit), (l1 =? l2) = (l2 =? l1).
-Proof. destruct l1, l2; simp eqb; try reflexivity; now apply eqb_sym. Qed.
+  Module Lemmas.
+    Lemma eqb_refl: forall (l: Lit), (l =? l) = true.
+    Proof. destruct l; simp eqb; apply eqb_refl. Qed.
 
-Lemma eqb_eq: forall (l1 l2: Lit), (l1 =? l2) = true <-> l1 = l2.
-Proof. destruct l1, l2; split; try simp eqb; try rewrite eqb_eq; congruence. Qed.
+    Lemma eqb_sym: forall (l1 l2: Lit), (l1 =? l2) = (l2 =? l1).
+    Proof. destruct l1, l2; simp eqb; try reflexivity; now apply eqb_sym. Qed.
 
-Lemma eqb_neq: forall (l1 l2: Lit), (l1 =? l2) = false <-> l1 <> l2.
-Proof. 
-  intros. rewrite <- not_iff_compat.
-  - now rewrite not_true_iff_false.
-  - apply eqb_eq.
-Qed.
+    Lemma eqb_eq: forall (l1 l2: Lit), (l1 =? l2) = true <-> l1 = l2.
+    Proof. destruct l1, l2; split; try simp eqb; try rewrite eqb_eq; congruence. Qed.
 
-Definition eq_dec: forall (l1 l2: Lit), {l1 = l2} + {l1 <> l2}.
-Proof.
-  destruct l1 as [p1|p1], l2 as [p2|p2].
-  - destruct (eq_dec p1 p2).
-    + left. congruence.
-    + right. congruence.
-  - right. now unfold not.
-  - right. now unfold not.
-  - destruct (eq_dec p1 p2).
-    + left. congruence.
-    + right. congruence.
-Qed.
+    Lemma eqb_neq: forall (l1 l2: Lit), (l1 =? l2) = false <-> l1 <> l2.
+    Proof. 
+      intros. rewrite <- not_iff_compat.
+      - now rewrite not_true_iff_false.
+      - apply eqb_eq.
+    Qed.
 
-Module Lit_as_OT <: OrderedType.
+    Definition eq_dec: forall (l1 l2: Lit), {l1 = l2} + {l1 <> l2}.
+    Proof.
+      destruct l1 as [p1|p1], l2 as [p2|p2].
+      - destruct (eq_dec p1 p2).
+        + left. congruence.
+        + right. congruence.
+      - right. now unfold not.
+      - right. now unfold not.
+      - destruct (eq_dec p1 p2).
+        + left. congruence.
+        + right. congruence.
+    Qed.
+  End Lemmas.
+
+  Include Lemmas.
+End Lit.
+
+Export Lit.Definitions.
+
+Module LitOrderType <: OrderedType.
   Definition t := Lit.
 
   Definition eq := @eq Lit.
@@ -102,5 +119,41 @@ Module Lit_as_OT <: OrderedType.
       + simpl. rewrite Hcomp. apply CompGt. now apply Nat.compare_gt_iff.
    Qed.
 
-  Definition eq_dec := eq_dec.
-End Lit_as_OT.
+  Definition eq_dec := Lit.eq_dec.
+End LitOrderType.
+
+Module Neg.
+  Module Definitions.
+    (* Negates a literal (i.e. Pos becomes Neg and Neg becomes Pos). *)
+    Equations neg (l: Lit): Lit :=
+    neg (Pos p) := Neg p;
+    neg (Neg p) := Pos p.
+
+    Declare Scope neg_scope.
+    Notation "¬ l" := (neg l) (at level 65, right associativity, format "'[' ¬ ']' l"): neg_scope.
+    Open Scope neg_scope.
+  End Definitions.
+
+  Include Definitions.
+
+  Module Lemmas.
+    Lemma self_neq_neg: forall (l: Lit), l <> ¬l.
+    Proof. intros. apply Lit.eqb_neq. now funelim (l =? ¬l). Qed.
+
+    Lemma self_neqb_neg: forall (l: Lit), (l =? ¬l) = false.
+    Proof. intros. now funelim (l =? ¬l). Qed.
+
+    Lemma involutive: forall (l: Lit), ¬¬l = l.
+    Proof. intros. now funelim (¬l). Qed.
+
+    Lemma eqb_compat: forall (l1 l2: Lit), (l1 =? l2) = (¬l1 =? ¬l2).
+    Proof. now destruct l1, l2. Qed.
+
+    Lemma eq_compat: forall (l1 l2: Lit), l1 = l2 <-> ¬l1 = ¬l2.
+    Proof. intros. repeat rewrite <- Lit.eqb_eq. now rewrite eqb_compat. Qed.
+  End Lemmas.
+
+  Include Lemmas.
+End Neg.
+
+Export Neg.Definitions.

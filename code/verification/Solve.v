@@ -1,7 +1,14 @@
-From Equations Require Import Equations.
-From Stdlib Require Import Basics List Relations.
+From Stdlib Require Import Basics.
+From Stdlib Require Import List.
 Import ListNotations.
-From RocqSAT Require Import CNF Evaluation WellFormed Trans Termination Inspect Strategy.
+
+From Equations Require Import Equations.
+
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import Termination.
+From RocqSAT Require Import Inspect.
+From RocqSAT Require Import Strategy.
 
 (* Do not assume functional extensionality with Equations. *)
 Unset Equations With Funext.
