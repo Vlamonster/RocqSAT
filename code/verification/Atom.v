@@ -1,19 +1,30 @@
 From Stdlib Require Import Arith.
 
-(* Atoms are propositional symbols mapped to the naturals. *)
-Definition Atom: Type := nat.
+From RocqSAT Require Export EqB.
 
-Definition eqb := Nat.eqb.
+Module Atom.
+  Module Definitions.
+    (* Atoms are propositional symbols mapped to the naturals. *)
+    Definition Atom: Type := nat.
 
-Declare Scope atom_scope.
-Infix "=?" := eqb (at level 70): atom_scope.
-Open Scope atom_scope.
+    #[export]
+    Instance EqBAtom: EqB Atom := Nat.eqb.
+  End Definitions.
 
-Lemma eqb_refl: forall (p: Atom), (p =? p) = true.
-Proof. apply Nat.eqb_refl. Qed.
+  Include Definitions.
 
-Lemma eqb_sym: forall (p1 p2: Atom), (p1 =? p2) = (p2 =? p1).
-Proof. apply Nat.eqb_sym. Qed.
+  Module Lemmas.
+    Lemma eqb_refl: forall (p: Atom), (p =? p) = true.
+    Proof. apply Nat.eqb_refl. Qed.
 
-Lemma eqb_eq: forall (p1 p2: Atom), (p1 =? p2) = true <-> p1 = p2.
-Proof. apply Nat.eqb_eq. Qed.
+    Lemma eqb_sym: forall (p1 p2: Atom), (p1 =? p2) = (p2 =? p1).
+    Proof. apply Nat.eqb_sym. Qed.
+
+    Lemma eqb_eq: forall (p1 p2: Atom), (p1 =? p2) = true <-> p1 = p2.
+    Proof. apply Nat.eqb_eq. Qed.
+  End Lemmas.
+
+  Include Lemmas.
+End Atom.
+
+Export Atom.Definitions.

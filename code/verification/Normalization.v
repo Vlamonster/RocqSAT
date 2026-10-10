@@ -396,7 +396,7 @@ Proof.
 Qed.
 
 Equations eqb_by_atom (la la': Lit * Ann): bool :=
-eqb_by_atom (l, _) (l', _) := Atom.eqb (extract l) (extract l'). 
+eqb_by_atom (l, _) (l', _) := extract l =? extract l'. 
 
 Equations dedupe (m: PA): PA :=
 dedupe m := dedupe_by eqb_by_atom m.
@@ -404,8 +404,8 @@ dedupe m := dedupe_by eqb_by_atom m.
 Lemma extract_neqb_iff: forall (l l': Lit),
   (l =? l') = false ->
   (l =? ¬l') = false ->
-  Atom.eqb (extract l) (extract l') = false.
-Proof. intros. funelim (l =? l'); now simp extract. Qed.
+  (extract l =? extract l') = false.
+Proof. intros. destruct l, l'; simp extract neg in *; cbn in *; assumption. Qed.
 
 Lemma dedupe_l_aux: forall (m: PA) (l l': Lit) (a: Ann),
   (l =? l') = false ->
@@ -417,15 +417,15 @@ Proof.
   - intros. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
     + rewrite Lit.eqb_eq in G1. subst l0. now rewrite Neg.self_neqb_neg in G2.
     + rewrite Lit.eqb_eq in G1. subst l0. simpl. simp neqb_of.
-      simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
+      simp eqb_by_atom. assert ((extract l' =? extract l) = false).
       * rewrite Atom.eqb_sym. now apply extract_neqb_iff.
       * rewrite H1. simpl. simp l_eval. rewrite Lit.eqb_refl. now rewrite Neg.self_neqb_neg.
     + rewrite Lit.eqb_eq in G2. subst l0. simpl. simp neqb_of.
-      simp eqb_by_atom. assert (Atom.eqb (extract l') (extract l) = false).
+      simp eqb_by_atom. assert ((extract l' =? extract l) = false).
       * rewrite Atom.eqb_sym. rewrite <- Neg.eqb_compat in H0. rewrite Neg.eqb_compat in H. 
         rewrite Neg.involutive in H. now apply extract_neqb_iff.
       * rewrite H1. simpl. simp l_eval. rewrite Lit.eqb_refl. rewrite Lit.eqb_sym. now rewrite Neg.self_neqb_neg.
-    + simpl. simp neqb_of. simp eqb_by_atom. destruct (negb (Atom.eqb (extract l') (extract l))).
+    + simpl. simp neqb_of. simp eqb_by_atom. destruct (negb (extract l' =? extract l)).
       * simp l_eval. rewrite G1. rewrite G2. simpl. now apply IH.
       * now apply IH.
 Qed.

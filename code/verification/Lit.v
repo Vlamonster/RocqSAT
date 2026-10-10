@@ -6,6 +6,7 @@ From Stdlib Require Import Structures.Orders.
 From Equations Require Import Equations.
 
 From RocqSAT Require Import Atom.
+From RocqSAT Require Export EqB.
 
 Module Lit.
   Module Definitions.
@@ -14,31 +15,30 @@ Module Lit.
     | Pos (p: Atom)
     | Neg (p: Atom).
 
-    Equations eqb (l1 l2: Lit): bool :=
-    eqb (Pos p1) (Pos p2) := p1 =? p2;
-    eqb (Neg p1) (Neg p2) := p1 =? p2;
-    eqb _        _        := false.
+    #[export]
+    Instance EqBLit: EqB Lit := fun (l1 l2: Lit) =>
+    match l1, l2 with
+    | Pos p1, Pos p2 => p1 =? p2
+    | Neg p1, Neg p2 => p1 =? p2
+    | _,      _      => false
+    end.
 
     Equations extract (l: Lit): Atom :=
     extract (Pos p) := p;
     extract (Neg p) := p.
-
-    Declare Scope lit_scope.
-    Infix "=?" := eqb (at level 70): lit_scope.
-    Open Scope lit_scope.
   End Definitions.
 
   Include Definitions.
 
   Module Lemmas.
     Lemma eqb_refl: forall (l: Lit), (l =? l) = true.
-    Proof. destruct l; simp eqb; apply eqb_refl. Qed.
+    Proof. destruct l; apply Atom.eqb_refl. Qed.
 
     Lemma eqb_sym: forall (l1 l2: Lit), (l1 =? l2) = (l2 =? l1).
-    Proof. destruct l1, l2; simp eqb; try reflexivity; now apply eqb_sym. Qed.
+    Proof. destruct l1, l2; try reflexivity; apply Atom.eqb_sym. Qed.
 
     Lemma eqb_eq: forall (l1 l2: Lit), (l1 =? l2) = true <-> l1 = l2.
-    Proof. destruct l1, l2; split; try simp eqb; try rewrite eqb_eq; congruence. Qed.
+    Proof. destruct l1, l2; split; cbn; try rewrite Atom.eqb_eq; congruence. Qed.
 
     Lemma eqb_neq: forall (l1 l2: Lit), (l1 =? l2) = false <-> l1 <> l2.
     Proof. 
@@ -138,10 +138,10 @@ Module Neg.
 
   Module Lemmas.
     Lemma self_neq_neg: forall (l: Lit), l <> ¬l.
-    Proof. intros. apply Lit.eqb_neq. now funelim (l =? ¬l). Qed.
+    Proof. intros. apply Lit.eqb_neq. now destruct l. Qed.
 
     Lemma self_neqb_neg: forall (l: Lit), (l =? ¬l) = false.
-    Proof. intros. now funelim (l =? ¬l). Qed.
+    Proof. intros. now destruct l. Qed.
 
     Lemma involutive: forall (l: Lit), ¬¬l = l.
     Proof. intros. now funelim (¬l). Qed.
