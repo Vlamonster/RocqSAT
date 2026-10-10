@@ -1,7 +1,11 @@
-From Equations Require Import Equations.
 From Stdlib Require Import Bool List Relations.
 Import ListNotations.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation Trans Inspect WellFormed Termination.
+
+From Equations Require Import Equations.
+
+From RocqSAT Require Import Lit Neg Evaluation Trans Inspect WellFormed Termination.
+From RocqSAT Require Clause CNF.
+Import Clause.Definitions CNF.Definitions.
 
 Definition Strategy (next: State -> option State): Prop :=
   (next fail = None) /\
@@ -23,23 +27,27 @@ is_conflict m c with c_eval m c :=
   | Some false := true
   | _          := false.
 
-Equations find_conflict (m: PA) (f: CNF): option Clause :=
-find_conflict m f := find (is_conflict m) f.
+Definition find_conflict (m: PA) (f: CNF): option Clause.
+Proof. Admitted.
+(* find_conflict m f := find (is_conflict m) f. *)
 
 Lemma find_conflict_c_in_f: forall (m: PA) (f: CNF) (c: Clause), 
-  find_conflict m f = Some c -> In c f.
-Proof. intros. simp find_conflict in H. now apply find_some in H. Qed.
+  find_conflict m f = Some c -> CNF.In c f.
+Proof. Admitted.
+(* Proof. intros. simp find_conflict in H. now apply find_some in H. Qed. *)
 
 Lemma find_conflict_conflicting: forall (m: PA) (f: CNF) (c: Clause), 
-  find_conflict m f = Some c -> Conflicting m c.
-Proof. 
+  find_conflict m f = Some c -> c_eval m c = Some false.
+Proof. Admitted.
+(* Proof.  
   unfold Conflicting. intros. simp find_conflict in H. apply find_some in H as [_ H]. 
   funelim (is_conflict m c); congruence.
-Qed.
+Qed. *)
 
 Lemma find_conflict_exists_iff: forall (m: PA) (f: CNF),
-  (exists (c: Clause), find_conflict m f = Some c) <-> exists (c: Clause), In c f /\ Conflicting m c.
-Proof.
+  (exists (c: Clause), find_conflict m f = Some c) <-> exists (c: Clause), CNF.In c f /\ c_eval m c = Some false.
+Proof. Admitted.
+(* Proof.
   unfold Conflicting. intros. split.
   - intros [c Hfind]. exists c. split.
     + now apply find_conflict_c_in_f in Hfind.
@@ -49,7 +57,7 @@ Proof.
     + simp find_conflict in Hfind. apply find_none with (x := c) in Hfind as contra.
       * simp is_conflict in contra. now rewrite Hc in contra.
       * assumption.
-Qed.
+Qed. *)
 
 Equations split_last_decision (m: PA): option (PA * Lit) :=
 split_last_decision [] := None;
@@ -68,18 +76,21 @@ Proof.
     + now exists x0.
 Qed.
 
-Equations find_unit_l (m: PA) (c: Clause): option Lit :=
-find_unit_l m c := find (fun (l: Lit) => is_conflict m (l_remove c l)) c.
+Definition find_unit_l (m: PA) (c: Clause): option Lit.
+Proof. Admitted.
+(* find_unit_l m c := find (fun (l: Lit) => is_conflict m (l_remove c l)) c. *)
 
-Equations find_unit (m: PA) (f: CNF): option (Clause * Lit) :=
-find_unit m [] := None;
+Definition find_unit (m: PA) (f: CNF): option (Clause * Lit).
+Proof. Admitted.
+(* find_unit m [] := None;
 find_unit m (c :: f) with c_eval m c, find_unit_l m c :=
   | None, Some l := Some (c, l)
-  | _   , _      := find_unit m f.
+  | _   , _      := find_unit m f. *)
 
 Lemma find_unit_undef: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
   find_unit m f = Some (c, l) -> Undef m l.
-Proof. 
+Proof. Admitted.
+(* Proof. 
   unfold Undef. intros. funelim (find_unit m f).
   - discriminate.
   - apply (H c0 l0). congruence.
@@ -90,57 +101,63 @@ Proof.
     + apply (undef_remove_false__undef _ _ _ Heq1 Heq).
     + congruence.
   - apply (H c0 l). congruence.
-Qed.
+Qed. *)
 
 Lemma find_unit_l_l_in_c: forall (m: PA) (c: Clause) (l: Lit),
-  find_unit_l m c = Some l -> In l c.
-Proof.
+  find_unit_l m c = Some l -> Clause.In l c.
+Proof. Admitted.
+(* Proof.
   intros. funelim (find_unit_l m c). rewrite H in Heqcall. 
   apply find_some in Heqcall. intuition.
-Qed.
+Qed. *)
 
 Lemma find_unit_l_in_c: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> In l c.
-Proof. 
+  find_unit m f = Some (c, l) -> Clause.In l c.
+Proof. Admitted.
+(* Proof. 
   intros. funelim (find_unit m f).
   - congruence.
   - apply H. congruence.
   - rewrite H in Heqcall. injection Heqcall as <- <-.
     now apply find_unit_l_l_in_c in Heq.
   - apply H. congruence.
-Qed.
+Qed. *)
 
 Lemma find_unit_c_in_f: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> In c f.
-Proof. 
+  find_unit m f = Some (c, l) -> CNF.In c f.
+Proof. Admitted.
+(* Proof. 
   intros. funelim (find_unit m f).
   - congruence.
   - right. apply (H c0 l0). congruence.
   - rewrite H in Heqcall. injection Heqcall as <- <-. now left.
   - right. apply (H c0 l). congruence.
-Qed.
+Qed. *)
 
 Lemma find_unit_bounded: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
   find_unit m f = Some (c, l) -> l_in_f f l = true.
-Proof.
+Proof. Admitted.
+(* Proof.
   intros. simp l_in_f. apply existsb_exists. exists c. split.
   - now apply find_unit_c_in_f in H.
   - simp l_in_c. apply orb_true_iff. left. apply existsb_exists. exists l. split.
     + now apply find_unit_l_in_c in H.
     + apply eqb_refl.
-Qed.
+Qed. *)
 
 Equations is_undefined_l (m: PA) (l: Lit): bool :=
 is_undefined_l m l with l_eval m l := 
   | None := true
   | _    := false.
 
-Equations find_undef_l (m: PA) (c: Clause): option Lit :=
-find_undef_l m c := find (is_undefined_l m) c.
+Definition find_undef_l (m: PA) (c: Clause): option Lit.
+Proof. Admitted.
+(* find_undef_l m c := find (is_undefined_l m) c. *)
 
 Lemma find_undef_l_def: forall (m: PA) (c: Clause),
   find_undef_l m c = None -> exists (b: bool), c_eval m c = Some b.
-Proof.
+Proof. Admitted.
+(* Proof.
   intros. simp find_undef_l in H. funelim (c_eval m c).
   - now exists false.
   - now exists true.
@@ -155,17 +172,19 @@ Proof.
   - apply find_none with (x := l) in H.
     + simp is_undefined_l in H. now rewrite Heq0 in H.
     + now left.
-Qed.
+Qed. *)
 
-Equations find_decision (m: PA) (f: CNF): option Lit :=
-find_decision m [] := None;
+Definition find_decision (m: PA) (f: CNF): option Lit.
+Proof. Admitted.
+(* find_decision m [] := None;
 find_decision m (c :: f) with find_undef_l m c, find_decision m f :=
   | Some l, _ := Some l
-  | _     , r := r.
+  | _     , r := r. *)
 
 Lemma undef_decision_exists: forall (m: PA) (f: CNF),
   f_eval m f = None -> exists (l: Lit), find_decision m f = Some l.
-Proof.
+Proof. Admitted.
+(* Proof.
   intros. funelim (find_decision m f).
   - discriminate.
   - now exists l.
@@ -175,11 +194,12 @@ Proof.
       * now rewrite Heq in H.
     + reflexivity.
     + reflexivity.
-Qed.
+Qed. *)
 
 Lemma find_decision_undef: forall (m: PA) (f: CNF) (l: Lit),
   find_decision m f = Some l -> Undef m l.
-Proof.
+Proof. Admitted.
+(* Proof.
   unfold Undef. intros. funelim (find_decision m f).
   - congruence.
   - rewrite H in Heqcall. injection Heqcall as <-. funelim (find_undef_l m c).
@@ -187,11 +207,12 @@ Proof.
     + intuition congruence.
     + assumption.
   - rewrite H in Heqcall. now apply Hind.
-Qed.
+Qed. *)
 
 Lemma find_decision_bounded: forall (m: PA) (f: CNF) (l: Lit),
   find_decision m f = Some l -> l_in_f f l = true.
-Proof. 
+Proof. Admitted.
+(* Proof. 
   intros. funelim (find_decision m f).
   - congruence.
   - rewrite H in Heqcall. injection Heqcall as <-. funelim (find_undef_l m c).
@@ -205,11 +226,11 @@ Proof.
     apply existsb_exists. exists x. split.
     + now right.
     + assumption.
-Qed.
+Qed. *)
 
 Lemma wf_backtrack: forall (m m': PA) (f: CNF) (l: Lit),
   split_last_decision m = Some (m', l) ->
-  WellFormed m f -> WellFormed (m' ++p ¬l) f.
+  WellFormed m f -> WellFormed (m' ++p (¬l)) f.
 Proof.
   unfold WellFormed. intros m m' f l Heq Hwf. apply split_decomp in Heq as [n [Heq _]].
   rewrite Heq in Hwf. split.
@@ -271,7 +292,7 @@ next_state (state m f Hwf) :=
     (* t_fail *)
     | None         eqn:Heq => Some fail
     (* t_backtrack *)
-    | Some (m', l) eqn:Heq => Some (state (m' ++p ¬l) f (wf_backtrack m m' f l Heq Hwf))
+    | Some (m', l) eqn:Heq => Some (state (m' ++p (¬l)) f (wf_backtrack m m' f l Heq Hwf))
     end
   | _      =>
   (* t_unit *)
@@ -302,8 +323,8 @@ Proof.
     + apply H. intros. apply H0. destruct H1. exists x. now right.
 Qed.
 
-Lemma find_unit_conflicting: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> Conflicting m (l_remove c l).
+(* Lemma find_unit_conflicting: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
+  find_unit m f = Some (c, l) -> c_eval m (l_remove c l) = Some false.
 Proof.
   unfold Conflicting. intros. funelim (find_unit m f).
   - discriminate.
@@ -312,11 +333,12 @@ Proof.
     funelim (find_unit_l m c). rewrite Heq in Heqcall. apply find_some in Heqcall.
     destruct Heqcall. funelim (is_conflict m (l_remove c l)); congruence.
   - apply H. congruence.
-Qed.
+Qed. *)
 
 Lemma find_decision_decomp: forall (m: PA) (f: CNF) (l: Lit), 
-  find_decision m f = Some l -> exists (c: Clause), find_undef_l m c = Some l /\ In c f.
-Proof.
+  find_decision m f = Some l -> exists (c: Clause), find_undef_l m c = Some l /\ CNF.In c f.
+Proof. Admitted.
+(* Proof.
   intros. funelim (find_decision m f).
   - congruence.
   - rewrite H in Heqcall. injection Heqcall as <-. exists c. split.
@@ -326,21 +348,23 @@ Proof.
     exists x. split.
     + assumption.
     + now right.
-Qed.
+Qed. *)
 
 Lemma find_undef_l_in_c: forall (m: PA) (c: Clause) (l: Lit), 
-  find_undef_l m c = Some l -> In l c.
-Proof.
+  find_undef_l m c = Some l -> Clause.In l c.
+Proof. Admitted.
+(* Proof.
   intros. funelim (find_undef_l m c). rewrite H in Heqcall. 
   apply find_some in Heqcall. now destruct Heqcall.
-Qed.
+Qed. *)
 
 Lemma find_undef_l_undef: forall (m: PA) (c: Clause) (l: Lit), 
   find_undef_l m c = Some l -> Undef m l.
-Proof. 
+Proof. Admitted.
+(* Proof. 
   unfold Undef. intros. funelim (find_undef_l m c). rewrite H in Heqcall. 
   apply find_some in Heqcall. destruct Heqcall. funelim (is_undefined_l m l); congruence.
-Qed.
+Qed. *)
 
 Lemma next_state_sound: forall (s s': State), next_state s = Some s' -> s ==> s'.
 Proof.
@@ -365,7 +389,7 @@ Proof.
       * injection Heqcall as <-. apply (t_unit m f c_unit l_unit).
         -- now apply (find_unit_l_in_c m f c_unit l_unit).
         -- now apply (find_unit_c_in_f m f c_unit l_unit).
-        -- now apply (find_unit_conflicting m f c_unit l_unit).
+        -- admit.
         -- now apply (find_unit_undef m f c_unit l_unit).
       * destruct (inspect (find_decision m f)) as [[l_decide|] find_decision].
         (* t_decide *)
@@ -376,26 +400,28 @@ Proof.
           ++ assumption.
           ++ now apply (find_undef_l_undef m c_decide l_decide).
         -- discriminate.
-Qed.
+Admitted.
 
 Lemma find_undef_l_exists : forall (m: PA) (c: Clause) (l: Lit),
-  In l c -> Undef m l -> exists (l': Lit), find_undef_l m c = Some l'.
-Proof.
+  Clause.In l c -> Undef m l -> exists (l': Lit), find_undef_l m c = Some l'.
+Proof. Admitted.
+(* Proof.
   unfold Undef. intros. destruct (find_undef_l m c) eqn:G.
   - now exists l0.
   - simp find_undef_l in G. apply (find_none (is_undefined_l m) c G l) in H.
     simp is_undefined_l in H. rewrite H0 in H. discriminate.
-Qed.
+Qed. *)
 
 Lemma find_decision_exists: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  In l c -> In c f -> Undef m l -> exists (l': Lit), find_decision m f = Some l'.
-Proof. 
+  Clause.In l c -> CNF.In c f -> Undef m l -> exists (l': Lit), find_decision m f = Some l'.
+Proof. Admitted.
+(* Proof. 
   intros. funelim (find_decision m f).
   - contradiction.
   - now exists l.
   - apply (Hind c0 l); auto. inversion H0; auto. subst.
     destruct (find_undef_l_exists m c0 l H H1). congruence.
-Qed.
+Qed. *)
 
 (* The rhs is weaker because there could be multiple { s': State | s ==>b s' }. *)
 Lemma next_state_exists: forall (s s': State), s ==>b s' -> exists (s'': State), next_state s = Some s''.

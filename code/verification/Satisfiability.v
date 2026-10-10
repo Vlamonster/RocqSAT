@@ -1,9 +1,13 @@
-From Equations Require Import Equations.
 From Stdlib Require Import List Relations.
 Import ListNotations.
-From RocqSAT Require Import Lit Neg Clause CNF Evaluation WellFormed Trans Solve Strategy Normalization Entails.
 
-Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), In l c -> In c f -> Def m l.
+From Equations Require Import Equations.
+
+From RocqSAT Require Import Lit Neg Evaluation WellFormed Trans Solve Strategy Normalization Entails.
+From RocqSAT Require Clause CNF.
+Import Clause.Definitions CNF.Definitions.
+
+Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), Clause.In l c -> CNF.In c f -> Def m l.
 Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
 
 Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
@@ -27,7 +31,7 @@ Proof.
       destruct (proj2 (find_conflict_exists_iff m f)) as [c_conflict Hfind_conflict]. now exists c.
       destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
       (* t_backtrack *)
-      * exists (state (m_split ++p ¬l_split) f (wf_backtrack m m_split f l_split Hsplit Hwf)).
+      * exists (state (m_split ++p (¬l_split)) f (wf_backtrack m m_split f l_split Hsplit Hwf)).
         pose proof (split_decomp m m_split l_split Hsplit) as [n_split [-> Hno_dec]].
         apply (t_backtrack m_split n_split f c_conflict l_split Hwf).
         -- now apply find_conflict_c_in_f in Hfind_conflict.
@@ -107,7 +111,7 @@ Proof.
     apply derivation_entails in Hderivation.
     + unfold Unsat. unfold Sat. unfold Model. unfold not. intros [m' Hsat].
       assert (f_eval (m' ++a m) f = Some true) by now apply entailment.
-      rewrite f_eval_true_iff in H. apply H in H1. unfold Conflicting in H2.
+      rewrite f_eval_true_iff in H. apply H in H1.
       apply (c_eval_false_extend _ m') in H2. congruence.
     + constructor.
       * intros. reflexivity.

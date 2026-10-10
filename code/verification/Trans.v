@@ -27,11 +27,11 @@ Inductive Trans: relation State :=
   Undef m l ->
   Trans (state m f Hwf) (state (m ++d l) f Hwf')
 (* Backtrack by flipping the most recent decision literal. *)
-| t_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p ¬l) f):
+| t_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p (¬l)) f):
   ClauseSet.In c f ->
   c_eval (m ++d l ++a n) c = Some false ->
   NoDecisions n ->
-  Trans (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf')
+  Trans (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf')
 (* Adds a literal that only occurs positively. *)
 | t_pure (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
   LitSet.In l c ->
@@ -54,11 +54,11 @@ Inductive TransB: relation State :=
   Undef m l ->
   TransB (state m f Hwf) (state (m ++d l) f Hwf')
 (* Backtrack by flipping the most recent decision literal. *)
-| tb_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p ¬l) f):
+| tb_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p (¬l)) f):
   ClauseSet.In c f ->
   c_eval (m ++d l ++a n) c = Some false ->
   NoDecisions n ->
-  TransB (state (m ++d l ++a n) f Hwf) (state (m ++p ¬l) f Hwf').
+  TransB (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf').
 
 Definition Derivation: relation State := clos_refl_trans State Trans.
 Definition DerivationStrict: relation State := clos_trans State Trans.

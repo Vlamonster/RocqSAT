@@ -1,14 +1,18 @@
 From Equations Require Import Equations.
+
 From Stdlib Require Import List.
 Import ListNotations.
-From RocqSAT Require Import Atom Lit Neg Clause CNF Evaluation.
+
+From RocqSAT Require Import Atom Lit Neg  Evaluation.
+From RocqSAT Require Clause CNF.
+Import Clause.Definitions CNF.Definitions.
 
 Definition NoDuplicates (m: PA): Prop := 
   NoDup (map extract (map fst m)).
 
 Definition Bounded (m: PA) (f: CNF): Prop := 
   forall (l: Lit) (a: Ann), In (l, a) m -> 
-  exists (c: Clause), ClauseSet.In c f /\ (LitSet.In l c \/ LitSet.In (¬l) c).
+  exists (c: Clause), CNF.In c f /\ (Clause.In l c \/ Clause.In (¬l) c).
 
 Definition WellFormed (m: PA) (f: CNF): Prop :=
   NoDuplicates m /\ Bounded m f.
@@ -123,7 +127,7 @@ Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
   Bounded m f -> l_in_f f l = true -> Bounded ((l, a) :: m) f.
 Proof.
   unfold Bounded. intros m f l a Hbounded Hl_in_f l' a' Hin. 
-  apply l_in_f_true_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
+  apply CNF.l_in_f_true_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
   - destruct Hin.
     + injection H as <- <-. exists c. intuition.
     + now apply Hbounded in H.
