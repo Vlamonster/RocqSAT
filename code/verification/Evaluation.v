@@ -300,28 +300,32 @@ Proof.
   - assert (In l' (l_remove c l)).
     + rewrite Lit.eqb_neq in G. now apply l_remove_in_iff.
     + apply H0 in H. congruence.
-Qed.
+Qed. *)
 
 Lemma c_eval_remove_false_l: forall (m: PA) (c: Clause) (l: Lit),
-  c_eval m (l_remove c l) = Some false -> l_eval m l = Some false -> c_eval m c = Some false.
+  c_eval m (Clause.remove l c) = Some false -> l_eval m l = Some false -> c_eval m c = Some false.
 Proof.
   intros m c l Hc Hl. apply c_eval_false_iff. intros l' Hin. rewrite c_eval_false_iff in Hc.
   destruct (l =? l') eqn:Heq.
   - rewrite Lit.eqb_eq in Heq. congruence.
-  - rewrite Lit.eqb_neq in Heq. apply Hc. now apply l_remove_in_iff.
+  - rewrite Lit.eqb_neq in Heq. apply Hc. apply Clause.remove_spec. split.
+    + assumption.
+    + congruence.
 Qed.
 
 Lemma c_eval_remove_none_l: forall (m: PA) (c: Clause) (l: Lit),
-  In l c -> c_eval m (l_remove c l) = Some false -> l_eval m l = None -> c_eval m c = None.
+  Clause.In l c -> c_eval m (Clause.remove l c) = Some false -> l_eval m l = None -> c_eval m c = None.
 Proof.
   intros m c l Hin Hc Hl. rewrite c_eval_false_iff in Hc. apply c_eval_none_iff. split.
   - unfold not. intros [l' [Hin' Hl']]. destruct (l =? l') eqn:Heq.
     + rewrite Lit.eqb_eq in Heq. congruence.
-    + rewrite Lit.eqb_neq in Heq. assert (In l' (l_remove c l)).
-      * now apply l_remove_in_iff.
-      * apply Hc in H. congruence.
+    + rewrite Lit.eqb_neq in Heq. assert (Hin_remove: Clause.In l' (Clause.remove l c)).
+      * apply Clause.remove_spec. split.
+        -- assumption.
+        -- congruence.
+      * apply Hc in Hin_remove. congruence.
   - now exists l.
-Qed. *)
+Qed.
 
 Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
   f_eval m f = Some true <-> forall (c: Clause), CNF.In c f -> c_eval m c = Some true.

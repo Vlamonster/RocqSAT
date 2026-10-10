@@ -6,6 +6,7 @@ Import ListNotations.
 From Equations Require Import Equations.
 
 From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import WellFormed.
@@ -333,23 +334,21 @@ Proof.
       * intros m' Hmodel. simp m_eval. rewrite (Hcons _ Hmodel). 
         destruct (l_eval m' l_unit) as [[|]|] eqn:Hl.
         -- reflexivity.
-        -- admit.
-        (* -- exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+        -- exfalso. assert (contra: c_eval m' (Clause.remove l_unit c_unit) = Some false).
           ++ apply (m_eval_transfer_c _ m).
             ** now apply Hcons.
             ** assumption.
           ++ apply c_eval_remove_false_l in contra.
             ** rewrite f_eval_true_iff in Hmodel. apply Hmodel in Hc_in_f. congruence.
-            ** assumption. *)
-        -- admit.
-        (* -- exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+            ** assumption.
+        -- exfalso. assert (contra: c_eval m' (Clause.remove l_unit c_unit) = Some false).
           ++ apply (m_eval_transfer_c _ m).
             ** now apply Hcons.
             ** assumption.
           ++ apply c_eval_remove_none_l in contra.
             ** rewrite f_eval_true_iff in Hmodel. apply Hmodel in Hc_in_f. congruence.
             ** assumption.
-            ** assumption. *)
+            ** assumption.
       * unfold NoDecisions. unfold not. intros [l [contra|Hin]].
         -- discriminate.
         -- apply Hno_dec. now exists l.
@@ -366,19 +365,17 @@ Proof.
           ++ rewrite Hm in Hmodel_m. simp m_eval. rewrite Hmodel_n.
              destruct (l_eval m' l_unit) as [[|]|] eqn:Hl.
             ** reflexivity.
-            ** admit.
-            (* ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+            ** exfalso. assert (contra: c_eval m' (Clause.remove l_unit c_unit) = Some false).
               --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_false_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
-                +++ assumption. *)
-            ** admit.
-            (* ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+                +++ assumption.
+            ** exfalso. assert (contra: c_eval m' (Clause.remove l_unit c_unit) = Some false).
               --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_none_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                 +++ assumption.
-                +++ assumption. *)
+                +++ assumption.
       * unfold NoDecisions. unfold not. intros [l [contra|Hin]].
         -- discriminate.
         -- apply Hno_dec. now exists l.
@@ -397,19 +394,17 @@ Proof.
           ++ rewrite Hm in Hmodel_m. simp m_eval. rewrite Hmodel_n.
              destruct (l_eval m' l_unit) as [[|]|] eqn:Hl.
             ** reflexivity.
-            ** admit.
-            (* ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+            ** exfalso. assert (contra: c_eval m' (Clause.remove l_unit c_unit) = Some false).
               --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_false_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
-                +++ assumption. *)
-            ** admit.
-            (* ** exfalso. assert (contra: c_eval m' (l_remove c_unit l_unit) = Some false).
+                +++ assumption.
+            ** exfalso. assert (contra: c_eval m' (Clause.remove l_unit c_unit) = Some false).
               --- now apply (m_eval_transfer_c _ m).
               --- apply c_eval_remove_none_l in contra.
                 +++ rewrite f_eval_true_iff in Hmodel_f. apply Hmodel_f in Hc_in_f. congruence.
                 +++ assumption.
-                +++ assumption. *)
+                +++ assumption.
       * unfold NoDecisions. unfold not. intros [l [Hin|Hin]].
         -- discriminate.
         -- apply Hno_dec. now exists l.
@@ -577,7 +572,7 @@ Proof.
     + intros. reflexivity.
     + unfold NoDecisions. unfold not. intros. destruct H. contradiction.
     + assumption.
-Admitted.
+Qed.
 
 Lemma derivation_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
   state m f Hwf ==>* state m' f Hwf' -> Entails f m -> Entails f m'.
