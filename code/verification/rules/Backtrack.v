@@ -19,14 +19,13 @@ From RocqSAT Require Import Measure.
 (* Backtrack: Backtrack by flipping the most recent decision literal. *)
 
 (* With a conflict after deciding l, no model of the formula and m makes l true. *)
-Lemma backtrack_no_model: forall (m n: PA) (f: CNF) (c: Clause) (l: Lit) (m': PA),
+Lemma backtrack_no_model: forall (m n: PA) (f: CNF) (l: Lit) (m': PA),
   NoDecisions n ->
   Entails f (m ++d l ++a n) ->
-  CNF.In c f ->
-  c_eval (m ++d l ++a n) c = Some false ->
+  f_eval (m ++d l ++a n) f = Some false ->
   Model m' (CNF.union f (units m)) -> l_eval m' l = Some true -> False.
 Proof.
-  intros m n f c l m' Hno_dec Hentails Hc_in_f Hconflict Hm' Hl.
+  intros m n f l m' Hno_dec Hentails Hconflict Hm' Hl.
   destruct (entails_extend f (m ++d l) n m' Hentails Hno_dec) as [m'' Hm''].
   - apply model_union_iff in Hm' as [Hf Hm]. apply model_union_iff. split.
     + assumption.
@@ -34,23 +33,21 @@ Proof.
       * now injection Heq as <- <-.
       * now apply (Hm l' a').
   - apply model_union_iff in Hm'' as [Hf Htrail].
-    unfold Model in Hf. rewrite f_eval_true_iff in Hf. apply Hf in Hc_in_f.
-    apply (units_transfer_c m'' _ _ Htrail) in Hconflict. congruence.
+    apply (units_transfer_f m'' _ _ Htrail) in Hconflict. unfold Model in Hf. congruence.
 Qed.
 
 (* Hence the formula and m force ¬l. *)
-Lemma backtrack_neg: forall (m n: PA) (f: CNF) (c: Clause) (l: Lit),
+Lemma backtrack_neg: forall (m n: PA) (f: CNF) (l: Lit),
   NoDecisions n ->
   Entails f (m ++d l ++a n) ->
-  CNF.In c f ->
-  c_eval (m ++d l ++a n) c = Some false ->
+  f_eval (m ++d l ++a n) f = Some false ->
   CNF.union f (units m) ⊨ unit_cnf (¬l).
 Proof.
-  intros m n f c l Hno_dec Hentails Hc_in_f Hconflict m' Hm'. apply model_unit_cnf_iff.
+  intros m n f l Hno_dec Hentails Hconflict m' Hm'. apply model_unit_cnf_iff.
   destruct (l_eval m' l) as [[|]|] eqn:Hl.
-  - exfalso. now apply (backtrack_no_model m n f c l m').
+  - exfalso. now apply (backtrack_no_model m n f l m').
   - now apply l_eval_neg_some_iff in Hl.
-  - exfalso. apply (backtrack_no_model m n f c l (m' ++p l) Hno_dec Hentails Hc_in_f Hconflict).
+  - exfalso. apply (backtrack_no_model m n f l (m' ++p l) Hno_dec Hentails Hconflict).
     + now apply f_eval_extend_undef.
     + simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
 Qed.
@@ -63,7 +60,10 @@ Proof.
     try subst m''; try subst f'; try (simpl in *; intuition discriminate).
   subst m. apply e_propagate.
   - apply (entails_prefix f m_split [(l_split, dec)]). now apply entails_prefix in Hentails.
-  - now apply (backtrack_neg m_split n_split f c_conflict l_split).
+  - apply (backtrack_neg m_split n_split f l_split).
+    + assumption.
+    + assumption.
+    + apply f_eval_false_iff. now exists c_conflict.
 Qed.
 
 Lemma backtrack_state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),

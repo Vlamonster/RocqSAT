@@ -79,3 +79,13 @@ Proof.
   rewrite c_eval_false_iff in Hc. apply Hc in Hin.
   now apply (units_transfer_l _ m').
 Qed.
+
+(* And every formula. *)
+Lemma units_transfer_f: forall (m m': PA) (f: CNF),
+  Model m (units m') -> f_eval m' f = Some false -> f_eval m f = Some false.
+Proof.
+  intros m m' f Hm Hf. rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
+  exists c. split.
+  - assumption.
+  - now apply (units_transfer_c m m').
+Qed.
