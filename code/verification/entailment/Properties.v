@@ -23,7 +23,7 @@ Lemma entails_extend: forall (f: CNF) (m n m': PA),
 Proof.
   intros f m n m' Hentails Hno_dec Hm'. induction n as [|[l a] n IH].
   - now exists m'.
-  - inversion Hentails as [| m0 l0 Hentails' | m0 l0 Hentails' Himpl | m0 l0 Hentails' Hpure]; subst.
+  - inversion Hentails as [| m0 l0 Hentails' | m0 l0 Himpl Hentails' | m0 l0 Hpure Hentails']; subst.
     + exfalso. apply Hno_dec. exists l. now left.
     + destruct IH as [m'' Hm''].
       * assumption.

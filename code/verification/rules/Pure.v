@@ -24,7 +24,6 @@ Proof.
   inversion Htrans as [| | | | m'' f' c_pure l_pure ? Hwf'' _ Hl_in_c Hc_in_f Hpure Hundef];
     try subst m''; try subst f'; try (simpl in *; intuition discriminate).
   apply e_pure.
-  - assumption.
   - intros m'' Hm''. apply model_union_iff in Hm'' as [Hf Hm]. apply model_union_iff. split.
     + apply f_eval_true_iff. intros c Hc. apply c_eval_true_iff.
       unfold Model in Hf. rewrite f_eval_true_iff in Hf. apply Hf in Hc as G.
@@ -44,6 +43,7 @@ Proof.
         -- assumption.
       * reflexivity.
       * now apply (Hm l a).
+  - assumption.
 Qed.
 
 Lemma pure_state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),

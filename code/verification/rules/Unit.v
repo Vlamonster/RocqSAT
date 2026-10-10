@@ -25,7 +25,6 @@ Proof.
   inversion Htrans as [| m'' f' c_unit l_unit ? Hwf'' _ Hl_in_c Hc_in_f Hconflict Hundef | | |];
     try subst m''; try subst f'; try (simpl in *; intuition discriminate).
   apply e_propagate.
-  - assumption.
   - intros m'' Hm''. apply model_unit_cnf_iff.
     apply model_union_iff in Hm'' as [Hf Hm].
     apply (units_transfer_c m'' m _ Hm) in Hconflict.
@@ -34,6 +33,7 @@ Proof.
     + reflexivity.
     + rewrite (c_eval_remove_false_l _ _ _ Hconflict Hl) in Hc_in_f. discriminate.
     + rewrite (c_eval_remove_none_l _ _ _ Hl_in_c Hconflict Hl) in Hc_in_f. discriminate.
+  - assumption.
 Qed.
 
 Lemma unit_state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),

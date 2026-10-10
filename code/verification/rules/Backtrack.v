@@ -59,11 +59,11 @@ Proof.
   inversion Htrans as [| | | m_split n_split f' c_conflict l_split ? Hwf'' _ Hc_in_f Hconflict Hno_dec |];
     try subst m''; try subst f'; try (simpl in *; intuition discriminate).
   subst m. apply e_propagate.
-  - apply (entails_prefix f m_split [(l_split, dec)]). now apply entails_prefix in Hentails.
   - apply (backtrack_neg m_split n_split f l_split).
     + assumption.
     + assumption.
     + apply f_eval_false_iff. now exists c_conflict.
+  - apply (entails_prefix f m_split [(l_split, dec)]). now apply entails_prefix in Hentails.
 Qed.
 
 Lemma backtrack_state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
