@@ -19,28 +19,8 @@ From RocqSAT Require Import WellFormed.
 
 Ltac slia := simpl in *; lia.
 
-Lemma list_max_le: forall (l: list nat) (x y: nat),
-  fold_left max l x <= y <-> x <= y /\ forall (z: nat), In z l -> z <= y.
-Proof.
-  induction l.
-  - simpl. intros. split.
-    + intuition.
-    + intuition.
-  - simpl. intros. split.
-    + intros. split.
-      * apply IHl in H as [H _]. now apply Nat.max_lub_l in H.
-      * intros z [<-|Hin].
-        -- apply IHl in H as [H _]. now apply Nat.max_lub_r in H.
-        -- apply IHl in H as [_ H]. now apply H.
-    + intros. apply IHl. split.
-      * apply Nat.max_lub.
-        -- intuition.
-        -- apply H. now left.
-      * intros. apply H. now right.
-Qed.
-
 Definition max_atom_c (c: Clause): nat :=
-fold_left max (map extract (Clause.elements c)) 0.
+list_max (map extract (Clause.elements c)).
 
 Definition max_atom_f (f: CNF): nat :=
 list_max (map max_atom_c (CNF.elements f)).
@@ -224,29 +204,25 @@ Qed.
 Theorem wf_state_lt_trans_clos (f: CNF): well_founded (StateLtTransClos f).
 Proof. unfold well_founded. intros. constructor. apply wf_clos_trans. apply wf_state_lt. Qed.
 
+Lemma in_le_list_max: forall (l: list nat) (x: nat), In x l -> x <= list_max l.
+Proof. intros l. apply Forall_forall. now apply list_max_le. Qed.
+
 Lemma max_atom_c_le: forall (c: Clause) (l: Lit) (p: Atom),
   Clause.In l c -> extract l = p -> p <= max_atom_c c.
 Proof.
-  intros. apply (proj1 (list_max_le (map extract (Clause.elements c)) 0 _)).
-  - apply le_n.
-  - apply in_map_iff. exists l. split.
-    + assumption.
-    + apply Clause.elements_spec1 in H. now apply SetoidList.InA_alt in H as [? [<- ?]].
+  intros c l p Hl_in_c <-. unfold max_atom_c. apply in_le_list_max. apply in_map.
+  apply Clause.elements_spec1 in Hl_in_c. now apply SetoidList.InA_alt in Hl_in_c as [l' [<- Hin]].
 Qed.
 
 Lemma max_atom_f_le: forall (f: CNF) (c: Clause) (l: Lit) (p: Atom),
   Clause.In l c -> CNF.In c f -> extract l = p -> p <= max_atom_f f.
-Proof. Admitted.
-  (* intros f c l p Hl_in_c Hc_in_f Heq. funelim (max_atom_f f).
-  - contradiction.
-  - inversion Hc_in_f.
-    + subst c0. destruct l as [p|p].
-      * simp extract. apply Nat.max_le_iff. left. now apply (max_atom_c_le c (Pos p) p).
-      * simp extract. apply Nat.max_le_iff. left. now apply (max_atom_c_le c (Neg p) p).
-    + destruct l as [p|p].
-      * apply Nat.max_le_iff. right. simp extract. now apply (H c0 (Pos p) p).
-      * apply Nat.max_le_iff. right. simp extract. now apply (H c0 (Neg p) p).
-Qed. *)
+Proof.
+  intros f c l p Hl_in_c Hc_in_f Heq.
+  apply CNF.elements_spec1 in Hc_in_f. apply SetoidList.InA_alt in Hc_in_f as [c' [Hequal Hc'_in_f]].
+  apply Hequal in Hl_in_c. transitivity (max_atom_c c').
+  - now apply max_atom_c_le with l.
+  - unfold max_atom_f. apply in_le_list_max. now apply in_map.
+Qed.
 
 Lemma wf_le: forall (m: PA) (f: CNF) (p: Atom),
   WellFormed m f ->
