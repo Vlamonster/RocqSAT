@@ -104,26 +104,6 @@ Qed.
 
 Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
 
-(* Module EvalExamples.
-  Example example_l_eval_1: l_eval ([] ++p Pos 1) (Pos 1) = Some true.
-  Proof. reflexivity. Qed.
-
-  Example example_l_eval_2: l_eval ([] ++p Pos 1) (Neg 1) = Some false.
-  Proof. reflexivity. Qed.
-
-  Example example_l_eval_3: l_eval ([] ++p Pos 1) (Pos 2) = None.
-  Proof. reflexivity. Qed.
-
-  Example example_c_eval_1: c_eval [] [Pos 1; Pos 2] = None.
-  Proof. reflexivity. Qed.
-
-  Example example_c_eval_2: c_eval ([] ++p Pos 1) [Pos 1; Pos 2] = Some true.
-  Proof. reflexivity. Qed.
-
-  Example example_c_eval_3: c_eval ([] ++p Neg 1 ++p Neg 2) [Pos 1; Pos 2] = Some false.
-  Proof. reflexivity. Qed.
-End EvalExamples. *)
-
 Lemma l_eval_neg_none_iff: forall (m: PA) (l: Lit), l_eval m l = None <-> l_eval m (¬l) = None.
 Proof.
   unfold Undef. intros. funelim (l_eval m l).
@@ -288,19 +268,6 @@ Proof.
         -- now intros ? ? ->.
       * reflexivity.
 Qed.
-
-(* Lemma undef_remove_false__undef: forall (m: PA) (c: Clause) (l: Lit),
-  c_eval m c = None -> c_eval m (l_remove c l) = Some false -> Undef m l.
-Proof.
-  unfold Undef. intros. 
-  apply c_eval_none_iff in H as [_ [l' [Hin' Hl']]].
-  rewrite (c_eval_false_iff m (l_remove c l)) in H0.
-  destruct (l =? l') eqn:G.
-  - rewrite Lit.eqb_eq in G. congruence.
-  - assert (In l' (l_remove c l)).
-    + rewrite Lit.eqb_neq in G. now apply l_remove_in_iff.
-    + apply H0 in H. congruence.
-Qed. *)
 
 Lemma c_eval_remove_false_l: forall (m: PA) (c: Clause) (l: Lit),
   c_eval m (Clause.remove l c) = Some false -> l_eval m l = Some false -> c_eval m c = Some false.

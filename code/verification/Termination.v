@@ -40,32 +40,6 @@ score m f :=
 Equations score_total (m: PA) (f: CNF): nat :=
 score_total m f := S (max_atom_f f) - length m.
 
-(* Module ScoreExamples.
-  Example score_1: score [] [[Pos 0; Pos 1]] = [2; 2; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_2: score ([] ++p Pos 0) [[Pos 0; Pos 1]] = [1; 2; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_3: score ([] ++d Pos 0) [[Pos 0; Pos 1]] = [2; 2; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_4: score ([] ++d Neg 0 ++p Pos 1) [[Pos 0; Pos 1]] = [2; 1; 2].
-  Proof. reflexivity. Qed.
-
-  Example score_total_1: score_total [] [[Pos 0; Pos 1]] = 2.
-  Proof. reflexivity. Qed.
-
-  Example score_total_2: score_total ([] ++p Pos 0) [[Pos 0; Pos 1]] = 1.
-  Proof. reflexivity. Qed.
-
-  Example score_total_3: score_total ([] ++d Pos 0) [[Pos 0; Pos 1]] = 1.
-  Proof. reflexivity. Qed.
-
-  Example score_total_4: score_total ([] ++d Neg 0 ++p Pos 1) [[Pos 0; Pos 1]] = 0.
-  Proof. reflexivity. Qed.
-End ScoreExamples. *)
-
 Inductive FailLt: relation State :=
 | f_fail (m: PA) (f: CNF) (Hwf: WellFormed m f):
   FailLt fail (state m f Hwf).
