@@ -148,11 +148,11 @@ Module Neg.
     Lemma involutive: forall (l: Lit), ¬¬l = l.
     Proof. intros. now funelim (¬l). Qed.
 
-    (* Negating both sides does not change whether two literals are equal. *)
+    (* Two literals compare the same as their negations. *)
     Lemma eqb_compat: forall (l1 l2: Lit), (l1 =? l2) = (¬l1 =? ¬l2).
     Proof. now destruct l1, l2. Qed.
 
-    (* Negation is injective. *)
+    (* Two literals are equal exactly when their negations are. *)
     Lemma eq_compat: forall (l1 l2: Lit), l1 = l2 <-> ¬l1 = ¬l2.
     Proof. intros. repeat rewrite <- Lit.eqb_eq. now rewrite eqb_compat. Qed.
   End Lemmas.

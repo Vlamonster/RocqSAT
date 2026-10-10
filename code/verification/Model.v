@@ -1,8 +1,6 @@
 From Stdlib Require Import List.
 Import ListNotations.
 
-From Equations Require Import Equations.
-
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
@@ -16,9 +14,8 @@ Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
 Definition unit_cnf (l: Lit): CNF := CNF.singleton (Clause.singleton l).
 
 (* An assignment as a formula: one unit clause per assigned literal. *)
-Equations units (m: PA): CNF :=
-units []            := CNF.empty;
-units ((l, _) :: m) := CNF.add (Clause.singleton l) (units m).
+Definition units (m: PA): CNF :=
+fold_right (fun '(l, _) (f: CNF) => CNF.add (Clause.singleton l) f) CNF.empty m.
 
 Lemma model_union_iff: forall (m: PA) (f g: CNF), Model m (CNF.union f g) <-> Model m f /\ Model m g.
 Proof.
@@ -47,8 +44,8 @@ Proof.
   intros m m'. unfold Model. rewrite f_eval_true_iff. induction m' as [|[l a] m' IH].
   - split.
     + intros _ l a [].
-    + intros _ c Hc. simp units in Hc. now apply CNF.empty_spec in Hc.
-  - simp units. split.
+    + intros _ c Hc. simpl in Hc. now apply CNF.empty_spec in Hc.
+  - simpl. split.
     + intros H l' a' [Heq|Hin].
       * injection Heq as -> ->. apply (c_eval_singleton_true_iff m (Clause.singleton l')).
         -- reflexivity.
