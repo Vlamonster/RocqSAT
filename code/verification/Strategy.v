@@ -10,7 +10,12 @@ From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import State.
 From RocqSAT Require Import Trans.
+From RocqSAT.rules Require Import Fail.
+From RocqSAT.rules Require Import Unit.
+From RocqSAT.rules Require Import Decide.
+From RocqSAT.rules Require Import Backtrack.
 From RocqSAT.utils Require Import Inspect.
 From RocqSAT Require Import WellFormed.
 
@@ -306,17 +311,17 @@ next_state (state m f Hwf) :=
   match find_conflict m f with
   | Some c =>
     match inspect (split_last_decision m) with
-    (* t_fail *)
+    (* Fail *)
     | None         eqn:Heq => Some fail
-    (* t_backtrack *)
+    (* Backtrack *)
     | Some (m', l) eqn:Heq => Some (state (m' ++p (¬l)) f (backtrack_well_formed m m' f l Heq Hwf))
     end
   | _      =>
-  (* t_unit *)
+  (* Unit *)
   match inspect (find_unit m f) with
   | Some (c, l)    eqn:Heq => Some (state (m ++p l) f (unit_well_formed m f c l Heq Hwf))
   | None           eqn:Heq =>
-  (* t_decide *)
+  (* Decide *)
   match inspect (find_decision m f) with
   | Some l         eqn:Heq => Some (state (m ++d l) f (decide_well_formed m f l Heq Hwf))
   | None           eqn:Heq => None
@@ -340,54 +345,53 @@ Proof.
   - discriminate.
   - destruct (find_conflict m f) as [c_conflict|] eqn:find_conflict.
     + destruct (inspect (split_last_decision m)) as [[(m_split, l_split)|] split_last_decision].
-      (* t_backtrack *)
+      (* Backtrack *)
       * injection Heqcall as <-.
         pose proof split_last_decision as Hdecomp.
         apply split_last_decision_some_iff in Hdecomp as [n_split [-> no_dec]].
-        apply (t_backtrack m_split n_split f c_conflict l_split).
+        apply (t_step Backtrack).
         -- right. right. right. now left.
-        -- now apply (find_conflict_c_in_f (m_split ++d l_split ++a n_split) f c_conflict).
-        -- now apply (find_conflict_conflicting (m_split ++d l_split ++a n_split) f c_conflict).
-        -- assumption.
-      (* t_fail *)
-      * injection Heqcall as <-. apply (t_fail m f c_conflict).
+        -- apply (r_backtrack m_split n_split f c_conflict l_split).
+          ++ now apply (find_conflict_c_in_f (m_split ++d l_split ++a n_split) f c_conflict).
+          ++ now apply (find_conflict_conflicting (m_split ++d l_split ++a n_split) f c_conflict).
+          ++ assumption.
+      (* Fail *)
+      * injection Heqcall as <-. apply (t_step Fail).
         -- now left.
-        -- now apply (find_conflict_c_in_f m f c_conflict).
-        -- now apply (find_conflict_conflicting m f c_conflict).
-        -- now apply (split_last_decision_none_iff m).
+        -- apply (r_fail m f c_conflict).
+          ++ now apply (find_conflict_c_in_f m f c_conflict).
+          ++ now apply (find_conflict_conflicting m f c_conflict).
+          ++ now apply (split_last_decision_none_iff m).
     + destruct (inspect (find_unit m f)) as [[(c_unit, l_unit)|] find_unit].
-      (* t_unit *)
-      * injection Heqcall as <-. apply (t_unit m f c_unit l_unit).
+      (* Unit *)
+      * injection Heqcall as <-. apply (t_step Unit).
         -- right. now left.
-        -- now apply (find_unit_l_in_c m f c_unit l_unit).
-        -- now apply (find_unit_c_in_f m f c_unit l_unit).
-        -- now apply (find_unit_conflicting m f c_unit l_unit).
-        -- now apply (find_unit_undef m f c_unit l_unit).
+        -- apply (r_unit m f c_unit l_unit).
+          ++ now apply (find_unit_l_in_c m f c_unit l_unit).
+          ++ now apply (find_unit_c_in_f m f c_unit l_unit).
+          ++ now apply (find_unit_conflicting m f c_unit l_unit).
+          ++ now apply (find_unit_undef m f c_unit l_unit).
       * destruct (inspect (find_decision m f)) as [[l_decide|] find_decision].
-        (* t_decide *)
+        (* Decide *)
         -- injection Heqcall as <-.
            destruct (find_decision_decomp m f l_decide find_decision) as [c_decide [Hc Hc_in_f]].
-           apply (t_decide m f c_decide l_decide).
+           apply (t_step Decide).
           ++ right. right. now left.
-          ++ left. now apply (find_undef_l_in_c m c_decide l_decide).
-          ++ assumption.
-          ++ now apply (find_undef_l_undef m c_decide l_decide).
+          ++ apply (r_decide m f c_decide l_decide).
+            ** left. now apply (find_undef_l_in_c m c_decide l_decide).
+            ** assumption.
+            ** now apply (find_undef_l_undef m c_decide l_decide).
         -- discriminate.
 Qed.
 
 (* The rhs is weaker because there could be multiple { s': State | s ==>[Basic] s' }. *)
 Lemma next_state_exists: forall (s s': State), s ==>[Basic] s' -> exists (s'': State), next_state s = Some s''.
 Proof.
-  intros. inversion H as 
-    [
-      m f c_conflict Hwf _ Hc_in_f Hconflict Hno_dec |
-      m f c_unit l_unit Hwf Hwf' Hr |
-      m f c_decide l_decide Hwf Hwf' _ Hx_in_c Hc_in_f Hundef |
-      m_split n_split f c_conflict l_split Hwf Hwf' _ Hc_in_f Hconflict Hno_dec |
-      m f c_pure l_pure Hwf Hwf' Hr
-    ]; subst s s'.
-  (* t_fail *)
-  - funelim (next_state (state m f Hwf)).
+  intros s s' Htrans. inversion Htrans as [r m f Hwf s'' Hr Hstep]; subst.
+  destruct Hr as [<-|[<-|[<-|[]]]].
+  (* Fail *)
+  - inversion Hstep as [? ? c_conflict ? Hc_in_f Hconflict Hno_dec]; subst.
+    funelim (next_state (state m f Hwf)).
     + discriminate.
     + injection eqargs as <- <-.
       destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind_conflict.
@@ -395,10 +399,9 @@ Proof.
         -- now exists (state (m_split ++p (¬l_split)) f (backtrack_well_formed m m_split f l_split Hsplit Hwf)).
         -- now exists fail.
       * destruct (proj2 (find_conflict_exists_iff m f)). now exists c_conflict. congruence.
-  (* t_unit *)
-  - destruct Hr as [Hr|[Hr|[Hr|[]]]]; discriminate.
-  (* t_decide *)
-  - funelim (next_state (state m f Hwf)).
+  (* Decide *)
+  - inversion Hstep as [? ? c_decide l_decide ? Hwf' Hx_in_c Hc_in_f Hundef]; subst.
+    funelim (next_state (state m f Hwf)).
     + discriminate.
     + injection eqargs as <- <-.
       destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind_conflict.
@@ -413,10 +416,11 @@ Proof.
             ** destruct (find_decision_exists m f c_decide l_decide Hl_in_c Hc_in_f Hundef). congruence.
             ** apply l_eval_neg_none_iff in Hundef.
                destruct (find_decision_exists m f c_decide (¬l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
-  (* t_backtrack *)
-  - funelim (next_state (state (m_split ++d l_split ++a n_split) f Hwf)).
+  (* Backtrack *)
+  - inversion Hstep as [m_split n_split ? c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec]; subst.
+    funelim (next_state (state (m_split ++d l_split ++a n_split) f Hwf)).
     + discriminate.
-    + injection eqargs as ? <-. rewrite <- H0 in *. clear H0.
+    + injection eqargs as Heq <-. rewrite <- Heq in *. clear Heq.
       destruct (find_conflict m f) as [c_conflict'|] eqn:Hfind_conflict.
       * destruct (inspect (split_last_decision m)) as [[(m_split', l_split')|] Hsplit].
         -- now exists (state (m_split' ++p (¬l_split')) f (backtrack_well_formed m m_split' f l_split' Hsplit Hwf)).
@@ -426,8 +430,6 @@ Proof.
         -- destruct (inspect (find_decision m f)) as [[l_decide'|] Hfind_dec].
           ++ now exists (state (m ++d l_decide') f (decide_well_formed m f l_decide' Hfind_dec Hwf)).
           ++ destruct (proj2 (find_conflict_exists_iff m f)). now exists c_conflict. congruence.
-  (* t_pure *)
-  - destruct Hr as [Hr|[Hr|[Hr|[]]]]; discriminate.
 Qed.
 
 Lemma next_state_strategy: Strategy (next_state).
@@ -437,5 +439,5 @@ Proof.
   - split.
     + intros. unfold Final. unfold not. intros. destruct H0. 
       apply next_state_exists in H0. destruct H0. congruence.
-    + intros. apply t_step. now apply next_state_sound.
+    + intros. apply Relation_Operators.t_step. now apply next_state_sound.
 Qed.

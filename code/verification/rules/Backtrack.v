@@ -11,12 +11,22 @@ From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
 From RocqSAT Require Import WellFormed.
-From RocqSAT Require Import Trans.
+From RocqSAT Require Import State.
+From RocqSAT Require Import Rule.
 From RocqSAT.entailment Require Import Entails.
 From RocqSAT.entailment Require Import Properties.
 From RocqSAT Require Import Measure.
 
-(* Backtrack: Backtrack by flipping the most recent decision literal. *)
+(* Backtrack by flipping the most recent decision literal. *)
+Inductive Backtrack: Rule :=
+| r_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed (m ++d l ++a n) f) (Hwf': WellFormed (m ++p (¬l)) f):
+  CNF.In c f ->
+  c_eval (m ++d l ++a n) c = Some false ->
+  NoDecisions n ->
+  Backtrack (state (m ++d l ++a n) f Hwf) (state (m ++p (¬l)) f Hwf').
+
+Lemma backtrack_keeps_formula: KeepsFormula Backtrack.
+Proof. intros m m' f f' Hwf Hwf' Hstep. now inversion Hstep. Qed.
 
 (* With a conflict after deciding l, no model of the formula and m makes l true. *)
 Lemma backtrack_no_model: forall (m n: PA) (f: CNF) (l: Lit) (m': PA),
@@ -52,41 +62,33 @@ Proof.
     + simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
 Qed.
 
-Lemma backtrack_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
-  state m f Hwf ==>[[Backtrack]] state m' f Hwf' -> Entails f m -> Entails f m'.
+Lemma backtrack_entails: PreservesEntails Backtrack.
 Proof.
-  intros m m' f Hwf Hwf' Htrans Hentails.
-  inversion Htrans as [| | | m_split n_split f' c_conflict l_split ? Hwf'' _ Hc_in_f Hconflict Hno_dec |];
-    try subst m''; try subst f'; try (simpl in *; intuition discriminate).
-  subst m. apply e_propagate.
-  - apply (backtrack_neg m_split n_split f l_split).
+  intros m m' f f' Hwf Hwf' Hstep Hentails.
+  inversion Hstep as [m_split n_split ? c_conflict l_split ? ? Hc_in_f Hconflict Hno_dec]; subst.
+  apply e_propagate.
+  - apply (backtrack_neg m_split n_split f' l_split).
     + assumption.
     + assumption.
     + apply f_eval_false_iff. now exists c_conflict.
-  - apply (entails_prefix f m_split [(l_split, dec)]). now apply entails_prefix in Hentails.
+  - apply (entails_prefix f' m_split [(l_split, dec)]). now apply entails_prefix in Hentails.
 Qed.
 
-Lemma backtrack_state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
-  state m f Hwf ==>[[Backtrack]] s' -> state m f Hwf >>[f] s'.
+Lemma backtrack_state_lt: Decreasing Backtrack.
 Proof.
-  intros.
-  inversion H as [| | | m_split n_split f' c_conflict l_split ? Hwf' _ Hc_in_f Hconflict Hno_dec |];
-    subst s'; try subst m'; try subst f'; try (simpl in *; intuition discriminate).
-  unfold StateLt. right. unfold MR. simp state_measure. rewrite <- H0. apply left_slex.
+  intros m f s' Hwf Hstep.
+  inversion Hstep as [m_split n_split ? c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec]; subst.
+  unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
   apply prefix_app.
   - assumption.
-  - now rewrite H0.
+  - assumption.
 Qed.
 
-Lemma backtrack_model_final: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),
-  Model m f ->
-  (forall (l: Lit), (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> Def m l) ->
-  ~ exists (s: State), state m f Hwf ==>[[Backtrack]] s.
+Lemma backtrack_model_final: ModelFinal Backtrack.
 Proof.
-  intros m' f Hwf Heq Hall_def. unfold not. intros [s Htrans].
-  inversion Htrans as [| | | m_split n_split f' c_conflict l_split ? Hwf' _ Hc_in_f Hconflict Hno_dec |];
-    subst s; try subst m; try subst f'; try (simpl in *; intuition discriminate).
-  rewrite H in *. assert (f_eval m' f = Some false).
+  intros m f Hwf Heq Hall_def [s Hstep].
+  inversion Hstep as [m_split n_split ? c_conflict l_split ? Hwf' Hc_in_f Hconflict Hno_dec]; subst.
+  assert (f_eval (m_split ++d l_split ++a n_split) f = Some false).
   - apply f_eval_false_iff. now exists c_conflict.
   - congruence.
 Qed.

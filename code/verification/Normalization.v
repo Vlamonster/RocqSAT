@@ -10,7 +10,9 @@ From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import State.
 From RocqSAT Require Import Trans.
+From RocqSAT.rules Require Import Decide.
 From RocqSAT Require Import WellFormed.
 From RocqSAT.utils Require Import Dedupe.
 
@@ -452,11 +454,12 @@ Proof.
           ++ now left.
           ++ apply Hbounded in H. destruct H as [c [Hc_in_f Hx_in_c]].
              apply nodup_cons__undef in Hno_dup as Hundef.
-             apply (t_decide _ _ c).
+             apply (t_step Decide).
              ** right. right. now left.
-             ** assumption.
-             ** assumption.
-             ** assumption.
+             ** apply (r_decide m f c l).
+               --- assumption.
+               --- assumption.
+               --- assumption.
       * intros. apply (H0 l0). now right.
     + assert (In (l, prop) (m ++p l)).
       * now left.

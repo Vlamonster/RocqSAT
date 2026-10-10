@@ -8,6 +8,8 @@ From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
 From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import State.
+From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
 From RocqSAT Require Import Solve.
 From RocqSAT Require Import Strategy.
@@ -27,6 +29,18 @@ Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), Clause.I
 Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
 Definition Unsat (f: CNF): Prop := ~ Sat f.
 
+(* No DPLL rule can fire from a total model. *)
+Lemma dpll_model_final: Forall ModelFinal DPLL.
+Proof.
+  repeat apply Forall_cons.
+  - exact fail_model_final.
+  - exact unit_model_final.
+  - exact decide_model_final.
+  - exact backtrack_model_final.
+  - exact pure_model_final.
+  - apply Forall_nil.
+Qed.
+
 Theorem final_exists: forall (f: CNF),
   exists (s: State), state [] f (initial_well_formed f) ==>* s /\ Final DPLL s.
 Proof.
@@ -44,30 +58,33 @@ Proof.
     + exfalso. apply H. apply f_eval_false_iff in Heq as [c [Hc_in_f Hconflict]].
       destruct (proj2 (find_conflict_exists_iff m f)) as [c_conflict Hfind_conflict]. now exists c.
       destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
-      (* t_backtrack *)
+      (* Backtrack *)
       * exists (state (m_split ++p (¬l_split)) f (backtrack_well_formed m m_split f l_split Hsplit Hwf)).
         pose proof Hsplit as Hdecomp.
         apply split_last_decision_some_iff in Hdecomp as [n_split [-> Hno_dec]].
-        apply (t_backtrack m_split n_split f c_conflict l_split Hwf).
+        apply (t_step Backtrack).
         -- right. right. right. now left.
-        -- now apply find_conflict_c_in_f in Hfind_conflict.
-        -- now apply find_conflict_conflicting in Hfind_conflict.
-        -- assumption.
-      (* t_fail *)
-      * exists fail. apply (t_fail m f c_conflict).
+        -- apply (r_backtrack m_split n_split f c_conflict l_split).
+          ++ now apply find_conflict_c_in_f in Hfind_conflict.
+          ++ now apply find_conflict_conflicting in Hfind_conflict.
+          ++ assumption.
+      (* Fail *)
+      * exists fail. apply (t_step Fail).
         -- now left.
-        -- now apply find_conflict_c_in_f in Hfind_conflict.
-        -- now apply find_conflict_conflicting in Hfind_conflict.
-        -- now apply split_last_decision_none_iff.
-  (* t_decide *)
+        -- apply (r_fail m f c_conflict).
+          ++ now apply find_conflict_c_in_f in Hfind_conflict.
+          ++ now apply find_conflict_conflicting in Hfind_conflict.
+          ++ now apply split_last_decision_none_iff.
+  (* Decide *)
   - exfalso. apply H. apply undef_decision_exists in Heq as [l_decide Hfind_dec].
     exists (state (m ++d l_decide) f (decide_well_formed _ _ _ Hfind_dec Hwf)).
     pose proof (find_decision_decomp m f l_decide Hfind_dec) as [c_decide [Hfind_undef_l Hc_in_f]].
-    eapply (t_decide m f c_decide l_decide).
+    apply (t_step Decide).
     + right. right. now left.
-    + left. now apply find_undef_l_in_c in Hfind_undef_l.
-    + assumption.
-    + now apply find_undef_l_undef in Hfind_undef_l.
+    + apply (r_decide m f c_decide l_decide).
+      * left. now apply find_undef_l_in_c in Hfind_undef_l.
+      * assumption.
+      * now apply find_undef_l_undef in Hfind_undef_l.
 Qed.
 
 (* A formula is satisfiable exactly when a final state other than fail is reachable. *)
@@ -87,13 +104,10 @@ Proof.
     destruct Htrans as [Hwf Htrans'].
     exists m', Hwf. split.
     + assumption.
-    + unfold Final. unfold not. intros [s Htrans]. apply trans_union in Htrans as [r [Hr Htrans]].
-      destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]].
-      * apply (fail_model_final m' f Hwf Heq Hall_def). now exists s.
-      * apply (unit_model_final m' f Hwf Heq Hall_def). now exists s.
-      * apply (decide_model_final m' f Hwf Heq Hall_def). now exists s.
-      * apply (backtrack_model_final m' f Hwf Heq Hall_def). now exists s.
-      * apply (pure_model_final m' f Hwf Heq Hall_def). now exists s.
+    + unfold Final. unfold not. intros [s Htrans].
+      pose proof dpll_model_final as Hrs. rewrite Forall_forall in Hrs.
+      apply trans_rule in Htrans as [r [Hr Hstep]].
+      apply (Hrs r Hr m' f Hwf Heq Hall_def). now exists s.
 Qed.
 
 (* A formula is unsatisfiable exactly when fail is reachable. *)
@@ -101,11 +115,13 @@ Theorem final_unsat_refl: forall (f: CNF),
   state [] f (initial_well_formed f) ==>* fail /\ Final DPLL fail <-> Unsat f.
 Proof.
   intros. split.
-  - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [Hwf [Hderivation Htrans]]].
-    inversion Htrans as [? ? c ? _ Hc_in_f Hconflict Hno_dec | | | |]; subst.
-    apply derivation_entails in Hderivation.
-    + unfold Unsat. unfold Sat. unfold Model. unfold not. intros [m' Hsat].
-      destruct (entails_extend f [] m m') as [m'' Hm''].
+  - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [f' [Hwf [Hderivation Htrans]]]].
+    apply trans_rule in Htrans as [r [Hr Hstep]].
+    destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]]; inversion Hstep as [? ? c ? Hc_in_f Hconflict Hno_dec]; subst.
+    pose proof (derivation_equivalent DPLL _ _ _ _ _ _ dpll_equivalence Hderivation) as [Hff' _].
+    apply (derivation_entails DPLL _ _ _ _ _ _ dpll_entails) in Hderivation.
+    + unfold Unsat. unfold Sat. unfold not. intros [m' Hsat]. apply Hff' in Hsat.
+      destruct (entails_extend f' [] m m') as [m'' Hm''].
       * now rewrite app_nil_r.
       * assumption.
       * apply model_union_iff. split.
@@ -115,22 +131,18 @@ Proof.
         unfold Model in Hf. rewrite f_eval_true_iff in Hf. apply Hf in Hc_in_f.
         apply (units_transfer_c m'' _ _ Htrail) in Hconflict. congruence.
     + constructor.
-  - intros.
-    pose proof (final_sat_refl f) as Hsat_refl. 
-    apply not_iff_compat in Hsat_refl as [_ Hsat_refl_complete].
-    apply Hsat_refl_complete in H. clear Hsat_refl_complete.
-    pose proof (final_exists f) as [s [Hderivation Hfinal]].
-    destruct s.
-    + intuition.
-    + exfalso. apply H. apply derivation_same_formula in Hderivation as Heq.
-      subst f0. now exists m, Hwf.
+  - intros Hunsat. destruct (final_exists f) as [[|m f' Hwf] [Hderivation Hfinal]].
+    + now split.
+    + exfalso. apply Hunsat. exists m. apply final_model in Hfinal.
+      apply (derivation_equivalent DPLL _ _ _ _ _ _ dpll_equivalence) in Hderivation as [_ Hf'f].
+      now apply Hf'f.
 Qed.
 
 Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
 Proof.
-  intros. destruct (final_exists f) as [[|m f' Hwf] ].
+  intros. destruct (final_exists f) as [[|m f' Hwf] [Hderivation Hfinal]].
   - right. now apply final_unsat_refl.
-  - left. destruct H. assert (f = f').
-    + now apply (derivation_same_formula [] m f f' (initial_well_formed f) Hwf).
-    + subst f'. apply final_sat_refl. now exists m, Hwf.
+  - left. exists m. apply final_model in Hfinal.
+    apply (derivation_equivalent DPLL _ _ _ _ _ _ dpll_equivalence) in Hderivation as [_ Hf'f].
+    now apply Hf'f.
 Qed.

@@ -1,4 +1,5 @@
 From Stdlib Require Import Basics.
+From Stdlib Require Import List.
 From Stdlib Require Import Relations.
 From Stdlib Require Import Wellfounded.
 
@@ -7,6 +8,8 @@ From Equations Require Import Equations.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import State.
+From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
 From RocqSAT Require Import Measure.
 From RocqSAT.rules Require Import Fail.
@@ -15,16 +18,25 @@ From RocqSAT.rules Require Import Decide.
 From RocqSAT.rules Require Import Backtrack.
 From RocqSAT.rules Require Import Pure.
 
-(* Every transition, for any rule set, decreases the measure. *)
+(* Every transition decreases the measure, as long as every rule does. *)
 Lemma trans__state_lt: forall (rs: list Rule) (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
+  Forall Decreasing rs ->
   state m f Hwf ==>[rs] s' -> state m f Hwf >>[f] s'.
 Proof.
-  intros rs m f s' Hwf Htrans. apply trans_union in Htrans as [r [_ Htrans]]. destruct r.
-  - now apply (fail_state_lt m f s' Hwf).
-  - now apply (unit_state_lt m f s' Hwf).
-  - now apply (decide_state_lt m f s' Hwf).
-  - now apply (backtrack_state_lt m f s' Hwf).
-  - now apply (pure_state_lt m f s' Hwf).
+  intros rs m f s' Hwf Hrs Htrans.
+  apply trans_rule in Htrans as [r [Hr Hstep]].
+  rewrite Forall_forall in Hrs. now apply (Hrs r Hr m f s' Hwf).
+Qed.
+
+Lemma dpll_decreasing: Forall Decreasing DPLL.
+Proof.
+  repeat apply Forall_cons.
+  - exact fail_state_lt.
+  - exact unit_state_lt.
+  - exact decide_state_lt.
+  - exact backtrack_state_lt.
+  - exact pure_state_lt.
+  - apply Forall_nil.
 Qed.
 
 (* Thanks to Gaetan Gilbert *)
@@ -33,12 +45,12 @@ Lemma clos_trans_flip: forall {A: Type} (R: relation A) (a b: A),
 Proof.
   split.
   - intros. induction H.
-    + now apply t_step.
+    + now apply Relation_Operators.t_step.
     + eapply t_trans.
       * apply IHclos_trans2.
       * apply IHclos_trans1.
   - intros. induction H.
-    + now apply t_step.
+    + now apply Relation_Operators.t_step.
     + eapply t_trans.
       * apply IHclos_trans2.
       * apply IHclos_trans1.
@@ -89,9 +101,13 @@ Equations cnf (s: State): option CNF :=
 cnf fail          := None;
 cnf (state _ f _) := Some f.
 
+(* From here on, rs is a set of rules that all keep the formula and decrease the measure. *)
+Section Termination.
+  Context (rs: list Rule) (Hkeep: Forall KeepsFormula rs) (Hrs: Forall Decreasing rs).
+
 (* A transition from a state with a formula keeps the formula (or ends in fail) and decreases the measure. *)
 Lemma to_statelt s s' :
-  Trans DPLL s s' ->
+  Trans rs s s' ->
   match cnf s with
   | None => False
   | Some f =>
@@ -103,12 +119,12 @@ Proof.
   - split.
     + destruct s'.
       * now left.
-      * right. apply trans_same_formula in H. now subst.
-    + now apply (trans__state_lt DPLL).
+      * right. apply (trans_same_formula rs _ _ _ _ _ _ Hkeep) in H. now subst.
+    + now apply (trans__state_lt rs).
 Qed.
 
 (* Variant of to_statelt for a target state with formula f. *)
-Lemma to_statelt0 s s' f : cnf s' = Some f -> Trans DPLL s s' -> cnf s = Some f /\ StateLt f s' s.
+Lemma to_statelt0 s s' f : cnf s' = Some f -> Trans rs s s' -> cnf s = Some f /\ StateLt f s' s.
 Proof.
   intros H H'.
   apply to_statelt in H'.
@@ -120,14 +136,14 @@ Proof.
 Qed.
 
 (* Variant of to_statelt for a source state with formula f. *)
-Lemma to_statelt0' s s' f : cnf s = Some f -> Trans DPLL s s' -> (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s.
+Lemma to_statelt0' s s' f : cnf s = Some f -> Trans rs s s' -> (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s.
 Proof.
   intros H H'.
   apply to_statelt in H'. rewrite H in H'. assumption.
 Qed.
 
 (* Derivations keep the formula: if a derivation ends in a state with formula f, it started there. *)
-Lemma clos_nf s s' f : cnf s' = Some f -> clos_refl_trans _ (Trans DPLL) s s' -> cnf s = Some f.
+Lemma clos_nf s s' f : cnf s' = Some f -> clos_refl_trans _ (Trans rs) s s' -> cnf s = Some f.
 Proof.
   intros Hf H.
   induction H as [s s' H| s | y v x _ IHyv _ IHzy].
@@ -138,7 +154,7 @@ Proof.
 Qed.
 
 (* Nothing is reachable from fail except fail itself. *)
-Lemma clos_nf0 s s' : cnf s = None -> clos_refl_trans _ (Trans DPLL) s s' -> s = s'.
+Lemma clos_nf0 s s' : cnf s = None -> clos_refl_trans _ (Trans rs) s s' -> s = s'.
 Proof.
   intros Hf H.
   induction H as [s s' H| s | y v x Hyv IHyv Hzy IHzy].
@@ -151,8 +167,8 @@ Qed.
 Lemma statelt_incl x f :
   cnf x = Some f ->
   forall z y,
-  clos_refl_trans _ (Trans DPLL) x y ->
-  Trans DPLL y z ->
+  clos_refl_trans _ (Trans rs) x y ->
+  Trans rs y z ->
   StateLt f z y.
 Proof.
   intros Hx z; induction 1 as [y x Hyx| x | y v x Hyv Hzv Hvx Hzx].
@@ -178,7 +194,7 @@ Proof.
 Qed.
 
 (* No infinite sequence of transitions starts from a state with a formula. *)
-Lemma trans_acc : forall s f, cnf s = Some f -> Acc (flip (Trans DPLL)) s.
+Lemma trans_acc : forall s f, cnf s = Some f -> Acc (flip (Trans rs)) s.
 Proof.
   intros s f Hs. apply Acc_incl' with (R2:=StateLt f).
   2:apply state_lt_well_founded.
@@ -188,7 +204,7 @@ Proof.
 Qed.
 
 (* There are no infinite sequences of transitions (the converse relation is well-founded). *)
-Lemma trans_well_founded: well_founded (flip (Trans DPLL)).
+Lemma trans_well_founded: well_founded (flip (Trans rs)).
 Proof.
   intros s. destruct (cnf s) eqn:Hs.
   - now apply trans_acc in Hs.
@@ -196,9 +212,10 @@ Proof.
 Qed.
 
 (* Likewise for strict derivations; Solve.v recurses on this relation. *)
-Lemma strict_derivation_well_founded: well_founded (flip (DerivationStrict DPLL)).
+Lemma strict_derivation_well_founded: well_founded (flip (DerivationStrict rs)).
 Proof. 
-  apply (wf_incl _ _ (clos_trans _ (flip (Trans DPLL)))).
+  apply (wf_incl _ _ (clos_trans _ (flip (Trans rs)))).
   - unfold inclusion. intros. now apply clos_trans_flip.
   - apply wf_clos_trans. apply trans_well_founded.
 Qed.
+End Termination.

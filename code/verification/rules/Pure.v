@@ -1,6 +1,4 @@
-From Stdlib Require Import List.
 From Stdlib Require Import Relations.
-Import ListNotations.
 
 From Equations Require Import Equations.
 
@@ -11,18 +9,27 @@ From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
 From RocqSAT Require Import WellFormed.
-From RocqSAT Require Import Trans.
+From RocqSAT Require Import State.
+From RocqSAT Require Import Rule.
 From RocqSAT.entailment Require Import Entails.
 From RocqSAT Require Import Measure.
 
-(* Pure: Adds a literal that only occurs positively. *)
+(* Adds a literal that only occurs positively. *)
+Inductive Pure: Rule :=
+| r_pure (m: PA) (f: CNF) (c: Clause) (l: Lit) (Hwf: WellFormed m f) (Hwf': WellFormed (m ++p l) f):
+  Clause.In l c ->
+  CNF.In c f ->
+  (forall (c': Clause), CNF.In c' f -> ~ Clause.In (¬l) c') ->
+  Undef m l ->
+  Pure (state m f Hwf) (state (m ++p l) f Hwf').
 
-Lemma pure_entails: forall (m m': PA) (f: CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f),
-  state m f Hwf ==>[[Pure]] state m' f Hwf' -> Entails f m -> Entails f m'.
+Lemma pure_keeps_formula: KeepsFormula Pure.
+Proof. intros m m' f f' Hwf Hwf' Hstep. now inversion Hstep. Qed.
+
+Lemma pure_entails: PreservesEntails Pure.
 Proof.
-  intros m m' f Hwf Hwf' Htrans Hentails.
-  inversion Htrans as [| | | | m'' f' c_pure l_pure ? Hwf'' _ Hl_in_c Hc_in_f Hpure Hundef];
-    try subst m''; try subst f'; try (simpl in *; intuition discriminate).
+  intros m m' f f' Hwf Hwf' Hstep Hentails.
+  inversion Hstep as [? ? c_pure l_pure ? ? Hl_in_c Hc_in_f Hpure Hundef]; subst.
   apply e_pure.
   - intros m'' Hm''. apply model_union_iff in Hm'' as [Hf Hm]. apply model_union_iff. split.
     + apply f_eval_true_iff. intros c Hc. apply c_eval_true_iff.
@@ -46,25 +53,19 @@ Proof.
   - assumption.
 Qed.
 
-Lemma pure_state_lt: forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
-  state m f Hwf ==>[[Pure]] s' -> state m f Hwf >>[f] s'.
+Lemma pure_state_lt: Decreasing Pure.
 Proof.
-  intros.
-  inversion H as [| | | | m' f' c_pure l_pure ? Hwf' _ Hl_in_c Hc_in_f Hpure Hundef];
-    subst s'; try subst m'; try subst f'; try (simpl in *; intuition discriminate).
+  intros m f s' Hwf Hstep.
+  inversion Hstep as [? ? c_pure l_pure ? Hwf' Hl_in_c Hc_in_f Hpure Hundef]; subst.
   unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
   now apply prefix_prop.
 Qed.
 
-Lemma pure_model_final: forall (m: PA) (f: CNF) (Hwf: WellFormed m f),
-  Model m f ->
-  (forall (l: Lit), (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> Def m l) ->
-  ~ exists (s: State), state m f Hwf ==>[[Pure]] s.
+Lemma pure_model_final: ModelFinal Pure.
 Proof.
-  intros m' f Hwf Heq Hall_def. unfold not. intros [s Htrans].
-  inversion Htrans as [| | | | m f' c_pure l_pure ? Hwf' _ Hl_in_c Hc_in_f Hpure Hundef];
-    subst s; try subst m; try subst f'; try (simpl in *; intuition discriminate).
-  assert (Def m' l_pure).
+  intros m f Hwf Heq Hall_def [s Hstep].
+  inversion Hstep as [? ? c_pure l_pure ? Hwf' Hl_in_c Hc_in_f Hpure Hundef]; subst.
+  assert (Def m l_pure).
   - apply Hall_def. now exists c_pure.
   - now apply def_undef in H.
 Qed.

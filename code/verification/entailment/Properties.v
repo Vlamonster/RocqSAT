@@ -44,3 +44,19 @@ Proof.
           ++ injection Heq as <- <-. simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
           ++ now apply (Hrest l' a').
 Qed.
+
+(* Entailment only depends on the models of the formula. *)
+Lemma entails_equivalent: forall (f f': CNF) (m: PA), Equivalent f f' -> Entails f m -> Entails f' m.
+Proof.
+  intros f f' m Heqv Hentails.
+  induction Hentails as [| m l Hentails IH | m l Himpl Hentails IH | m l Hpure Hentails IH].
+  - apply e_nil.
+  - now apply e_decide.
+  - apply e_propagate.
+    + intros m' Hm'. apply Himpl. now rewrite (model_union_equivalent m' f f' _ Heqv).
+    + assumption.
+  - apply e_pure.
+    + intros m' Hm'. rewrite <- (model_union_equivalent _ f f' _ Heqv).
+      apply Hpure. now rewrite (model_union_equivalent m' f f' _ Heqv).
+    + assumption.
+Qed.

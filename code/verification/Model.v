@@ -86,3 +86,37 @@ Proof.
   - assumption.
   - now apply (units_transfer_c m m').
 Qed.
+
+(* Semantic consequence: every model of f is a model of g. *)
+Definition Consequence (f g: CNF): Prop := forall (m: PA), Model m f -> Model m g.
+
+Notation "f ⊨ g" := (Consequence f g) (at level 70).
+
+(* Equivalence: f and g have the same models. *)
+Definition Equivalent (f g: CNF): Prop := f ⊨ g /\ g ⊨ f.
+
+Lemma equivalent_refl: forall (f: CNF), Equivalent f f.
+Proof. intros f. split; now intros m. Qed.
+
+Lemma equivalent_sym: forall (f g: CNF), Equivalent f g -> Equivalent g f.
+Proof. intros f g [Hfg Hgf]. now split. Qed.
+
+Lemma equivalent_trans: forall (f g h: CNF), Equivalent f g -> Equivalent g h -> Equivalent f h.
+Proof.
+  intros f g h [Hfg Hgf] [Hgh Hhg]. split.
+  - intros m Hm. apply Hgh. now apply Hfg.
+  - intros m Hm. apply Hgf. now apply Hhg.
+Qed.
+
+(* Replacing part of a union by an equivalent formula keeps its models. *)
+Lemma model_union_equivalent: forall (m: PA) (f f' g: CNF),
+  Equivalent f f' -> Model m (CNF.union f g) <-> Model m (CNF.union f' g).
+Proof.
+  intros m f f' g [Hff' Hf'f]. rewrite !model_union_iff. split.
+  - intros [Hf Hg]. split.
+    + now apply Hff'.
+    + assumption.
+  - intros [Hf' Hg]. split.
+    + now apply Hf'f.
+    + assumption.
+Qed.
