@@ -17,7 +17,7 @@ Module CNF.
     Definition CNF := ClauseSet.t.
 
     Definition l_in_f (f: CNF) (l: Lit): bool :=
-    ClauseSet.exists_ (fun (c: Clause) => l_in_c c l) f.
+    ClauseSet.exists_ (fun (c: Clause) => Clause.mem l c || Clause.mem (¬l) c) f.
   End Definitions.
 
   Include Definitions.
@@ -26,32 +26,21 @@ Module CNF.
     Lemma l_in_f_true_iff: forall (f: CNF) (l: Lit),
       l_in_f f l = true <-> exists (c: Clause), (Clause.In l c \/ Clause.In (¬l) c) /\ ClauseSet.In c f.
     Proof.
-      intros. split.
-      - intros. apply ClauseSet.exists_spec in H as [c [Hc_in_f Hl_in_c]].
-        + apply Clause.l_in_c_true_iff in Hl_in_c. now exists c.
-        + intros c1 c2 Heq. unfold l_in_c. 
-          rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_exists _ c1 c2 Heq).
-      - intros. destruct H as [c [Hx_in_c Hc_in_f]]. unfold l_in_f.
-        apply ClauseSet.exists_spec.
-        + intros c1 c2 Heq. unfold l_in_c.
-          rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_exists _ c1 c2 Heq).
-        + exists c. split.
+      intros. unfold l_in_f. rewrite ClauseSet.exists_spec.
+      - split.
+        + intros [c [Hc_in_f Hmem]]. exists c. split.
+          * apply orb_true_iff in Hmem as [Hl_mem|Hnegl_mem].
+            -- left. now apply Clause.mem_spec.
+            -- right. now apply Clause.mem_spec.
           * assumption.
-          * unfold l_in_c. destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
-            -- assert (Clause.exists_ (eqb l) c = true) as Hexists.
-              ++ apply Clause.exists_spec.
-                ** now intros ? ? ->.
-                ** exists l. split.
-                  --- assumption.
-                  --- apply Lit.eqb_refl.
-              ++ now rewrite Hexists.
-            -- assert (Clause.exists_ (eqb (¬l)) c = true) as Hexists.
-              ++ apply Clause.exists_spec.
-                ** now intros ? ? ->.
-                ** exists (¬l). split.
-                  --- assumption.
-                  --- apply Lit.eqb_refl.
-              ++ rewrite Hexists. apply orb_true_r.
+        + intros [c [[Hl_in_c|Hnegl_in_c] Hc_in_f]].
+          * exists c. split.
+            -- assumption.
+            -- apply orb_true_iff. left. now apply Clause.mem_spec.
+          * exists c. split.
+            -- assumption.
+            -- apply orb_true_iff. right. now apply Clause.mem_spec.
+      - intros c1 c2 Heq. now rewrite Heq.
     Qed.
 
     Lemma l_in_f_false_iff: forall (f: CNF) (l: Lit),
@@ -59,9 +48,15 @@ Module CNF.
     Proof.
       intros. pose proof (l_in_f_true_iff f l). apply not_iff_compat in H. 
       rewrite not_true_iff_false in H. split.
-      - intros. apply H in H0. destruct (l_in_c c l) eqn:Hl_in_c.
-        + apply Clause.l_in_c_true_iff in Hl_in_c. right. unfold not. intros. apply H0. now exists c.
-        + apply Clause.l_in_c_false_iff in Hl_in_c. intuition.
+      - intros. apply H in H0. destruct (Clause.mem l c || Clause.mem (¬l) c) eqn:Hmem.
+        + right. unfold not. intros. apply H0. exists c. split.
+          * apply orb_true_iff in Hmem as [Hl_mem|Hnegl_mem].
+            -- left. now apply Clause.mem_spec.
+            -- right. now apply Clause.mem_spec.
+          * assumption.
+        + left. apply orb_false_iff in Hmem as [Hl_mem Hnegl_mem]. split.
+          * unfold not. intros Hl_in_c. apply Clause.mem_spec in Hl_in_c. congruence.
+          * unfold not. intros Hnegl_in_c. apply Clause.mem_spec in Hnegl_in_c. congruence.
       - intros. apply H. unfold not. intros. destruct H1. specialize (H0 x). intuition.
     Qed.
   End Lemmas.

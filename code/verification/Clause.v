@@ -1,4 +1,3 @@
-From Stdlib Require Import Bool.
 From Stdlib Require Import MSets.MSetAVL.
 From Stdlib Require Import MSets.MSetEqProperties.
 
@@ -14,9 +13,6 @@ Module Clause.
   Module Definitions.
     (* A clause is a disjunction of literals. *)
     Definition Clause: Type := t.
-
-    Definition l_in_c (c: Clause) (l: Lit): bool :=
-    exists_ (eqb l) c || exists_ (eqb (¬l)) c.
   End Definitions.
 
   Include Definitions.
@@ -60,41 +56,6 @@ Module Clause.
           * now intros ? ? ->.
         + now intros ? ? ->.
       - reflexivity.
-    Qed.
-
-    Lemma l_in_c_true_iff: forall (c: Clause) (l: Lit),
-      l_in_c c l = true <-> In l c \/ In (¬l) c.
-    Proof.
-      intros c l. split.
-      - intros Hl_in_c. unfold l_in_c in Hl_in_c. apply orb_true_iff in Hl_in_c as [Hl_in_c|Hnegl_in_c].
-        + left. apply exists_spec in Hl_in_c as [l' [Hin Heq]].
-          * rewrite Lit.eqb_eq in Heq. now subst l'.
-          * now intros ? ? ->.
-        + right. apply exists_spec in Hnegl_in_c as [l' [Hin Heq]]. 
-          * rewrite Lit.eqb_eq in Heq. now subst l'.
-          * now intros ? ? ->.
-      - intros [Hl_in_c|Hnegl_in_c].
-        + unfold l_in_c. assert (exists_ (eqb l) c = true) as Hexists.
-          * apply exists_spec.
-            -- now intros ? ? ->.
-            -- exists l. split.
-              ++ assumption.
-              ++ apply Lit.eqb_refl.
-          * now rewrite Hexists.
-        + unfold l_in_c. assert (exists_ (eqb (¬l)) c = true).
-          * apply exists_spec.
-            -- now intros ? ? ->.
-            -- exists (¬l). split.
-              ++ assumption.
-              ++ apply Lit.eqb_refl.
-          * rewrite H. apply orb_true_r. 
-    Qed.
-
-    Lemma l_in_c_false_iff: forall (c: Clause) (l: Lit),
-      l_in_c c l = false <-> ~ In l c /\ ~ In (¬l) c.
-    Proof.
-      intros. pose proof (l_in_c_true_iff c l). apply not_iff_compat in H. 
-      rewrite not_true_iff_false in H. intuition.
     Qed.
   End Lemmas.
 

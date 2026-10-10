@@ -405,7 +405,7 @@ Lemma extract_neqb_iff: forall (l l': Lit),
   (l =? l') = false ->
   (l =? ¬l') = false ->
   (extract l =? extract l') = false.
-Proof. intros. destruct l, l'; simp extract neg in *; cbn in *; assumption. Qed.
+Proof. intros. destruct l, l'; simp extract neg in *; now simpl in *. Qed.
 
 Lemma dedupe_l_aux: forall (m: PA) (l l': Lit) (a: Ann),
   (l =? l') = false ->
