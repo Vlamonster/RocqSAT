@@ -5,8 +5,8 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import State.
-From RocqSAT Require Import Rule.
 From RocqSAT Require Import Measure.
+From RocqSAT Require Import Rule.
 
 (* Fail if all literals are assigned and there is a conflict. *)
 Inductive FailStep: relation State :=

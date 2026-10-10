@@ -8,11 +8,11 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
-From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
-From RocqSAT Require Import Rule.
-From RocqSAT.entailment Require Import Entails.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Entails.
 From RocqSAT Require Import Measure.
+From RocqSAT Require Import Rule.
 
 (* Adds a literal that only occurs positively. *)
 Inductive PureStep: relation State :=
@@ -30,13 +30,10 @@ Lemma pure_well_formed: PreservesWellFormed PureStep.
 Proof.
   intros m m' f f' Hstep Hwf.
   inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
-  unfold WellFormed. split.
-  - apply nodup_cons.
-    + apply Hwf.
-    + assumption.
-  - apply bounded_cons.
-    + apply Hwf.
-    + apply CNF.l_in_f_true_iff. exists c_pure. intuition.
+  apply well_formed_cons.
+  - assumption.
+  - assumption.
+  - apply CNF.l_in_f_true_iff. exists c_pure. intuition.
 Qed.
 
 Lemma pure_entails: PreservesEntails PureStep.
@@ -70,7 +67,7 @@ Lemma pure_state_lt: Decreasing PureStep.
 Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
-  pose proof (pure_well_formed _ _ _ _ Hstep Hwf) as Hwf'.
+  apply pure_well_formed in Hstep. apply Hstep in Hwf.
   unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
   now apply prefix_prop.
 Qed.

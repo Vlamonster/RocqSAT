@@ -18,16 +18,16 @@ qualified by that directory, e.g. `From RocqSAT.rules Require Import Unit.`
 
 ## Main results
 
-| Theorem                          | File                        | Statement (informally)                                                                      |
-|----------------------------------|-----------------------------|---------------------------------------------------------------------------------------------|
-| `final_exists`                   | `Satisfiability.v`          | From the initial state, some final state is reachable.                                      |
-| `final_model`                    | `Satisfiability.v`          | A final state other than `fail` is a model of the formula.                                  |
-| `final_sat_refl`                 | `Satisfiability.v`          | A formula is satisfiable iff a final non-`fail` state is reachable.                         |
-| `final_unsat_refl`               | `Satisfiability.v`          | A formula is unsatisfiable iff `fail` is reachable.                                         |
-| `sat_decidable`                  | `Satisfiability.v`          | Every formula is satisfiable or unsatisfiable.                                              |
-| `strict_derivation_well_founded` | `Termination.v`             | If every rule keeps the formula, there are no infinite derivations from well-formed states. |
-| `derivation_entails`             | `entailment/Preservation.v` | Every derivation preserves entailment.                                                      |
-| `next_state_strategy`            | `Strategy.v`                | The concrete solver step is a valid strategy.                                               |
+| Theorem                          | File               | Statement (informally)                                                                      |
+|----------------------------------|--------------------|---------------------------------------------------------------------------------------------|
+| `final_exists`                   | `Satisfiability.v` | From the initial state, some final state is reachable.                                      |
+| `final_model`                    | `Satisfiability.v` | A final state other than `fail` is a model of the formula.                                  |
+| `final_sat_refl`                 | `Satisfiability.v` | A formula is satisfiable iff a final non-`fail` state is reachable.                         |
+| `final_unsat_refl`               | `Satisfiability.v` | A formula is unsatisfiable iff `fail` is reachable.                                         |
+| `sat_decidable`                  | `Satisfiability.v` | Every formula is satisfiable or unsatisfiable.                                              |
+| `strict_derivation_well_founded` | `Termination.v`    | If every rule keeps the formula, there are no infinite derivations from well-formed states. |
+| `derivation_entails`             | `Trans.v`          | Every derivation preserves entailment.                                                      |
+| `next_state_strategy`            | `Strategy.v`       | The concrete solver step is a valid strategy.                                               |
 
 ## Module dependencies
 
@@ -56,7 +56,7 @@ are grouped into one node.
                  |                 |
                Model           WellFormed
                  |                 |
-       entailment/Entails       Measure
+              Entails          Measure
                  |                 |
                  +--------+--------+
                           |
@@ -65,21 +65,21 @@ are grouped into one node.
           rules/{Fail,Unit,Decide,Backtrack,Pure}
                           |
                         Trans
-       +------------------+-----------------+------------------+
-       |                  |                 |                  |
-entailment/Preservation  Termination       Strategy       Normalization (2)
-       |                  |                 |                  |
-       |                  +--------+--------+                  |
-       |                           |                           |
-       |                        Solve (1)                      |
-       |                           |                           |
-       +---------------------------+---------------------------+
-                                   |
-                            Satisfiability
+              +-----------+-----------+
+              |           |           |
+         Termination   Strategy   Normalization (2)
+              |           |           |
+              +-----+-----+           |
+                    |                 |
+                Solve (1)             |
+                    |                 |
+                    +--------+--------+
+                             |
+                      Satisfiability
 ```
 
-(1) `Solve` also imports the helper `utils/Inspect`. (2) `Normalization` also imports
-the helper `utils/Dedupe`.
+(1) `Solve` also imports the helper `utils/Inspect`, and `Trans` the helper
+`utils/Invariant`. (2) `Normalization` also imports the helper `utils/Dedupe`.
 
 ## Adding a rule
 
@@ -127,11 +127,12 @@ Files are listed in dependency order: each file only depends on files above it.
 
 General-purpose helpers in `utils/`, independent of the rest of the development.
 
-| File              | Contents                                                                                       |
-|-------------------|------------------------------------------------------------------------------------------------|
-| `utils/EqB.v`     | The `EqB` typeclass for computational (Boolean) equality, with the notation `x =? y`.          |
-| `utils/Inspect.v` | `inspect`, a helper for keeping an equation when matching on a value in Equations definitions. |
-| `utils/Dedupe.v`  | `dedupe_by`, which removes duplicates from a list with respect to a Boolean relation.          |
+| File                | Contents                                                                                                                        |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `utils/EqB.v`       | The `EqB` typeclass for computational (Boolean) equality, with the notation `x =? y`.                                           |
+| `utils/Inspect.v`   | `inspect`, a helper for keeping an equation when matching on a value in Equations definitions.                                  |
+| `utils/Dedupe.v`    | `dedupe_by`, which removes duplicates from a list with respect to a Boolean relation.                                           |
+| `utils/Invariant.v` | `clos_refl_trans_invariant`: a property preserved by every step of a relation is preserved by its reflexive-transitive closure. |
 
 ### Literals, clauses and formulas
 
@@ -158,9 +159,9 @@ The entailment invariant says that every propagated literal on the trail follows
 from the formula together with the literals before it, except pure literals, which
 only preserve models.
 
-| File                   | Contents                                                                                                                                                                                                                                                                                                                                                                                                         |
-|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `entailment/Entails.v` | The invariant `Entails f m`, built one trail entry at a time (`e_nil`, `e_decide`, `e_propagate`, `e_pure`); `entails_prefix` (the older part of an entailed trail is entailed) and `entails_extend` (a model of the formula and an entailed trail extends past propagated literals), used for soundness of `Fail` and `Backtrack`; `entails_equivalent` (entailment only depends on the models of the formula). |
+| File        | Contents                                                                                                                                                                                                                                                                                                                                                                                                         |
+|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Entails.v` | The invariant `Entails f m`, built one trail entry at a time (`e_nil`, `e_decide`, `e_propagate`, `e_pure`); `entails_prefix` (the older part of an entailed trail is entailed) and `entails_extend` (a model of the formula and an entailed trail extends past propagated literals), used for soundness of `Fail` and `Backtrack`; `entails_equivalent` (entailment only depends on the models of the formula). |
 
 ### Termination measure
 
@@ -194,11 +195,10 @@ proves its properties, and bundles them as `<Rule>: Rule`:
 
 ### The transition system
 
-| File                        | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Trans.v`                   | `Trans rs`, the transition relation of a list of rules (`t_step`: a step of one of the rules from a non-`fail` state), with notations `s ==>[rs] s'`, `==>*[rs]`, `==>+[rs]`, and `==>`/`==>*`/`==>+` for the full system `DPLL` (of the bundled rules `Fail`, `Unit`, …); the smaller rule set `Basic`; `trans_rule`, `trans_union` and `trans_incl`; final states `Final rs` and `final_dpll_basic`; `trans_well_formed`/`derivation_well_formed`; `trans_same_formula`/`derivation_same_formula` and `dpll_keeps_formula`; `trans_equivalent`/`derivation_equivalent`; `fail_predecessor`. |
-| `entailment/Preservation.v` | `trans_entails` and `derivation_entails`: every transition and derivation preserves entailment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `Termination.v`             | `trans__state_lt`: every transition from a well-formed state decreases the measure; `WellFormedTrans rs`, the transitions from well-formed states, and `strict_derivation_well_formed_trans`, which turns a strict derivation from a well-formed state into one of these; from that, if every rule keeps the formula, `trans_well_founded` and `strict_derivation_well_founded`.                                                                                                                                                                                                              |
+| File            | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Trans.v`       | `Trans rs`, the transition relation of a list of rules (`t_step`: a step of one of the rules from a non-`fail` state), with notations `s ==>[rs] s'`, `==>*[rs]`, `==>+[rs]`, and `==>`/`==>*`/`==>+` for the full system `DPLL` (of the bundled rules `Fail`, `Unit`, …); the smaller rule set `Basic`; `trans_rule`, `trans_union` and `trans_incl`; `derivation_invariant` (a property of assignments preserved by every transition between states is preserved by derivations, used for the `derivation_*` lemmas); final states `Final rs` and `final_dpll_basic`; `trans_well_formed`/`derivation_well_formed`; `trans_same_formula`/`derivation_same_formula` and `dpll_keeps_formula`; `trans_equivalent`/`derivation_equivalent`; `trans_entails`/`derivation_entails` (every transition and derivation preserves entailment); `fail_predecessor`. |
+| `Termination.v` | `trans__state_lt`: every transition from a well-formed state decreases the measure; `WellFormedTrans rs`, the transitions from well-formed states, and `strict_derivation_well_formed_trans`, which turns a strict derivation from a well-formed state into one of these; from that, if every rule keeps the formula, `trans_well_founded` and `strict_derivation_well_founded`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ### Normalization
 

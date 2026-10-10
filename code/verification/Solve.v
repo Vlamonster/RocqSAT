@@ -29,7 +29,9 @@ Section Solve.
   Next Obligation.
     clear solve_aux. apply strict_derivation_well_formed_trans.
     - now apply Hstrat in ns.
-    - apply (derivation_well_formed DPLL (state [] f) s H). apply initial_well_formed.
+    - destruct s as [|m f'].
+      + easy.
+      + apply (derivation_well_formed DPLL [] m f f' H). apply initial_well_formed.
   Qed.
 
   (* Run the strategy from the initial state of f. *)

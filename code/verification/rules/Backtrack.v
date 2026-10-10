@@ -10,11 +10,11 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
-From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
-From RocqSAT Require Import Rule.
-From RocqSAT.entailment Require Import Entails.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Entails.
 From RocqSAT Require Import Measure.
+From RocqSAT Require Import Rule.
 
 (* Backtrack by flipping the most recent decision literal. *)
 Inductive BacktrackStep: relation State :=
@@ -105,10 +105,9 @@ Lemma backtrack_state_lt: Decreasing BacktrackStep.
 Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
-  pose proof (backtrack_well_formed _ _ _ _ Hstep Hwf) as Hwf'.
   unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
-  apply prefix_app.
-  - assumption.
+  apply backtrack_well_formed in Hstep. apply prefix_app.
+  - now apply Hstep.
   - assumption.
 Qed.
 

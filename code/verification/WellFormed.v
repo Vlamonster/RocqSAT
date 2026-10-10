@@ -110,6 +110,15 @@ Proof.
     + now apply Hbounded in H.
 Qed.
 
+(* Adding an unassigned literal of the formula keeps an assignment well-formed. *)
+Lemma well_formed_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
+  WellFormed (state m f) -> Undef m l -> l_in_f f l = true -> WellFormed (state ((l, a) :: m) f).
+Proof.
+  intros m f l a [Hnodup Hbounded] Hundef Hl_in_f. split.
+  - now apply nodup_cons.
+  - now apply bounded_cons.
+Qed.
+
 Lemma initial_well_formed: forall (f: CNF), WellFormed (state [] f).
 Proof.
   unfold WellFormed, NoDuplicates, Bounded. split.

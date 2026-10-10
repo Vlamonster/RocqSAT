@@ -8,13 +8,12 @@ From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
 From RocqSAT Require Import State.
+From RocqSAT Require Import Entails.
 From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
-From RocqSAT Require Import Solve.
 From RocqSAT Require Import Strategy.
 From RocqSAT Require Import Normalization.
-From RocqSAT.entailment Require Import Entails.
-From RocqSAT.entailment Require Import Preservation.
+From RocqSAT Require Import Solve.
 From RocqSAT.rules Require Import Fail.
 From RocqSAT.rules Require Import Decide.
 From RocqSAT.rules Require Import Backtrack.
@@ -99,8 +98,8 @@ Proof.
   - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [f' [Hderivation Htrans]]].
     apply trans_rule in Htrans as [r [Hr Hstep]].
     destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]]; inversion Hstep as [? ? c Hc_in_f Hconflict Hno_dec]; subst.
-    pose proof (derivation_equivalent DPLL _ _ _ _ Hderivation) as [Hff' _].
-    apply (derivation_entails DPLL _ _ _ _) in Hderivation.
+    pose proof Hderivation as Hequivalent. apply derivation_equivalent in Hequivalent as [Hff' _].
+    apply derivation_entails in Hderivation.
     + unfold Unsat. unfold Sat. unfold not. intros [m' Hsat]. apply Hff' in Hsat.
       destruct (entails_extend f' [] m m') as [m'' Hm''].
       * now rewrite app_nil_r.
@@ -115,7 +114,7 @@ Proof.
   - intros Hunsat. destruct (final_exists f) as [[|m f'] [Hderivation Hfinal]].
     + now split.
     + exfalso. apply Hunsat. exists m. apply final_model in Hfinal.
-      apply (derivation_equivalent DPLL _ _ _ _) in Hderivation as [_ Hf'f].
+      apply derivation_equivalent in Hderivation as [_ Hf'f].
       now apply Hf'f.
 Qed.
 
@@ -124,6 +123,6 @@ Proof.
   intros. destruct (final_exists f) as [[|m f'] [Hderivation Hfinal]].
   - right. now apply final_unsat_refl.
   - left. exists m. apply final_model in Hfinal.
-    apply (derivation_equivalent DPLL _ _ _ _) in Hderivation as [_ Hf'f].
+    apply derivation_equivalent in Hderivation as [_ Hf'f].
     now apply Hf'f.
 Qed.

@@ -18,7 +18,7 @@ Lemma trans__state_lt: forall (rs: list Rule) (m: PA) (f: CNF) (s': State),
   WellFormed (state m f) -> state m f ==>[rs] s' -> state m f >>[f] s'.
 Proof.
   intros rs m f s' Hwf Htrans.
-  apply trans_rule in Htrans as [r [_ Hstep]]. now apply (rule_decreasing r m f s' Hwf).
+  apply trans_rule in Htrans as [r [_ Hstep]]. now apply rule_decreasing in Hstep.
 Qed.
 
 (* Thanks to Gaetan Gilbert *)

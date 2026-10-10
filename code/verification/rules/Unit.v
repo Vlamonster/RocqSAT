@@ -8,11 +8,11 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
-From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
-From RocqSAT Require Import Rule.
-From RocqSAT.entailment Require Import Entails.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Entails.
 From RocqSAT Require Import Measure.
+From RocqSAT Require Import Rule.
 
 (* If a clause is false except for one unassigned literal, assign it to satisfy the clause. *)
 Inductive UnitStep: relation State :=
@@ -30,13 +30,10 @@ Lemma unit_well_formed: PreservesWellFormed UnitStep.
 Proof.
   intros m m' f f' Hstep Hwf.
   inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
-  unfold WellFormed. split.
-  - apply nodup_cons.
-    + apply Hwf.
-    + assumption.
-  - apply bounded_cons.
-    + apply Hwf.
-    + apply CNF.l_in_f_true_iff. exists c_unit. intuition.
+  apply well_formed_cons.
+  - assumption.
+  - assumption.
+  - apply CNF.l_in_f_true_iff. exists c_unit. intuition.
 Qed.
 
 Lemma unit_entails: PreservesEntails UnitStep.
@@ -59,7 +56,7 @@ Lemma unit_state_lt: Decreasing UnitStep.
 Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
-  pose proof (unit_well_formed _ _ _ _ Hstep Hwf) as Hwf'.
+  apply unit_well_formed in Hstep. apply Hstep in Hwf.
   unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
   now apply prefix_prop.
 Qed.

@@ -6,9 +6,9 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
-From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
-From RocqSAT.entailment Require Import Entails.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Entails.
 From RocqSAT Require Import Measure.
 
 (* The rule never changes the formula. *)

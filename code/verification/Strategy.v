@@ -329,15 +329,8 @@ Qed.
 Lemma next_state_none: forall (m: PA) (f: CNF),
   next_state (state m f) = None -> find_conflict m f = None /\ find_decision m f = None.
 Proof.
-  intros m f Hnext. unfold next_state in Hnext. destruct (find_conflict m f).
-  - destruct (split_last_decision m) as [[m' l]|].
-    + discriminate.
-    + discriminate.
-  - destruct (find_unit m f) as [[c l]|].
-    + discriminate.
-    + destruct (find_decision m f).
-      * discriminate.
-      * now split.
+  intros m f Hnext. unfold next_state in Hnext.
+  destruct (find_conflict m f), (split_last_decision m) as [[]|], (find_unit m f) as [[]|], (find_decision m f); easy.
 Qed.
 
 (* The rhs is weaker because there could be multiple { s': State | s ==>[Basic] s' }. *)
