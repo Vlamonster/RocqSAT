@@ -105,8 +105,8 @@ Lemma backtrack_state_lt: Decreasing BacktrackStep.
 Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
-  unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
-  apply backtrack_well_formed in Hstep. apply prefix_app.
+  unfold StateLt, MR. simp state_measure. apply right_slex. apply left_slex.
+  apply backtrack_well_formed in Hstep. apply score_backtrack.
   - now apply Hstep.
   - assumption.
 Qed.

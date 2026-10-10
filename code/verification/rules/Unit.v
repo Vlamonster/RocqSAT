@@ -57,8 +57,8 @@ Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
   apply unit_well_formed in Hstep. apply Hstep in Hwf.
-  unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
-  now apply prefix_prop.
+  unfold StateLt, MR. simp state_measure. apply right_slex. apply left_slex.
+  now apply score_propagate.
 Qed.
 
 Lemma unit_model_final: ModelFinal UnitStep.

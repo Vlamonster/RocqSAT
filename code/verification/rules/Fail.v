@@ -1,4 +1,7 @@
 From Stdlib Require Import Relations.
+From Stdlib Require Import Lia.
+
+From Equations Require Import Equations.
 
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
@@ -28,7 +31,7 @@ Proof. intros m m' f f' Hstep. inversion Hstep. Qed.
 Lemma fail_state_lt: Decreasing FailStep.
 Proof.
   intros m f s' _ Hstep. inversion Hstep; subst.
-  unfold StateLt. now left.
+  unfold StateLt, MR. simp state_measure. apply left_slex. lia.
 Qed.
 
 Lemma fail_model_final: ModelFinal FailStep.

@@ -155,6 +155,10 @@ Module Neg.
     (* Two literals are equal exactly when their negations are. *)
     Lemma eq_compat: forall (l1 l2: Lit), l1 = l2 <-> ¬l1 = ¬l2.
     Proof. intros. repeat rewrite <- Lit.eqb_eq. now rewrite eqb_compat. Qed.
+
+    (* A literal and its negation have the same atom. *)
+    Lemma extract_neg: forall (l: Lit), extract (¬l) = extract l.
+    Proof. now destruct l. Qed.
   End Lemmas.
 
   Include Lemmas.

@@ -16,45 +16,32 @@ From RocqSAT Require Import Assignment.
 From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
 
-Ltac slia := simpl in *; lia.
+(* The termination measure of an assignment m for a formula f:
+     - score m f: per decision level, lowest first, the bound minus its number of propagations;
+     - score_total m f: the bound minus the number of assigned literals.
+   Propagating and backtracking lower the score, deciding keeps it but lowers score_total. *)
 
-(* The largest atom occurring in a clause, or in a formula (0 if there is none). *)
-Definition max_atom_c (c: Clause): nat :=
-list_max (map extract (Clause.elements c)).
-
+(* The largest atom occurring in a formula (0 if there is none). *)
 Definition max_atom_f (f: CNF): nat :=
-list_max (map max_atom_c (CNF.elements f)).
+list_max (map extract (flat_map Clause.elements (CNF.elements f))).
 
-(* Walking from the most recent entry: for each decision level, the bound n minus the number of propagated literals at that level (x counts the propagations seen so far on the current level). *)
+(* Per decision level, newest first: n minus its number of propagations (x counts them so far). *)
 Equations score_aux (m: PA) (n x: nat): list nat :=
 score_aux []        n x := [n - x];
 score_aux (m ++p l) n x := score_aux m n (S x);
 score_aux (m ++d l) n x := n - x :: score_aux m n 0.
 
-(* The scores of all decision levels, oldest first, padded with the bound to a fixed length so that scores of different assignments are comparable. *)
-Equations score (m: PA) (f: CNF): list nat :=
-score m f :=
-  let max_atom := max_atom_f f in
-  let unpadded := rev (score_aux m (S max_atom) 0) in
-  let  padding := repeat (S max_atom) (S (S max_atom) - length unpadded) in
-  unpadded ++ padding.
+(* l padded with x up to length n. *)
+Definition pad (x n: nat) (l: list nat): list nat := l ++ repeat x (n - length l).
+
+(* The scores of all decision levels, lowest first, padded with the bound to a fixed length. *)
+Definition score (m: PA) (f: CNF): list nat :=
+  pad (S (max_atom_f f)) (S (S (max_atom_f f))) (rev (score_aux m (S (max_atom_f f)) 0)).
 
 (* One more than the largest atom, minus the number of assigned literals. *)
-Equations score_total (m: PA) (f: CNF): nat :=
-score_total m f := S (max_atom_f f) - length m.
+Definition score_total (m: PA) (f: CNF): nat := S (max_atom_f f) - length m.
 
-(* fail is below every other state. *)
-Inductive FailLt: relation State :=
-| f_fail (m: PA) (f: CNF):
-  FailLt fail (state m f).
-
-Lemma fail_lt_well_founded: well_founded FailLt.
-Proof.
-  unfold well_founded. intros m. constructor. intros m' Hlt. destruct Hlt.
-  constructor. intros m' Hlt. inversion Hlt.
-Qed.
-
-(* Lexicographic order on lists of length at most x. *)
+(* l and l' are at most x long and, after a common prefix, l has the smaller entry. *)
 Inductive PrefixLt (x: nat): relation (list nat) :=
 | p_head (m m': list nat) (n n': nat):
   length (n :: m) <= x ->
@@ -67,210 +54,153 @@ Inductive PrefixLt (x: nat): relation (list nat) :=
   PrefixLt x m m' ->
   PrefixLt x (n :: m) (n :: m').
 
-(* Lexicographic order on lists; bcll additionally bounds the lengths, which makes it well-founded. *)
-Inductive cll: relation (list nat) :=
-| hd_less (n n': nat) (m m': list nat):
-  n < n' ->
-  cll (n :: m) (n' :: m')
-| tl_less (n: nat) (m m': list nat):
-  cll m m' ->
-  cll (n :: m) (n :: m').
+(* Lists related by PrefixLt x are at most x long. *)
+Lemma prefix_lt_length: forall (x: nat) (l l': list nat), 
+  PrefixLt x l l' -> length l <= x.
+Proof. intros x l l' H. now destruct H. Qed.
 
-Definition bcll (n: nat) (m m': list nat): Prop :=
-  length m <= n /\ length m' <= n /\ cll m m'.
-
-Lemma bcll__prefix_lt: forall (x: nat) (m m': list nat),
-  bcll x m m' <-> PrefixLt x m m'.
+(* A larger bound keeps lists related. *)
+Lemma prefix_lt_incl: forall (x y: nat) (l l': list nat),
+  x <= y -> PrefixLt x l l' -> PrefixLt y l l'.
 Proof.
-  intros. split.
-  - intros. inversion H as [H1 [H2 H3]]. induction H3.
-    + apply (p_head _ _ _ _ _ H1 H2 H0).
-    + apply (p_tail _ _ _ _ H1 H2). apply IHcll.
-      * unfold bcll. split.
-        -- slia.
-        -- split. 
-          ++ slia.
-          ++ assumption.
-      * slia.
-      * slia.
-  - intros. 
-    + induction H.
-      * unfold bcll. intuition. now apply hd_less.
-      * unfold bcll. intuition. apply tl_less. now destruct IHPrefixLt.
+  intros x y l l' Hle H. induction H as [m m' n n' Hm Hm' Hlt | m m' n Hm Hm' H IH].
+  - apply p_head.
+    + lia.
+    + lia.
+    + assumption.
+  - apply p_tail.
+    + lia.
+    + lia.
+    + assumption.
 Qed.
 
-(* Encoding of bounded lists as a head and a tail, used to prove bcll well-founded. *)
-Definition list_to_sum (n: nat) (m: list nat): nat * list nat + unit :=
-  if List.length m <=? n then
-  match m with
-  | nil => inr tt
-  | h :: t => inl (h, t)
-  end else inr tt.
-
-Definition bcll' (n: nat) (m m': list nat): Prop :=
-  le_AsB _ _ (slexprod _ _ lt (bcll n)) (fun _ _ => False) (list_to_sum (S n) m) (list_to_sum (S n) m').
-
-Lemma cll_incl {n} (m m': list nat): bcll (S n) m m' -> bcll' n m m'.
+(* Conversely, any bound that both lists satisfy keeps them related. *)
+Lemma prefix_lt_restrict: forall (x y: nat) (l l': list nat),
+  PrefixLt y l l' -> length l <= x -> length l' <= x -> PrefixLt x l l'.
 Proof.
-  intros [Hl1 [Hl2 H]]. unfold bcll'. unfold list_to_sum.
-  rewrite 2 leb_correct; auto.
-  destruct H; constructor.
-  + constructor 1. auto.
-  + constructor 2. simpl in *; split; [| split]; auto; lia.
+  intros x y l l' H. induction H as [m m' n n' _ _ Hlt | m m' n _ _ H IH].
+  - intros Hm Hm'. now apply p_head.
+  - intros Hm Hm'. apply p_tail.
+    + assumption.
+    + assumption.
+    + apply IH.
+      * simpl in Hm. lia.
+      * simpl in Hm'. lia.
 Qed.
 
-Lemma bcll_well_founded: forall (x: nat), well_founded (bcll x).
+(* Below n :: m are lists with a smaller head, or with head n and a tail below m. *)
+Lemma prefix_lt_well_founded: forall (x: nat), well_founded (PrefixLt x).
 Proof.
-  induction x.
-  - intros l. constructor. intros [] [H1 [H2 H3]].
-    + inversion H3.
-    + slia.
-  - apply (wf_incl _ _ (fun l1 l2 => bcll' x l1 l2)).
-    + red. apply cll_incl.
-    + unfold bcll'.
-      apply wf_inverse_image.
-      apply wf_disjoint_sum.
-      * apply wf_slexprod.
-        -- apply lt_wf.
-        -- apply IHx.
-      * constructor; intros ? [].
+  induction x as [|x IH].
+  - intros l. constructor. intros l' Hlt. destruct Hlt; simpl in *; lia.
+  - intros [|n m].
+    + constructor. intros l' Hlt. inversion Hlt.
+    + revert m. induction n as [n IHn] using (well_founded_ind lt_wf).
+      intros m. induction (IH m) as [m _ IHm].
+      constructor. intros l' Hlt. inversion Hlt as [m' ? n' ? _ _ Hn | m' ? ? Hm' Hm Hlt']; subst.
+      * now apply IHn.
+      * apply IHm. apply prefix_lt_restrict with (S x).
+        -- assumption.
+        -- simpl in Hm'. lia.
+        -- simpl in Hm. lia.
 Qed.
 
-Lemma prefix_lt_well_founded: forall x, well_founded (PrefixLt x).
-Proof.
-  intro x. apply (wf_incl _ _ (bcll x)).
-  - unfold inclusion. now apply bcll__prefix_lt.
-  - apply bcll_well_founded.
-Qed.
+(* A flag that puts fail below every state, then the score and score_total. *)
+Equations state_measure (s: State): nat * (list nat * nat) :=
+state_measure fail        := (0, ([]       , 0              ));
+state_measure (state m f) := (1, (score m f, score_total m f)).
 
-Definition TotalLt: relation nat := lt.
-
-Lemma total_lt_well_founded: well_founded TotalLt.
-Proof. apply lt_wf. Qed.
-
-(* Measures are compared lexicographically: first by score, then by score_total. *)
-Definition StateLexLt (f: CNF): relation (list nat * nat) :=
-  slexprod _ _ (PrefixLt (S (S (max_atom_f f)))) TotalLt.
-
-Lemma state_lex_lt_well_founded: forall (f: CNF), well_founded (StateLexLt f).
-Proof.
-  intros. apply wf_slexprod.
-  - apply prefix_lt_well_founded.
-  - apply total_lt_well_founded.
-Qed.
-
-(* The measure of a state: its score and score_total. *)
-Equations state_measure (s: State): list nat * nat :=
-state_measure fail          := ([]       , 0              );
-state_measure (state m f)   := (score m f, score_total m f).
-
-(* StateLt f s' s, written s >>[f] s': s' is fail and s is not, or s' has a smaller measure than s. *)
-Definition StateLt (f: CNF): relation State := union _ FailLt (MR (StateLexLt f) state_measure).
-Definition StateLtTransClos (f: CNF): relation State := clos_trans _ (StateLt f).
+(* s >>[f] s': s' has a smaller measure than s, compared lexicographically. *)
+Definition StateLt (f: CNF): relation State :=
+  MR (slexprod _ _ lt (slexprod _ _ (PrefixLt (S (S (max_atom_f f)))) lt)) state_measure.
 
 Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40, format "s '/ ' '[' >>[ ']' f ] '/ ' s'").
-Notation "s '>>+[' f ']' s'" := (StateLtTransClos f s' s) (at level 40, format "s '/ ' '[' >>+[ ']' f ] '/ ' s'").
 
 Lemma state_lt_well_founded: forall (f: CNF), well_founded (StateLt f).
 Proof.
-  intros. apply wf_union.
-  - unfold commut. intros. inversion H. subst. exists (state m f0).
-    + unfold MR in H0. simp state_measure in H0. inversion H0.
-      * subst. inversion H3.
-      * subst. inversion H3.
-    + unfold MR in H0. simp state_measure in H0. inversion H0.
-      * subst. inversion H3.
-      * subst. inversion H3.
-  - apply fail_lt_well_founded.
-  - apply wf_MR. apply state_lex_lt_well_founded.
+  intros f. apply wf_MR. apply wf_slexprod.
+  - apply lt_wf.
+  - apply wf_slexprod.
+    + apply prefix_lt_well_founded.
+    + apply lt_wf.
 Qed.
 
+(* Every element of a list is at most its maximum. *)
 Lemma in_le_list_max: forall (l: list nat) (x: nat), In x l -> x <= list_max l.
 Proof. intros l. apply Forall_forall. now apply list_max_le. Qed.
-
-(* Every atom occurring in c is at most max_atom_c c. *)
-Lemma max_atom_c_le: forall (c: Clause) (l: Lit) (p: Atom),
-  Clause.In l c -> extract l = p -> p <= max_atom_c c.
-Proof.
-  intros c l p Hl_in_c <-. unfold max_atom_c. apply in_le_list_max. apply in_map.
-  apply Clause.elements_spec1 in Hl_in_c. now apply SetoidList.InA_alt in Hl_in_c as [l' [<- Hin]].
-Qed.
 
 (* Every atom occurring in f is at most max_atom_f f. *)
 Lemma max_atom_f_le: forall (f: CNF) (c: Clause) (l: Lit) (p: Atom),
   Clause.In l c -> CNF.In c f -> extract l = p -> p <= max_atom_f f.
 Proof.
-  intros f c l p Hl_in_c Hc_in_f Heq.
+  intros f c l p Hl_in_c Hc_in_f <-. unfold max_atom_f. apply in_le_list_max. apply in_map. apply in_flat_map.
   apply CNF.elements_spec1 in Hc_in_f. apply SetoidList.InA_alt in Hc_in_f as [c' [Hequal Hc'_in_f]].
-  apply Hequal in Hl_in_c. transitivity (max_atom_c c').
-  - now apply max_atom_c_le with l.
-  - unfold max_atom_f. apply in_le_list_max. now apply in_map.
-Qed.
-
-(* Hence every atom on a well-formed trail is at most max_atom_f f. *)
-Lemma well_formed_atom_le: forall (m: PA) (f: CNF) (p: Atom),
-  WellFormed (state m f) ->
-  In p (map extract (map fst m)) ->
-  p <= max_atom_f f.
-Proof.
-  intros m f p Hwf Hin. apply in_map_iff in Hin as [l [Heq Hin]].
-  apply in_map_iff in Hin as [(l', a) [Heq' Hin]]. simpl in Heq'. subst l'.
-  destruct Hwf as [Hnodup Hbounded]. apply Hbounded in Hin as [c [Hc_in_f [Hl_in_c|Hnegl_in_c]]].
-  - destruct l as [p'|p'].
-    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Pos p)).
-    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Neg p)).
-  - destruct l as [p'|p'].
-    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Neg p)).
-    + simp extract in Heq. subst p'. now apply (max_atom_f_le f c (Pos p)).
+  exists c'. split.
+  - assumption.
+  - apply Hequal, Clause.elements_spec1 in Hl_in_c. now apply SetoidList.InA_alt in Hl_in_c as [l' [<- Hin]].
 Qed.
 
 (* Pigeonhole principle: distinct numbers that are all at most m are at most m + 1 many. *)
-Lemma pigeon: forall (l: list nat) (m: nat),
+Lemma nodup_length_le: forall (l: list nat) (m: nat),
   NoDup l ->
   (forall (n: nat), In n l -> n <= m) ->
   length l <= S m.
 Proof.
-  intros l m Hnodup Hin_le.
-  assert (Hincl: incl l (seq 0 (S m))).
-  - unfold incl. intros n Hin. apply in_seq. specialize (Hin_le n Hin). lia.
-  - apply (@NoDup_incl_length _ _ (seq 0 (S m))) in Hnodup.
-    + now rewrite length_seq in Hnodup.
+  intros l m Hnodup Hin_le. transitivity (length (seq 0 (S m))).
+  - apply NoDup_incl_length.
     + assumption.
+    + intros n Hin. apply in_seq. apply Hin_le in Hin. lia.
+  - now rewrite length_seq.
 Qed.
 
-(* So a well-formed trail has at most max_atom_f f + 1 literals. *)
+(* A well-formed trail assigns distinct atoms of f, so it has at most max_atom_f f + 1 literals. *)
 Lemma well_formed_length_le: forall (m: PA) (f: CNF),
   WellFormed (state m f) ->
   length m <= S (max_atom_f f).
 Proof.
-  intros m f Hwf. assert (Heq: length m = length (map extract (map fst m))).
+  intros m f [Hnodup Hbounded]. transitivity (length (map extract (map fst m))).
   - now repeat rewrite length_map.
-  - rewrite Heq. apply pigeon.
-    + now destruct Hwf.
-    + intros. apply (well_formed_atom_le m); assumption.
+  - apply nodup_length_le.
+    + assumption.
+    + intros p Hin. rewrite map_map in Hin. apply in_map_iff in Hin as [[l a] [<- Hin]].
+      apply Hbounded in Hin as [c [Hc_in_f [Hl_in_c|Hnegl_in_c]]].
+      * now apply max_atom_f_le with c l.
+      * apply max_atom_f_le with c (¬l).
+        -- assumption.
+        -- assumption.
+        -- now rewrite Neg.extract_neg.
 Qed.
 
+(* score_aux has one entry per decision, plus one for decision level 0. *)
 Lemma score_aux_length: forall (m: PA) (n n': nat),
   length (score_aux m n n') <= S (length m).
 Proof.
   intros. funelim (score_aux m n n').
-  - slia.
-  - slia.
-  - slia.
+  - simpl in *. lia.
+  - simpl in *. lia.
+  - simpl in *. lia.
 Qed.
 
-Lemma score_aux_length_le: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (n x: nat),
-  WellFormed (state ((l, a) :: m) f) ->
-  length (score_aux m n x) <= S (max_atom_f f).
+(* For a well-formed assignment, the unpadded score is at most as long as the padded one. *)
+Lemma score_aux_length_well_formed: forall (m: PA) (f: CNF) (n x: nat),
+  WellFormed (state m f) -> length (score_aux m n x) <= S (S (max_atom_f f)).
 Proof.
-  intros. 
-  pose proof (score_aux_length m n x).
-  pose proof (score_aux_length (m ++d l) n x).
-  pose proof (well_formed_length_le ((l, a) :: m) f H).
-  slia.
+  intros m f n x Hwf. transitivity (S (length m)).
+  - apply score_aux_length.
+  - apply well_formed_length_le in Hwf. lia.
 Qed.
 
-Lemma score_aux_in_le: forall (m: PA) (n x k: nat),
+(* Below a well-formed literal, the score has room for one more entry. *)
+Lemma score_aux_length_tail: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (n x: nat),
+  WellFormed (state ((l, a) :: m) f) -> length (score_aux m n x) <= S (max_atom_f f).
+Proof.
+  intros m f l a n x Hwf. transitivity (S (length m)).
+  - apply score_aux_length.
+  - now apply well_formed_length_le in Hwf.
+Qed.
+
+(* Every entry of score_aux is at most the bound n. *)
+Lemma score_aux_le_bound: forall (m: PA) (n x k: nat),
   In k (score_aux m n x) -> k <= n.
 Proof.
   intros m n x k Hin. funelim (score_aux m n x).
@@ -284,33 +214,28 @@ Proof.
 Qed.
 
 (* A decision does not change the score: the new level adds an entry equal to the padding value. *)
-Lemma score_dec: forall (m: PA) (f: CNF) (l: Lit),
+Lemma score_decide: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (state (m ++d l) f) ->
   score (m ++d l) f = score m f.
 Proof.
-  intros. simp score. simpl. simp score_aux. simpl.
-  rewrite length_app. simpl. rewrite Nat.add_1_r. rewrite <- app_assoc.
-  destruct (length (rev (score_aux m (S (max_atom_f f)) 0))) eqn:G.
+  intros m f l Hwf. unfold score, pad. simp score_aux. simpl rev.
+  rewrite length_app, length_rev, <- app_assoc. simpl length. f_equal.
+  rewrite Nat.add_1_r, Nat.sub_succ. symmetry. rewrite Nat.sub_succ_l.
   - reflexivity.
-  - destruct n.
-    + simp pad. now rewrite Nat.sub_0_r.
-    + rewrite length_rev in G. 
-      pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 H).
-      assert (T: S (max_atom_f f - S n) = max_atom_f f - n).
-      * lia.
-      * now rewrite <- T.
+  - now apply score_aux_length_tail with l dec.
 Qed.
 
 (* A decision does decrease score_total, since it assigns one more literal. *)
-Lemma total_decide: forall (m: PA) (f: CNF) (l: Lit),
+Lemma score_total_decide: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (state (m ++d l) f) ->
-  TotalLt (score_total (m ++d l) f) (score_total m f).
+  score_total (m ++d l) f < score_total m f.
 Proof.
-  intros m f l Hwf. pose proof (well_formed_length_le (m ++d l) f Hwf).
-  unfold TotalLt. simp score_total. simpl in *. destruct (length m); lia.
+  intros m f l Hwf. apply well_formed_length_le in Hwf.
+  unfold score_total. simpl length in *. lia.
 Qed.
 
-Lemma prefix_repeat: forall (l1 l2: list nat) (m n x x': nat),
+(* Padding with an entry n that is at least all entries keeps lists related. *)
+Lemma prefix_lt_pad: forall (l1 l2: list nat) (m n x x': nat),
   (forall (k: nat), In k l1 -> k <= n) ->
   (forall (k: nat), In k l2 -> k <= n) ->
   length l1 + x  <= m ->
@@ -329,11 +254,12 @@ Proof.
     + apply IH.
       * intros. apply Hin_l1. now right.
       * intros. apply Hin_l2. now right.
-      * slia.
-      * slia.
+      * simpl in *. lia.
+      * simpl in *. lia.
 Qed.
 
-Lemma prefix_postfix: forall (m1 m2 n: list nat) (x: nat),
+(* Lists that start with the same entries are related when their rests are. *)
+Lemma prefix_lt_app_l: forall (m1 m2 n: list nat) (x: nat),
   length (m1 ++a n) <= x ->
   length (m2 ++a n) <= x ->
   PrefixLt x m1 m2 ->
@@ -351,7 +277,8 @@ Proof.
       * assumption.
 Qed.
 
-Lemma prefix_shift: forall (m: PA) (f: CNF) (x: nat),
+(* More propagations on the newest level give a smaller score. *)
+Lemma score_aux_more_props: forall (m: PA) (f: CNF) (x: nat),
   WellFormed (state m f) ->
   x + length m <= max_atom_f f ->
   PrefixLt (S (S (max_atom_f f))) 
@@ -360,40 +287,20 @@ Lemma prefix_shift: forall (m: PA) (f: CNF) (x: nat),
 Proof.
   intros m f x Hwf Hle. generalize dependent x.
   induction m as [|[l [|]] m IH].
-  - intros. simp score_aux. simpl. destruct x eqn:Heq.
-    + apply p_head.
-      * slia.
-      * slia.
-      * lia.
-    + apply p_head.
-      * slia.
-      * slia.
-      * lia.
-  - intros. simp score_aux. simpl. destruct x eqn:Heq.
-    * apply prefix_postfix.
-      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
-         rewrite length_app. rewrite length_rev. slia.
-      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
-         rewrite length_app. rewrite length_rev. slia.
-      -- apply p_head.
-        ++ slia.
-        ++ slia.
-        ++ lia.
-    * apply prefix_postfix.
-      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
-         rewrite length_app. rewrite length_rev. slia.
-      -- pose proof (score_aux_length_le m f l dec (S (max_atom_f f)) 0 Hwf).
-         rewrite length_app. rewrite length_rev. slia.
-      -- apply p_head.
-        ++ slia.
-        ++ slia.
-        ++ lia.
+  - intros. simp score_aux. simpl. destruct x; apply p_head; simpl in *; lia.
+  - intros. simp score_aux. simpl rev. apply prefix_lt_app_l.
+    + rewrite length_app, length_rev, Nat.add_1_r. apply le_n_S.
+      now apply score_aux_length_tail with l dec.
+    + rewrite length_app, length_rev, Nat.add_1_r. apply le_n_S.
+      now apply score_aux_length_tail with l dec.
+    + destruct x; apply p_head; simpl in *; lia.
   - intros. simp score_aux. apply IH.
-    * now apply well_formed_tail in Hwf.
-    * slia.
+    + now apply well_formed_tail in Hwf.
+    + simpl in *. lia.
 Qed.
 
-Lemma prefix_prefix: forall (m1 m2 n: list nat) (x: nat),
+(* Extending the larger of two related lists keeps them related. *)
+Lemma prefix_lt_app_r: forall (m1 m2 n: list nat) (x: nat),
   length (n ++a m2) <= x ->
   PrefixLt x m1 m2 ->
   PrefixLt x m1 (n ++a m2).
@@ -409,10 +316,11 @@ Proof.
         -- assumption.
         -- assumption.
         -- apply IHm2.
-          ++ rewrite length_app in *. slia.
+          ++ rewrite length_app in *. simpl in *. lia.
           ++ assumption.
 Qed.
 
+(* A decision splits the score into the parts before and after it. *)
 Lemma score_aux_split: forall (m1 m2: PA) (l: Lit) (n x: nat),
   score_aux (m1 ++d l ++a m2) n x = (score_aux m1 n 0) ++a (score_aux m2 n x).
 Proof.
@@ -425,129 +333,98 @@ Proof.
     + simp score_aux.
 Qed.
 
-(* A propagation decreases the score. *)
-Lemma prefix_prop: forall (m: PA) (f: CNF) (l: Lit),
+(* For well-formed assignments, scores compare like their unpadded versions. *)
+Lemma prefix_lt_score: forall (m m': PA) (f: CNF),
+  WellFormed (state m f) ->
+  WellFormed (state m' f) ->
+  PrefixLt (S (S (max_atom_f f)))
+           (rev (score_aux m (S (max_atom_f f)) 0))
+           (rev (score_aux m' (S (max_atom_f f)) 0)) ->
+  PrefixLt (S (S (max_atom_f f))) (score m f) (score m' f).
+Proof.
+  intros m m' f Hwf Hwf' Hlt. unfold score, pad. apply prefix_lt_pad.
+  - intros k Hin. rewrite <- in_rev in Hin. now apply score_aux_le_bound in Hin.
+  - intros k Hin. rewrite <- in_rev in Hin. now apply score_aux_le_bound in Hin.
+  - rewrite length_rev, Nat.add_comm, Nat.sub_add.
+    + apply le_n.
+    + now apply score_aux_length_well_formed.
+  - rewrite length_rev, Nat.add_comm, Nat.sub_add.
+    + apply le_n.
+    + now apply score_aux_length_well_formed.
+  - assumption.
+Qed.
+
+(* A propagation decreases the score: it lowers the entry of the newest level. *)
+Lemma score_propagate: forall (m: PA) (f: CNF) (l: Lit),
   WellFormed (state (m ++p l) f) ->
   PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score m f).
 Proof.
-  intros m f l Hwf. 
-  pose proof (well_formed_tail m f l prop Hwf) as Hwf'. 
-  simp score. simpl. apply prefix_repeat.
-  - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
-  - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
-  - repeat rewrite length_rev.
-    destruct (length (score_aux (m ++p l) (S (max_atom_f f)) 0)) eqn:Heq.
-    + lia.
-    + destruct n.
-      * lia.
-      * pose proof (score_aux_length (m ++p l) (S (max_atom_f f)) 0).
-        pose proof (well_formed_length_le (m ++p l) f Hwf) .
-        slia.
-  - repeat rewrite length_rev.
-    destruct (length (score_aux m (S (max_atom_f f)) 0)) eqn:Heq.
-    + lia.
-    + destruct n.
-      * lia.
-      * pose proof (score_aux_length m (S (max_atom_f f)) 0).
-        pose proof (well_formed_length_le m f Hwf').
-        slia.
-  - simp score_aux. apply prefix_shift.
-    + assumption.
-    + apply well_formed_length_le in Hwf. slia.
+  intros m f l Hwf. apply prefix_lt_score.
+  - assumption.
+  - now apply well_formed_tail in Hwf.
+  - simp score_aux. apply score_aux_more_props.
+    + now apply well_formed_tail in Hwf.
+    + apply well_formed_length_le in Hwf. simpl in *. lia.
 Qed.
 
-(* Backtracking, which replaces a decision and everything after it by a propagated literal, decreases the score. *)
-Lemma prefix_app: forall (m n: PA) (f: CNF) (l l': Lit),
+(* Backtracking decreases the score: it lowers the entry of the level before the decision. *)
+Lemma score_backtrack: forall (m n: PA) (f: CNF) (l l': Lit),
   WellFormed (state (m ++p l) f) ->
   WellFormed (state (m ++d l' ++a n) f) ->
   PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score (m ++d l' ++a n) f).
 Proof.
-  intros m n f l l' Hwf Hwf'. simp score. simpl. apply prefix_repeat.
-  - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
-  - intros. rewrite <- in_rev in H. now apply score_aux_in_le in H.
-  - repeat rewrite length_rev.
-    destruct (length (score_aux (m ++p l) (S (max_atom_f f)) 0)) eqn:Heq.
-    + lia.
-    + destruct n0.
-      * lia.
-      * pose proof (score_aux_length (m ++p l) (S (max_atom_f f)) 0).
-        pose proof (well_formed_length_le (m ++p l) f Hwf) .
-        slia.
-  - repeat rewrite length_rev.
-    destruct (length (score_aux (m ++d l' ++a n) (S (max_atom_f f)) 0)) eqn:Heq.
-    + lia.
-    + destruct n0.
-      * lia.
-      * pose proof (score_aux_length (m ++d l' ++a n) (S (max_atom_f f)) 0).
-        pose proof (well_formed_length_le (m ++d l' ++a n) f Hwf').
-        slia.
-  - rewrite score_aux_split. rewrite rev_app_distr. simp score_aux. apply prefix_prefix.
+  intros m n f l l' Hwf Hwf'. apply prefix_lt_score.
+  - assumption.
+  - assumption.
+  - rewrite score_aux_split. rewrite rev_app_distr. simp score_aux. apply prefix_lt_app_r.
     + rewrite length_app. repeat rewrite length_rev.
-      apply well_formed_length_le in Hwf'. rewrite length_app in Hwf'. simpl in Hwf'.
-      pose proof (score_aux_length m (S (max_atom_f f)) 0).
-      pose proof (score_aux_length n (S (max_atom_f f)) 0).
-      lia.
-    + apply prefix_shift.
+      rewrite Nat.add_comm, <- length_app, <- score_aux_split with (l := l').
+      now apply score_aux_length_well_formed.
+    + apply score_aux_more_props.
       * now apply well_formed_tail in Hwf.
       * apply well_formed_length_le in Hwf. simpl in Hwf. lia.
-Qed.
-
-(* Lists related by PrefixLt x are at most x long, and a larger bound keeps them related. *)
-Lemma prefix_lt_length: forall (x: nat) (l l': list nat), PrefixLt x l l' -> length l <= x.
-Proof. intros x l l' H. now destruct H. Qed.
-
-Lemma prefix_lt_incl: forall (x y: nat) (l l': list nat), x <= y -> PrefixLt x l l' -> PrefixLt y l l'.
-Proof.
-  intros x y l l' Hle H. induction H as [m m' n n' Hm Hm' Hlt | m m' n Hm Hm' H IH].
-  - apply p_head.
-    + lia.
-    + lia.
-    + assumption.
-  - apply p_tail.
-    + lia.
-    + lia.
-    + assumption.
 Qed.
 
 (* Hence StateLt only grows with the largest atom of the formula. *)
 Lemma state_lt_incl: forall (f g: CNF) (s s': State),
   max_atom_f f <= max_atom_f g -> s >>[f] s' -> s >>[g] s'.
 Proof.
-  intros f g s s' Hle [Hfail | Hlt].
-  - now left.
-  - right. unfold MR, StateLexLt in *.
-    destruct (state_measure s') as [l t], (state_measure s) as [l' t'].
-    inversion Hlt as [? ? ? ? Hprefix | ? ? ? Htotal]; subst.
+  intros f g s s' Hle Hlt. unfold StateLt, MR in *.
+  destruct (state_measure s') as [b [l t]], (state_measure s) as [b' [l' t']].
+  inversion Hlt as [? ? ? ? Hflag | ? ? ? Hlex]; subst.
+  - now apply left_slex.
+  - apply right_slex. inversion Hlex as [? ? ? ? Hprefix | ? ? ? Htotal]; subst.
     + apply left_slex. apply prefix_lt_incl with (S (S (max_atom_f f))).
       * lia.
       * assumption.
     + now apply right_slex.
 Qed.
 
-(* The score is padded to at least the bound, and for a well-formed assignment to exactly the bound. *)
+(* The score is at least the padded length long, and exactly that long if well-formed. *)
 Lemma score_length_ge: forall (m: PA) (f: CNF), S (S (max_atom_f f)) <= length (score m f).
-Proof. intros m f. simp score. rewrite length_app, repeat_length. lia. Qed.
+Proof. intros m f. unfold score, pad. rewrite length_app, repeat_length. lia. Qed.
 
 Lemma score_length_well_formed: forall (m: PA) (f: CNF),
   WellFormed (state m f) -> length (score m f) = S (S (max_atom_f f)).
 Proof.
-  intros m f Hwf. simp score. rewrite length_app, repeat_length, length_rev.
-  pose proof (score_aux_length m (S (max_atom_f f)) 0).
-  apply well_formed_length_le in Hwf. lia.
+  intros m f Hwf. unfold score, pad. rewrite length_app, repeat_length, length_rev, Nat.add_comm, Nat.sub_add.
+  - reflexivity.
+  - now apply score_aux_length_well_formed.
 Qed.
 
-(* A step from a well-formed state that decreases the measure never increases the largest atom of the formula. *)
+(* A decreasing step from a well-formed state never increases the largest atom. *)
 Lemma state_lt_max_atom: forall (m m': PA) (f f': CNF),
   WellFormed (state m f) -> state m f >>[f] state m' f' -> max_atom_f f' <= max_atom_f f.
 Proof.
-  intros m m' f f' Hwf [Hfail | Hlt].
-  - inversion Hfail.
-  - unfold MR, StateLexLt in Hlt. simp state_measure in Hlt.
-    pose proof (score_length_ge m' f') as Hlength.
-    remember (score m' f', score_total m' f') as p' eqn:Hp'.
-    remember (score m f, score_total m f) as p eqn:Hp.
-    destruct Hlt as [l l' t t' Hprefix | l t t' Htotal].
-    + injection Hp' as -> _. apply prefix_lt_length in Hprefix. lia.
-    + injection Hp' as -> _. injection Hp as Hscore _. rewrite Hscore in Hlength.
-      apply score_length_well_formed in Hwf. lia.
+  intros m m' f f' Hwf Hlt. unfold StateLt, MR in Hlt. simp state_measure in Hlt.
+  inversion Hlt as [? ? ? ? Hflag | ? ? ? Hlex]; subst.
+  - lia.
+  - apply le_S_n, le_S_n. transitivity (length (score m' f')).
+    + apply score_length_ge.
+    + remember (score m' f', score_total m' f') as p' eqn:Hp'.
+      remember (score m f, score_total m f) as p eqn:Hp.
+      destruct Hlex as [l l' t t' Hprefix | l t t' Htotal].
+      * injection Hp' as -> _. now apply prefix_lt_length in Hprefix.
+      * injection Hp' as -> _. injection Hp as Hscore _. rewrite Hscore.
+        now rewrite score_length_well_formed.
 Qed.

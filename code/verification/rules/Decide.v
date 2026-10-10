@@ -46,8 +46,8 @@ Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [? ? c_decide l_decide Hx_in_c Hc_in_f Hundef]; subst.
   apply decide_well_formed in Hstep. apply Hstep in Hwf.
-  unfold StateLt. right. unfold MR. simp state_measure. rewrite score_dec.
-  - apply right_slex. now apply total_decide.
+  unfold StateLt, MR. simp state_measure. apply right_slex. rewrite score_decide.
+  - apply right_slex. now apply score_total_decide.
   - assumption.
 Qed.
 

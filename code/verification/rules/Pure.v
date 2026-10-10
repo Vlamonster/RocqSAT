@@ -68,8 +68,8 @@ Proof.
   intros m f s' Hwf Hstep.
   inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
   apply pure_well_formed in Hstep. apply Hstep in Hwf.
-  unfold StateLt. right. unfold MR. simp state_measure. apply left_slex.
-  now apply prefix_prop.
+  unfold StateLt, MR. simp state_measure. apply right_slex. apply left_slex.
+  now apply score_propagate.
 Qed.
 
 Lemma pure_model_final: ModelFinal PureStep.
