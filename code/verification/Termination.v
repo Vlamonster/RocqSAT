@@ -1,9 +1,7 @@
 From Stdlib Require Import Basics.
-From Stdlib Require Import List.
 From Stdlib Require Import Relations.
 From Stdlib Require Import Wellfounded.
-
-From Equations Require Import Equations.
+From Stdlib Require Import Lia.
 
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
@@ -12,6 +10,7 @@ From RocqSAT Require Import State.
 From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
 From RocqSAT Require Import Measure.
+From RocqSAT.utils Require Import Invariant.
 
 (* Every transition decreases the measure. *)
 Lemma trans__state_lt: forall (rs: list Rule) (m: PA) (f: CNF) (s': State),
@@ -78,11 +77,6 @@ Section WfInclusion.
   Qed.
 End WfInclusion.
 
-(* The formula of a state, if it has one. *)
-Equations cnf (s: State): option CNF :=
-cnf fail          := None;
-cnf (state _ f)   := Some f.
-
 (* Transitions from well-formed states: the measure only decreases along these. *)
 Definition WellFormedTrans (rs: list Rule): relation State := fun (s s': State) => WellFormed s /\ s ==>[rs] s'.
 
@@ -98,123 +92,51 @@ Proof.
     + apply IH. now apply (trans_well_formed rs x).
 Qed.
 
-(* From here on, rs is a set of rules that all keep the formula: the measure is relative to a fixed formula. *)
-Section Termination.
-  Context (rs: list Rule) (Hkeep: Forall (fun (r: Rule) => PreservesFormula (step r)) rs).
-
-(* A transition from a state with a formula keeps the formula (or ends in fail) and decreases the measure. *)
-Lemma to_statelt s s' :
-  WellFormedTrans rs s s' ->
-  match cnf s with
-  | None => False
-  | Some f =>
-      (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s
-  end.
+(* A transition from a well-formed state never increases the largest atom of the formula. *)
+Lemma trans_max_atom: forall (rs: list Rule) (m m': PA) (f f': CNF),
+  WellFormed (state m f) -> state m f ==>[rs] state m' f' -> max_atom_f f' <= max_atom_f f.
 Proof.
-  intros [Hwf H]. funelim (cnf s).
-  - inversion H.
-  - split.
-    + destruct s'.
-      * now left.
-      * right. apply trans_same_formula in H.
-        -- now subst.
-        -- assumption.
-    + now apply trans__state_lt in H.
-Qed.
-
-(* Variant of to_statelt for a target state with formula f. *)
-Lemma to_statelt0 s s' f : cnf s' = Some f -> WellFormedTrans rs s s' -> cnf s = Some f /\ StateLt f s' s.
-Proof.
-  intros H H'.
-  apply to_statelt in H'.
-  rewrite H in H'.
-  destruct (cnf s).
-  - destruct H' as [[e|[=]] H']; try discriminate e.
-    subst;auto.
-  - contradiction H'.
-Qed.
-
-(* Variant of to_statelt for a source state with formula f. *)
-Lemma to_statelt0' s s' f : cnf s = Some f -> WellFormedTrans rs s s' -> (cnf s' = None \/ cnf s' = Some f) /\ StateLt f s' s.
-Proof.
-  intros H H'.
-  apply to_statelt in H'. rewrite H in H'. assumption.
-Qed.
-
-(* Derivations keep the formula: if a derivation ends in a state with formula f, it started there. *)
-Lemma clos_nf s s' f : cnf s' = Some f -> clos_refl_trans _ (WellFormedTrans rs) s s' -> cnf s = Some f.
-Proof.
-  intros Hf H.
-  induction H as [s s' H| s | y v x _ IHyv _ IHzy].
-  - apply (to_statelt0 _ _ _ Hf) in H.
-    destruct H as [H _]; exact H.
+  intros rs m m' f f' Hwf Htrans. apply trans__state_lt in Htrans.
+  - now apply state_lt_max_atom in Htrans.
   - assumption.
-  - auto.
 Qed.
 
-(* Nothing is reachable from fail except fail itself. *)
-Lemma clos_nf0 s s' : cnf s = None -> clos_refl_trans _ (WellFormedTrans rs) s s' -> s = s'.
+(* Hence the largest atom of the formula stays bounded along transitions from well-formed states. *)
+Lemma max_atom_invariant: forall (rs: list Rule) (f: CNF) (s s': State),
+  clos_refl_trans _ (WellFormedTrans rs) s s' ->
+  match s with fail => True | state _ g => max_atom_f g <= max_atom_f f end ->
+  match s' with fail => True | state _ g => max_atom_f g <= max_atom_f f end.
 Proof.
-  intros Hf H.
-  induction H as [s s' H| s | y v x Hyv IHyv Hzy IHzy].
-  - apply to_statelt in H. rewrite Hf in H. contradiction H.
-  - reflexivity.
-  - firstorder. subst. auto.
+  intros rs f. apply clos_refl_trans_invariant.
+  intros [|m g] [|m' g'] [Hwf Htrans] Hle.
+  - easy.
+  - inversion Htrans.
+  - easy.
+  - apply trans_max_atom in Htrans.
+    + lia.
+    + assumption.
 Qed.
 
-(* Every transition reachable from a state with formula f decreases StateLt f. *)
-Lemma statelt_incl x f :
-  cnf x = Some f ->
-  forall z y,
-  clos_refl_trans _ (WellFormedTrans rs) x y ->
-  WellFormedTrans rs y z ->
-  StateLt f z y.
+(* There are no infinite sequences of transitions from well-formed states (the converse relation is well-founded): every step decreases StateLt f for the formula f of the starting state. *)
+Lemma trans_well_founded: forall (rs: list Rule), well_founded (flip (WellFormedTrans rs)).
 Proof.
-  intros Hx z; induction 1 as [y x Hyx| x | y v x Hyv Hzv Hvx Hzx].
-  - intros Hxz.
-    apply (to_statelt0' _ _ _ Hx) in Hyx.
-    destruct Hyx as [[e|e] Hxy].
-    + apply to_statelt in Hxz. rewrite e in Hxz. contradiction Hxz.
-    + apply (to_statelt0' _ _ _ e) in Hxz.
-      destruct Hxz as [_ Hxz].
-      assumption.
-  - intros Hxz.
-    apply to_statelt in Hxz. rewrite Hx in Hxz.
-    destruct Hxz as [_ Hxz].
-    assumption.
-  - intros Hxz.
-    apply Hzx. 2:assumption.
-    destruct (cnf v) as [f'|] eqn:Hv.
-    + pose proof (clos_nf _ _ _ Hv Hyv) as Hy.
-      congruence.
-    + pose proof (clos_nf0 _ _ Hv Hvx). subst.
-      apply to_statelt in Hxz.
-      rewrite Hv in Hxz. contradiction Hxz.
-Qed.
-
-(* No infinite sequence of transitions starts from a well-formed state with a formula. *)
-Lemma trans_acc : forall s f, cnf s = Some f -> Acc (flip (WellFormedTrans rs)) s.
-Proof.
-  intros s f Hs. apply Acc_incl' with (R2:=StateLt f).
-  2:apply state_lt_well_founded.
-  intros z y Hxy Hyz.
-  apply clos_refl_trans_flip in Hxy.
-  apply (statelt_incl _ _ Hs); assumption.
-Qed.
-
-(* There are no infinite sequences of transitions from well-formed states (the converse relation is well-founded). *)
-Lemma trans_well_founded: well_founded (flip (WellFormedTrans rs)).
-Proof.
-  intros s. destruct (cnf s) eqn:Hs.
-  - now apply trans_acc in Hs.
-  - constructor. intros s' H. apply to_statelt in H. now rewrite Hs in H.
+  intros rs [|m f].
+  - constructor. intros s [_ Htrans]. inversion Htrans.
+  - apply Acc_incl' with (R2 := StateLt f).
+    + intros s' s Hreach [Hwf Htrans]. destruct s as [|m' f'].
+      * inversion Htrans.
+      * apply clos_refl_trans_flip in Hreach. apply max_atom_invariant with (f := f) in Hreach.
+        -- apply state_lt_incl with f'.
+          ++ assumption.
+          ++ now apply trans__state_lt in Htrans.
+        -- apply le_n.
+    + apply state_lt_well_founded.
 Qed.
 
 (* Likewise for strict derivations; Solve.v recurses on this relation. *)
-Lemma strict_derivation_well_founded: well_founded (flip (clos_trans _ (WellFormedTrans rs))).
+Lemma strict_derivation_well_founded: forall (rs: list Rule), well_founded (flip (clos_trans _ (WellFormedTrans rs))).
 Proof.
-  apply (wf_incl _ _ (clos_trans _ (flip (WellFormedTrans rs)))).
+  intros rs. apply (wf_incl _ _ (clos_trans _ (flip (WellFormedTrans rs)))).
   - unfold inclusion. intros. now apply clos_trans_flip.
   - apply wf_clos_trans. apply trans_well_founded.
 Qed.
-End Termination.

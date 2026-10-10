@@ -491,3 +491,63 @@ Proof.
       * now apply well_formed_tail in Hwf.
       * apply well_formed_length_le in Hwf. simpl in Hwf. lia.
 Qed.
+
+(* Lists related by PrefixLt x are at most x long, and a larger bound keeps them related. *)
+Lemma prefix_lt_length: forall (x: nat) (l l': list nat), PrefixLt x l l' -> length l <= x.
+Proof. intros x l l' H. now destruct H. Qed.
+
+Lemma prefix_lt_incl: forall (x y: nat) (l l': list nat), x <= y -> PrefixLt x l l' -> PrefixLt y l l'.
+Proof.
+  intros x y l l' Hle H. induction H as [m m' n n' Hm Hm' Hlt | m m' n Hm Hm' H IH].
+  - apply p_head.
+    + lia.
+    + lia.
+    + assumption.
+  - apply p_tail.
+    + lia.
+    + lia.
+    + assumption.
+Qed.
+
+(* Hence StateLt only grows with the largest atom of the formula. *)
+Lemma state_lt_incl: forall (f g: CNF) (s s': State),
+  max_atom_f f <= max_atom_f g -> s >>[f] s' -> s >>[g] s'.
+Proof.
+  intros f g s s' Hle [Hfail | Hlt].
+  - now left.
+  - right. unfold MR, StateLexLt in *.
+    destruct (state_measure s') as [l t], (state_measure s) as [l' t'].
+    inversion Hlt as [? ? ? ? Hprefix | ? ? ? Htotal]; subst.
+    + apply left_slex. apply prefix_lt_incl with (S (S (max_atom_f f))).
+      * lia.
+      * assumption.
+    + now apply right_slex.
+Qed.
+
+(* The score is padded to at least the bound, and for a well-formed assignment to exactly the bound. *)
+Lemma score_length_ge: forall (m: PA) (f: CNF), S (S (max_atom_f f)) <= length (score m f).
+Proof. intros m f. simp score. rewrite length_app, repeat_length. lia. Qed.
+
+Lemma score_length_well_formed: forall (m: PA) (f: CNF),
+  WellFormed (state m f) -> length (score m f) = S (S (max_atom_f f)).
+Proof.
+  intros m f Hwf. simp score. rewrite length_app, repeat_length, length_rev.
+  pose proof (score_aux_length m (S (max_atom_f f)) 0).
+  apply well_formed_length_le in Hwf. lia.
+Qed.
+
+(* A step from a well-formed state that decreases the measure never increases the largest atom of the formula. *)
+Lemma state_lt_max_atom: forall (m m': PA) (f f': CNF),
+  WellFormed (state m f) -> state m f >>[f] state m' f' -> max_atom_f f' <= max_atom_f f.
+Proof.
+  intros m m' f f' Hwf [Hfail | Hlt].
+  - inversion Hfail.
+  - unfold MR, StateLexLt in Hlt. simp state_measure in Hlt.
+    pose proof (score_length_ge m' f') as Hlength.
+    remember (score m' f', score_total m' f') as p' eqn:Hp'.
+    remember (score m f, score_total m f) as p eqn:Hp.
+    destruct Hlt as [l l' t t' Hprefix | l t t' Htotal].
+    + injection Hp' as -> _. apply prefix_lt_length in Hprefix. lia.
+    + injection Hp' as -> _. injection Hp as Hscore _. rewrite Hscore in Hlength.
+      apply score_length_well_formed in Hwf. lia.
+Qed.

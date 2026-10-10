@@ -18,16 +18,16 @@ qualified by that directory, e.g. `From RocqSAT.rules Require Import Unit.`
 
 ## Main results
 
-| Theorem                          | File               | Statement (informally)                                                                      |
-|----------------------------------|--------------------|---------------------------------------------------------------------------------------------|
-| `final_exists`                   | `Satisfiability.v` | From the initial state, some final state is reachable.                                      |
-| `final_model`                    | `Satisfiability.v` | A final state other than `fail` is a model of the formula.                                  |
-| `final_sat_refl`                 | `Satisfiability.v` | A formula is satisfiable iff a final non-`fail` state is reachable.                         |
-| `final_unsat_refl`               | `Satisfiability.v` | A formula is unsatisfiable iff `fail` is reachable.                                         |
-| `sat_decidable`                  | `Satisfiability.v` | Every formula is satisfiable or unsatisfiable.                                              |
-| `strict_derivation_well_founded` | `Termination.v`    | If every rule keeps the formula, there are no infinite derivations from well-formed states. |
-| `derivation_entails`             | `Trans.v`          | Every derivation preserves entailment.                                                      |
-| `next_state_strategy`            | `Strategy.v`       | The concrete solver step is a valid strategy.                                               |
+| Theorem                          | File               | Statement (informally)                                              |
+|----------------------------------|--------------------|---------------------------------------------------------------------|
+| `final_exists`                   | `Satisfiability.v` | From the initial state, some final state is reachable.              |
+| `final_model`                    | `Satisfiability.v` | A final state other than `fail` is a model of the formula.          |
+| `final_sat_refl`                 | `Satisfiability.v` | A formula is satisfiable iff a final non-`fail` state is reachable. |
+| `final_unsat_refl`               | `Satisfiability.v` | A formula is unsatisfiable iff `fail` is reachable.                 |
+| `sat_decidable`                  | `Satisfiability.v` | Every formula is satisfiable or unsatisfiable.                      |
+| `strict_derivation_well_founded` | `Termination.v`    | There are no infinite derivations from well-formed states.          |
+| `derivation_entails`             | `Trans.v`          | Every derivation preserves entailment.                              |
+| `next_state_strategy`            | `Strategy.v`       | The concrete solver step is a valid strategy.                       |
 
 ## Module dependencies
 
@@ -99,10 +99,10 @@ rules say about it. States do not carry well-formedness proofs and `Trans` does 
 require them: well-formedness is an invariant (`derivation_well_formed`), and
 termination is stated for derivations from well-formed states. Because the
 properties come with the rules, the general results (`derivation_equivalent`,
-`derivation_entails`, `trans__state_lt`, …) hold for any rule set. The exception is
-`trans_well_founded`/`strict_derivation_well_founded`, which also need every rule to
-keep the formula (`PreservesFormula`), because the measure is relative to a fixed
-formula.
+`derivation_entails`, `strict_derivation_well_founded`, …) hold for any rule set.
+Rules may change the formula: a step that decreases the measure cannot increase the
+largest atom of the formula (`state_lt_max_atom`), so every derivation is measured
+against the formula it starts from.
 
 A rule that keeps the formula preserves equivalence for free
 (`preserves_formula_equivalence`); all current rules are of this kind.
@@ -113,8 +113,6 @@ To add a rule:
    properties, and bundle them as `<Rule>: Rule`. Nothing imports the file yet, so this
    does not affect the rest of the development.
 2. Import it in `Trans.v` and use it in a rule set, e.g. a new list next to `DPLL`.
-3. For termination, prove that every rule of that set keeps the formula, as
-   `dpll_same_formula` does for `DPLL`.
 
 Adding the rule to `DPLL` itself also requires updating the DPLL-specific proofs that
 case on its rules: `final_dpll_basic`, `final_unsat_refl` (only `Fail` reaches `fail`)
@@ -166,9 +164,9 @@ only preserve models.
 
 ### Termination measure
 
-| File        | Contents                                                                                                                                                                                                                                                                                                                                                                                                   |
-|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Measure.v` | The termination measure: `score`, which records for each decision level how far the number of propagated literals is below a bound (one more than the largest atom of the formula), padded to a fixed length; the order `StateLt` (`s >>[f] s'`) on states, ordered lexicographically by score, with its well-foundedness (`state_lt_well_founded`); lemmas about how each kind of step changes the score. |
+| File        | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Measure.v` | The termination measure: `score`, which records for each decision level how far the number of propagated literals is below a bound (one more than the largest atom of the formula), padded to a fixed length; the order `StateLt` (`s >>[f] s'`) on states, ordered lexicographically by score, with its well-foundedness (`state_lt_well_founded`); `state_lt_incl` (the order grows with the largest atom of the formula) and `state_lt_max_atom` (a decreasing step never increases the largest atom); lemmas about how each kind of step changes the score. |
 
 ### The rules
 
@@ -180,7 +178,7 @@ Each file in `rules/` defines its relation `<Rule>Step` (`r_<rule>` is its only 
 proves its properties, and bundles them as `<Rule>: Rule`:
 
 - `<rule>_same_formula: PreservesFormula <Rule>Step`, which gives `rule_equivalence` via
-  `preserves_formula_equivalence` (and is used by `dpll_same_formula` for termination),
+  `preserves_formula_equivalence` (and is used by `dpll_same_formula`),
 - `<rule>_well_formed: PreservesWellFormed <Rule>Step`,
 - `<rule>_entails: PreservesEntails <Rule>Step`,
 - `<rule>_state_lt: Decreasing <Rule>Step`,
@@ -199,7 +197,7 @@ proves its properties, and bundles them as `<Rule>: Rule`:
 | File            | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 |-----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `Trans.v`       | `Trans rs`, the transition relation of a list of rules (`t_step`: a step of one of the rules from a non-`fail` state), with notations `s ==>[rs] s'`, `==>*[rs]`, `==>+[rs]`, and `==>`/`==>*`/`==>+` for the full system `DPLL` (of the bundled rules `Fail`, `Unit`, …); the smaller rule set `Basic`; `trans_rule`, `trans_union` and `trans_incl`; `derivation_invariant` (a property of assignments preserved by every transition between states is preserved by derivations, used for the `derivation_*` lemmas); final states `Final rs` and `final_dpll_basic`; `trans_well_formed`/`derivation_well_formed`; `trans_same_formula`/`derivation_same_formula` and `dpll_same_formula`; `trans_equivalent`/`derivation_equivalent`; `trans_entails`/`derivation_entails` (every transition and derivation preserves entailment); `fail_predecessor`. |
-| `Termination.v` | `trans__state_lt`: every transition from a well-formed state decreases the measure; `WellFormedTrans rs`, the transitions from well-formed states, and `strict_derivation_well_formed_trans`, which turns a strict derivation from a well-formed state into one of these; from that, if every rule keeps the formula, `trans_well_founded` and `strict_derivation_well_founded`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `Termination.v` | `trans__state_lt`: every transition from a well-formed state decreases the measure; `WellFormedTrans rs`, the transitions from well-formed states, and `strict_derivation_well_formed_trans`, which turns a strict derivation from a well-formed state into one of these; `trans_max_atom` and `max_atom_invariant`: the largest atom of the formula never increases along these transitions; from that, `trans_well_founded` and `strict_derivation_well_founded`, for any rule set.                                                                                                                                                                                                                                                                                                                                                                      |
 
 ### Normalization
 
