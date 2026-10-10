@@ -5,9 +5,6 @@ From RocqSAT Require Import Lit.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Model.
-From RocqSAT Require Import WellFormed.
-From RocqSAT Require Import State.
-From RocqSAT Require Import Rule.
 
 (* The entailment invariant on a trail: every propagated literal follows from f and the literals before it, except pure literals, which only have to preserve models. *)
 Inductive Entails (f: CNF): PA -> Prop :=
@@ -25,7 +22,3 @@ Inductive Entails (f: CNF): PA -> Prop :=
 | e_pure (m: PA) (l: Lit):
   (forall (m': PA), Model m' (CNF.union f (units m)) -> Model (m' ++p l) (CNF.union f (units m))) ->
   Entails f m -> Entails f (m ++p l).
-
-(* Every step of the rule preserves the invariant, relative to the formula of each state. *)
-Definition PreservesEntails (r: Rule): Prop := forall (m m': PA) (f f': CNF) (Hwf: WellFormed m f) (Hwf': WellFormed m' f'),
-  r (state m f Hwf) (state m' f' Hwf') -> Entails f m -> Entails f' m'.

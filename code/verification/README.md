@@ -55,16 +55,15 @@ are grouped into one node.
                  |                 |
                  |               State
                  |                 |
-                 +--------+--------+
-                          |
-                        Rule
-                 +--------+--------+
-                 |                 |
        entailment/Entails       Measure
                  |                 |
-     entailment/Properties         |
-                 |                 |
                  +--------+--------+
+                 |        |
+                 |      Rule
+                 |        |
+  entailment/Properties   |
+                 |        |
+                 +--------+
                           |
           rules/{Fail,Unit,Decide,Backtrack,Pure}
                           |
@@ -151,12 +150,11 @@ General-purpose helpers in `utils/`, independent of the rest of the development.
 | `Model.v`      | `Model m f` (`m` makes `f` true); `unit_cnf l` (a literal as a formula) and `units m` (an assignment as one unit clause per literal); lemmas for models of unions, units and unit clauses; transferring falsity from an assignment to any model of it; semantic consequence `f ⊨ g` and equivalence `Equivalent f g` between formulas, with `equivalent_refl`/`_sym`/`_trans` and `model_union_equivalent`. |
 | `WellFormed.v` | Well-formed assignments for a formula: no atom assigned twice (`NoDuplicates`), and only atoms occurring in the formula (`Bounded`); lemmas about extending and restricting them; `initial_well_formed`.                                                                                                                                                                                                    |
 
-### States and rules
+### States
 
-| File      | Contents                                                                                                                                                                                                                                                                                                               |
-|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `State.v` | States `State`: `fail`, or a well-formed assignment for a formula.                                                                                                                                                                                                                                                     |
-| `Rule.v`  | The type `Rule` of rules (relations on states); `KeepsFormula` (the rule never changes the formula), `PreservesEquivalence` (the rule only changes the formula to an equivalent one) with `keeps_formula_equivalence`, and `ModelFinal` (the rule cannot fire from a model that defines every literal of the formula). |
+| File      | Contents                                                           |
+|-----------|--------------------------------------------------------------------|
+| `State.v` | States `State`: `fail`, or a well-formed assignment for a formula. |
 
 ### Entailment
 
@@ -166,18 +164,22 @@ only preserve models.
 
 | File                      | Contents                                                                                                                                                                                                                                                                                            |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `entailment/Entails.v`    | The invariant `Entails f m`, built one trail entry at a time (`e_nil`, `e_decide`, `e_propagate`, `e_pure`); `PreservesEntails`, the property that a rule preserves it (relative to the formula of each state).                                                                                     |
+| `entailment/Entails.v`    | The invariant `Entails f m`, built one trail entry at a time (`e_nil`, `e_decide`, `e_propagate`, `e_pure`).                                                                                                                                                                                        |
 | `entailment/Properties.v` | `entails_prefix` (the older part of an entailed trail is entailed) and `entails_extend` (a model of the formula and an entailed trail extends past propagated literals); used for soundness of `Fail` and `Backtrack`; `entails_equivalent` (entailment only depends on the models of the formula). |
 
 ### Termination measure
 
-| File        | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Measure.v` | The termination measure: `score`, which records for each decision level how far the number of propagated literals is below a bound (one more than the largest atom of the formula), padded to a fixed length; the order `StateLt` (`s >>[f] s'`) on states, ordered lexicographically by score, with its well-foundedness (`state_lt_well_founded`); `Decreasing`, the property that a rule decreases the measure; lemmas about how each kind of step changes the score. |
+| File        | Contents                                                                                                                                                                                                                                                                                                                                                                                                   |
+|-------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Measure.v` | The termination measure: `score`, which records for each decision level how far the number of propagated literals is below a bound (one more than the largest atom of the formula), padded to a fixed length; the order `StateLt` (`s >>[f] s'`) on states, ordered lexicographically by score, with its well-foundedness (`state_lt_well_founded`); lemmas about how each kind of step changes the score. |
 
 ### The rules
 
-Each file defines its rule (`r_<rule>` is its only constructor) and proves the four
+| File     | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Rule.v` | The type `Rule` of rules (relations on states); `KeepsFormula` (the rule never changes the formula), `PreservesEquivalence` (the rule only changes the formula to an equivalent one) with `keeps_formula_equivalence`, `PreservesEntails` (the rule preserves the entailment invariant, relative to the formula of each state), `Decreasing` (the rule decreases the termination measure), and `ModelFinal` (the rule cannot fire from a model that defines every literal of the formula). |
+
+Each file in `rules/` defines its rule (`r_<rule>` is its only constructor) and proves the four
 properties that the main theorems combine:
 
 - `<rule>_keeps_formula: KeepsFormula <Rule>` (used in `Trans.v` for `dpll_equivalence`, and in `Termination.v`),

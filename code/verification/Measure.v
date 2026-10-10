@@ -15,7 +15,6 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import State.
-From RocqSAT Require Import Rule.
 
 Ltac slia := simpl in *; lia.
 
@@ -171,10 +170,6 @@ Definition StateLtTransClos (f: CNF): relation State := clos_trans _ (StateLt f)
 
 Notation "s '>>[' f ']' s'" := (StateLt f s' s) (at level 40, format "s '/ ' '[' >>[ ']' f ] '/ ' s'").
 Notation "s '>>+[' f ']' s'" := (StateLtTransClos f s' s) (at level 40, format "s '/ ' '[' >>+[ ']' f ] '/ ' s'").
-
-(* Every step of the rule from a state of f decreases the measure. *)
-Definition Decreasing (r: Rule): Prop := forall (m: PA) (f: CNF) (s': State) (Hwf: WellFormed m f),
-  r (state m f Hwf) s' -> state m f Hwf >>[f] s'.
 
 Lemma state_lt_well_founded: forall (f: CNF), well_founded (StateLt f).
 Proof.
