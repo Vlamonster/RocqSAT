@@ -7,4 +7,6 @@
  (name runner)
  (public_name rocqsat)
  (libraries rocq-runtime.kernel)
- (modules solver runner))
+ ; Inline more aggressively, e.g. the literal comparison into the loops of the solver.
+ (ocamlopt_flags (:standard -inline 200))
+ (modules solver store_rt runner))

@@ -1,9 +1,6 @@
 From Stdlib Require Extraction.
 From Stdlib Require Import ExtrOcamlBasic.
 From Stdlib Require Import ExtrOcamlNatInt.
-From Stdlib Require Import ExtrOCamlInt63.
-From Stdlib Require Import ExtrOCamlPArray.
-Extraction NoInline PrimArray.array.
 
 From RocqSAT Require Import Atom.
 From RocqSAT Require Import Lit.
@@ -11,19 +8,46 @@ From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import State.
 From RocqSAT.refinement Require Import Table.
-From RocqSAT.refinement Require Import NextState.
+From RocqSAT.refinement Require Import Store.
+From RocqSAT.refinement Require Import Imperative.
 From RocqSAT Require Import Solve.
 
 (* The solver: the verified strategy run from the initial state of f. *)
-Definition run (f: CNF): State := solve f next_state_strategy (initial_context_inv f).
+Definition run (f: CNF): State := solve f next_impl_strategy (initial_impl_inv f).
 
-(* The table index of a natural number: nat is extracted to OCaml's int, so this is a constant-time
-   conversion. Unverified, like the other realizers of primitive integers and arrays above. *)
-Extract Inlined Constant nat_index => "Uint63.of_int".
+(* The tables of the store in mutable arrays (runner/store_rt.ml), updated in place: each operation returns the
+   same store, changed. This realizes the model of Table.v and Store.v as long as every store is used linearly
+   (see Store.v); tmake makes a new array each time it is evaluated, so it only occurs inside functions
+   (initial_impl). The monad itself is extracted as defined, and inlined, so that the extracted code passes the
+   store along directly. *)
+Extract Constant Table "'a" => "'a Store_rt.table".
+Extract Inlined Constant tmake => "Store_rt.make".
+(* Reading and writing an entry are written out here instead of calling functions of Store_rt, so that OCaml can
+   inline them: dune compiles each module with -opaque, which hides function bodies from other modules. An entry
+   past the end of the array has the default value, and writing it grows the array (Store_rt.grow_set). *)
+Extract Inlined Constant vget => "(fun k st -> (let t = st.svals in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant vset => "(fun k a st -> (let t = st.svals in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extract Inlined Constant cget => "(fun k st -> (let t = st.scmap in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant cset => "(fun k a st -> (let t = st.scmap in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extract Inlined Constant wget => "(fun k st -> (let t = st.swat in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant wset => "(fun k a st -> (let t = st.swat in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extract Inlined Constant lget => "(fun k st -> (let t = st.swls in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant lset => "(fun k a st -> (let t = st.swls in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extraction Inline ret bind runM.
 
 (* Compare atoms as ints rather than with OCaml's polymorphic equality, and call the EqB instances directly. *)
 Extract Inlined Constant Atom.Definitions.EqBAtom => "Int.equal".
 Extraction Inline eqb.
+
+Extraction Inline lookupM lookup_trueM lookup_undefM not_falseM add_watchM watchM replace_watchM.
 
 (* dune collects the extracted files from the current directory. *)
 Set Warnings "-extraction-default-directory".

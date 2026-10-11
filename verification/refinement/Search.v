@@ -8,18 +8,6 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Evaluation.
 From RocqSAT.refinement Require Import Lookup.
 
-(* The elements of a formula are its clauses, up to set equality. *)
-Lemma in_cnf_elements: forall (f: CNF) (c: Clause), In c (CNF.elements f) -> c ∈ f.
-Proof.
-  intros f c Hin. apply CNF.elements_spec1. apply In_InA.
-  - apply CNF.E.eq_equiv.
-  - assumption.
-Qed.
-
-Lemma cnf_elements_in: forall (f: CNF) (c: Clause),
-  c ∈ f -> exists (c': Clause), Clause.Equal c c' /\ In c' (CNF.elements f).
-Proof. intros f c Hc_in_f. apply CNF.elements_spec1 in Hc_in_f. now apply InA_alt in Hc_in_f. Qed.
-
 (* The elements of a clause are exactly its literals. *)
 Lemma clause_elements_iff: forall (c: Clause) (l: Lit), In l (Clause.elements c) <-> l ∈ c.
 Proof.
@@ -29,6 +17,28 @@ Proof.
     + assumption.
   - intros Hl_in_c. apply Clause.elements_spec1 in Hl_in_c. apply InA_alt in Hl_in_c as [l' [-> Hin]].
     assumption.
+Qed.
+
+(* The literals of each clause of f, which are its clauses up to set equality. *)
+Definition clause_lists (f: CNF): list (list Lit) := map Clause.elements (CNF.elements f).
+
+Lemma in_clause_lists: forall (f: CNF) (ls: list Lit),
+  In ls (clause_lists f) -> exists (c: Clause), ls = Clause.elements c /\ c ∈ f.
+Proof.
+  intros f ls Hin. apply in_map_iff in Hin as [c [<- Hin]]. exists c. split.
+  - reflexivity.
+  - apply CNF.elements_spec1. apply In_InA.
+    + apply CNF.E.eq_equiv.
+    + assumption.
+Qed.
+
+(* Every clause of f has the literals of a clause equal to it. *)
+Lemma clause_lists_in: forall (f: CNF) (c: Clause),
+  c ∈ f -> exists (c': Clause), Clause.Equal c c' /\ In (Clause.elements c') (clause_lists f).
+Proof.
+  intros f c Hc_in_f. apply CNF.elements_spec1, InA_alt in Hc_in_f as [c' [Heq Hin]]. exists c'. split.
+  - assumption.
+  - now apply in_map.
 Qed.
 
 (* The literals of f, without duplicates. *)
@@ -64,6 +74,17 @@ end.
 (* The literals ls to decide on: they are literals of f, and include every literal of f without a value. *)
 Definition Cursor (v: Values) (f: CNF) (ls: list Lit): Prop :=
   (forall (l: Lit), In l ls -> l ∈ f) /\ (forall (l: Lit), l ∈ f -> lookup v l = None -> In l ls).
+
+(* A cursor depends only on the values of literals. *)
+Lemma cursor_ext: forall (v v': Values) (f: CNF) (ls: list Lit),
+  (forall (l: Lit), lookup v l = lookup v' l) -> Cursor v f ls -> Cursor v' f ls.
+Proof.
+  intros v v' f ls Hext [Hsound Hcomplete]. split.
+  - assumption.
+  - intros l Hl_in_f Hl. apply Hcomplete.
+    + assumption.
+    + now rewrite Hext.
+Qed.
 
 Lemma skip_assigned_cursor: forall (v: Values) (f: CNF) (ls: list Lit),
   Cursor v f ls -> Cursor v f (skip_assigned v ls).
@@ -105,8 +126,3 @@ Proof.
         -- discriminate.
         -- assumption.
 Qed.
-
-(* c is neither false nor unit under v: it has a true literal or two unassigned ones. *)
-Definition Settled (v: Values) (c: Clause): Prop :=
-  (exists (l: Lit), l ∈ c /\ lookup v l = Some true) \/
-  (exists (l1 l2: Lit), l1 ∈ c /\ l2 ∈ c /\ l1 <> l2 /\ lookup v l1 = None /\ lookup v l2 = None).
