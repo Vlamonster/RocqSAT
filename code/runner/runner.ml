@@ -36,6 +36,7 @@ let parse_stdin (): coq_Lit list list =
       else
         let ints =
           line
+          |> String.map (fun ch -> if ch = '\t' || ch = '\r' then ' ' else ch)
           |> String.split_on_char ' '
           |> List.filter (fun s -> s <> "")
           |> List.map int_of_string
