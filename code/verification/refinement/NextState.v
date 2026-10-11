@@ -36,8 +36,8 @@ Definition key_size (f: CNF): nat := 2 * S (max_atom_f f).
 (* The context agrees with the state m f; the saved values and watches are treated separately (SavedOK). *)
 Definition CoreInv (m: PA) (f: CNF) (x: SolverContext): Prop :=
   vals x = values (value_size f) m /\
-  (forall (i: nat) (c: CNF.elt) (ls: list Lit), tget (cmap x) i = Some (c, ls) -> In c (CNF.elements f)) /\
-  (forall (c: CNF.elt), In c (CNF.elements f) -> exists (i: nat) (ls: list Lit), tget (cmap x) i = Some (c, ls)) /\
+  (forall (i: nat) (c: Clause) (ls: list Lit), tget (cmap x) i = Some (c, ls) -> In c (CNF.elements f)) /\
+  (forall (c: Clause), In c (CNF.elements f) -> exists (i: nat) (ls: list Lit), tget (cmap x) i = Some (c, ls)) /\
   Cursor (vals x) f (lits x) /\
   WatchStruct (cmap x) (wat x) (wls x) (todo x) /\
   Covered (vals x) (cmap x) (wat x) (todo x).

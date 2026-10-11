@@ -23,7 +23,7 @@ Proof. intros [p|p] [p'|p'] Heq; simpl in Heq; f_equal; lia. Qed.
 (* The clauses of the formula by index, each with its list of literals; the two watched literals of each
    clause; and for each literal (by lit_key) the clauses that watch it. All three are tables, so their
    lookups take constant time. *)
-Definition ClauseMap: Type := Table (option (CNF.elt * list Lit)).
+Definition ClauseMap: Type := Table (option (Clause * list Lit)).
 Definition Watches: Type := Table (option (Lit * Lit)).
 Definition WatchLists: Type := Table (list nat).
 
@@ -82,7 +82,7 @@ Qed.
 (* Every clause comes with its literals and has two watched literals, which are literals of the clause unless
    it is empty; for each of them, the clause is in its watch list or pending in its item. *)
 Definition WatchStruct (cm: ClauseMap) (w: Watches) (wl: WatchLists) (todo: list (Lit * list nat)): Prop :=
-  forall (i: nat) (c: CNF.elt) (ls: list Lit), tget cm i = Some (c, ls) ->
+  forall (i: nat) (c: Clause) (ls: list Lit), tget cm i = Some (c, ls) ->
   ls = Clause.elements c /\
   exists (w1 w2: Lit), tget w i = Some (w1, w2) /\
   (In i (watching wl w1) \/ Pending todo i w1) /\ (In i (watching wl w2) \/ Pending todo i w2) /\
@@ -96,7 +96,7 @@ Definition WatchOK (v: Values) (c: Clause) (w1 w2: Lit): Prop :=
 
 (* Every clause has fine watched literals or is pending under one of them. *)
 Definition Covered (v: Values) (cm: ClauseMap) (w: Watches) (todo: list (Lit * list nat)): Prop :=
-  forall (i: nat) (c: CNF.elt) (ls: list Lit), tget cm i = Some (c, ls) ->
+  forall (i: nat) (c: Clause) (ls: list Lit), tget cm i = Some (c, ls) ->
   exists (w1 w2: Lit), tget w i = Some (w1, w2) /\ (WatchOK v c w1 w2 \/ Pending todo i w1 \/ Pending todo i w2).
 
 Lemma watch_ok_settled: forall (v: Values) (c: Clause) (w1 w2: Lit), WatchOK v c w1 w2 -> Settled v c.
@@ -407,7 +407,7 @@ end.
 
 (* A stuck clause i: its watches cannot be repaired. *)
 Definition Stuck (v: Values) (cm: ClauseMap) (w: Watches) (i: nat): Prop :=
-  exists (c: CNF.elt) (ls: list Lit) (w1 w2: Lit), tget cm i = Some (c, ls) /\ tget w i = Some (w1, w2) /\
+  exists (c: Clause) (ls: list Lit) (w1 w2: Lit), tget cm i = Some (c, ls) /\ tget w i = Some (w1, w2) /\
   repair v ls w1 w2 = None.
 
 Lemma visit_spec: forall (v: Values) (cm: ClauseMap) (p: Lit) (todo: list (Lit * list nat)) (ws keep: list nat)
@@ -791,7 +791,7 @@ Qed.
 
 (* Index the clauses cs from k on, with their first literals watched, and each pending under its first watch so
    that it is checked once. *)
-Fixpoint index_clauses (k: nat) (cs: list CNF.elt) (cm: ClauseMap) (w: Watches) (wl: WatchLists)
+Fixpoint index_clauses (k: nat) (cs: list Clause) (cm: ClauseMap) (w: Watches) (wl: WatchLists)
   (todo: list (Lit * list nat)): ClauseMap * Watches * WatchLists * list (Lit * list nat) :=
 match cs with
 | []      => (cm, w, wl, todo)
@@ -803,27 +803,27 @@ end.
 
 (* Every clause watches two of its literals and is in both their watch lists. *)
 Definition IndexOK (cm: ClauseMap) (w: Watches) (wl: WatchLists): Prop :=
-  forall (i: nat) (c: CNF.elt) (ls: list Lit), tget cm i = Some (c, ls) ->
+  forall (i: nat) (c: Clause) (ls: list Lit), tget cm i = Some (c, ls) ->
   ls = Clause.elements c /\
   exists (w1 w2: Lit), tget w i = Some (w1, w2) /\ In i (watching wl w1) /\ In i (watching wl w2) /\
   (ls = [] \/ (w1 ∈ c /\ w2 ∈ c)).
 
 (* Every clause is pending under its first watch. *)
 Definition IndexPending (cm: ClauseMap) (w: Watches) (todo: list (Lit * list nat)): Prop :=
-  forall (i: nat) (c: CNF.elt) (ls: list Lit), tget cm i = Some (c, ls) ->
+  forall (i: nat) (c: Clause) (ls: list Lit), tget cm i = Some (c, ls) ->
   exists (w1 w2: Lit), tget w i = Some (w1, w2) /\ Pending todo i w1.
 
-Lemma index_clauses_spec: forall (cs: list CNF.elt) (k: nat) (cm cm': ClauseMap) (w w': Watches)
+Lemma index_clauses_spec: forall (cs: list Clause) (k: nat) (cm cm': ClauseMap) (w w': Watches)
   (wl wl': WatchLists) (todo todo': list (Lit * list nat)),
-  (forall (i: nat) (c: CNF.elt) (ls: list Lit), tget cm i = Some (c, ls) -> i < k) ->
+  (forall (i: nat) (c: Clause) (ls: list Lit), tget cm i = Some (c, ls) -> i < k) ->
   IndexOK cm w wl ->
   IndexPending cm w todo ->
   index_clauses k cs cm w wl todo = (cm', w', wl', todo') ->
   IndexOK cm' w' wl' /\ IndexPending cm' w' todo' /\
-  (forall (i: nat) (c: CNF.elt) (ls: list Lit), tget cm' i = Some (c, ls) ->
+  (forall (i: nat) (c: Clause) (ls: list Lit), tget cm' i = Some (c, ls) ->
     tget cm i = Some (c, ls) \/ In c cs) /\
-  (forall (c: CNF.elt), In c cs -> exists (i: nat) (ls: list Lit), tget cm' i = Some (c, ls)) /\
-  (forall (i: nat) (c: CNF.elt) (ls: list Lit), tget cm i = Some (c, ls) -> tget cm' i = Some (c, ls)).
+  (forall (c: Clause), In c cs -> exists (i: nat) (ls: list Lit), tget cm' i = Some (c, ls)) /\
+  (forall (i: nat) (c: Clause) (ls: list Lit), tget cm i = Some (c, ls) -> tget cm' i = Some (c, ls)).
 Proof.
   induction cs as [|c cs IH]; intros k cm cm' w w' wl wl' todo todo' Hfresh Hok Hpending Hindex; simpl in Hindex.
   - injection Hindex as <- <- <- <-. split.
@@ -898,7 +898,7 @@ Qed.
 
 (* A stuck clause is not settled: it is false or unit. *)
 Lemma stuck_unsettled: forall (v: Values) (cm: ClauseMap) (w: Watches) (wl: WatchLists) (todo: list (Lit * list nat))
-  (i: nat) (c: CNF.elt) (ls: list Lit) (w1 w2: Lit),
+  (i: nat) (c: Clause) (ls: list Lit) (w1 w2: Lit),
   WatchStruct cm w wl todo ->
   tget cm i = Some (c, ls) -> tget w i = Some (w1, w2) -> repair v ls w1 w2 = None -> ~ Settled v c.
 Proof.
