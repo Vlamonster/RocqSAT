@@ -1,138 +1,107 @@
 From Stdlib Require Import List.
-Import ListNotations.
-
-From Equations Require Import Equations.
 
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
+From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import State.
 
-Definition NoDuplicates (m: PA): Prop := 
-  NoDup (map extract (map fst m)).
+(* No atom is assigned more than once, in either polarity. *)
+Definition NoDuplicates (m: PA): Prop := NoDup (atoms m).
 
-Definition Bounded (m: PA) (f: CNF): Prop := 
-  forall (l: Lit) (a: Ann), In (l, a) m -> 
-  exists (c: Clause), CNF.In c f /\ (Clause.In l c \/ Clause.In (¬l) c).
+(* Every assigned literal belongs to the formula: it or its negation occurs in it. *)
+Definition Bounded (m: PA) (f: CNF): Prop :=
+  forall (l: Lit), l ∈ m -> l ∈ f \/ ¬l ∈ f.
 
-Definition WellFormed (m: PA) (f: CNF): Prop :=
-  NoDuplicates m /\ Bounded m f.
+(* The states the transition system works with: fail, and assignments without duplicates that are bounded by their formula. *)
+Definition WellFormed (s: State): Prop :=
+match s with
+| fail      => True
+| state m f => NoDuplicates m /\ Bounded m f
+end.
 
-Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates ((l, a) :: m) -> NoDuplicates m.
-Proof. intros. now inversion H. Qed.
+(* NoDuplicates and Bounded only look at the literals, so the lemmas below about ⟨m, l⟩ also hold for ⟨m; l⟩. *)
 
-Lemma nodup_cons__nodup': forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates ([(l, a)] ++a m) -> NoDuplicates m.
+Lemma nodup_cons__nodup: forall (m: PA) (l: Lit), NoDuplicates ⟨m, l⟩ -> NoDuplicates m.
+Proof. intros m l Hnodup. now inversion Hnodup. Qed.
+
+Lemma nodup_app__nodup: forall (m n: PA), NoDuplicates ⟨m ++ n⟩ -> NoDuplicates m.
 Proof.
-  intros. apply NoDup_rev in H. repeat rewrite <- map_rev in H.
-  rewrite rev_app_distr in H. simpl in H. inversion H.
-  subst x l0. apply NoDup_rev in H3. repeat rewrite <- map_rev in H3.
-  now rewrite rev_involutive in H3.
-Qed.
-
-Lemma nodup_app__nodup: forall (m n: PA),
-  NoDuplicates (m ++a n) -> NoDuplicates m.
-Proof.
-  induction n.
+  intros m n. induction n as [|n IH l|n IH l].
   - now intros.
-  - intros. simpl in H. apply nodup_cons__nodup in H.
-    + now apply IHn.
-    + apply dec.
+  - intros Hnodup. inversion Hnodup. now apply IH.
+  - intros Hnodup. inversion Hnodup. now apply IH.
 Qed.
 
-Lemma nodup_app__nodup': forall (m n: PA),
-  NoDuplicates (m ++a n) -> NoDuplicates n.
+Lemma bounded_cons__bounded: forall (m: PA) (f: CNF) (l: Lit), Bounded ⟨m, l⟩ f -> Bounded m f.
 Proof.
-  induction m as [|[l a] m IH].
-  - intros. now rewrite app_nil_r in H.
-  - intros. assert (((l, a) :: m) ++a n = m ++a ((l, a) :: []) ++a n) by reflexivity.
-    rewrite H0 in H. rewrite app_assoc in H. apply IH in H. now apply nodup_cons__nodup' in H.
+  unfold Bounded. intros m f l Hbounded l' Hin. apply Hbounded. now right.
 Qed.
 
-Lemma bounded_cons__bounded: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  Bounded ((l, a) :: m) f -> Bounded m f.
+Lemma well_formed_tail: forall (m: PA) (f: CNF) (l: Lit),
+  WellFormed (state ⟨m, l⟩ f) -> WellFormed (state m f).
 Proof.
-  unfold Bounded. intros m f l a Hbounded l' a' Hin. apply (Hbounded l' a'). now right.
+  intros m f l [Hnodup Hbounded]. split.
+  - now apply nodup_cons__nodup in Hnodup.
+  - now apply bounded_cons__bounded in Hbounded.
 Qed.
 
-Lemma bounded_app__bounded: forall (m n: PA) (f: CNF),
-  Bounded (m ++a n) f -> Bounded m f.
+(* The literal on top of an assignment without duplicates was unassigned in the rest. *)
+Lemma nodup_cons__undef: forall (m: PA) (l: Lit), NoDuplicates ⟨m, l⟩ -> Undef m l.
 Proof.
-  induction n.
-  - now intros.
-  - intros. simpl in H. destruct a. apply bounded_cons__bounded in H. now apply IHn.
-Qed.
-
-Lemma wf_cons__wf: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  WellFormed ((l, a) :: m) f -> WellFormed m f.
-Proof.
-  unfold WellFormed. intros. destruct H. split.
-  - now apply nodup_cons__nodup in H.
-  - now apply bounded_cons__bounded in H0.
-Qed.
-
-Lemma wf_app__wf: forall (m n: PA) (f: CNF),
-  WellFormed (m ++a n) f -> WellFormed m f.
-Proof.
-  unfold WellFormed. intros. destruct H. split.
-  - now apply nodup_app__nodup in H.
-  - now apply bounded_app__bounded in H0.
-Qed.
-
-Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates ((l, a) :: m) -> Undef m l.
-Proof. 
-  unfold NoDuplicates, Undef. intros. simpl in *. inversion H.
-  destruct (l_eval m l) eqn:G.
-  - exfalso. apply H2. apply in_map_iff.
-    destruct (proj1 (l_eval_some_iff m l) (ex_intro _ _ G)) as [a' [Hin|Hin]].
-    + exists l. intuition. apply in_map_iff. now exists (l, a').
+  unfold NoDuplicates, Undef. intros m l Hnodup. simpl in Hnodup.
+  inversion Hnodup as [|? ? Hnot_in]. destruct (l_eval m l) eqn:Hl.
+  - exfalso. apply Hnot_in. apply PA.in_atoms.
+    destruct (proj1 (l_eval_some_iff m l) (ex_intro _ _ Hl)) as [Hin|Hin].
+    + now exists l.
     + exists (¬l). split.
-      * destruct l; reflexivity.
-      * apply in_map_iff. now exists (¬l, a').
+      * assumption.
+      * apply Neg.extract_eq. now right.
   - reflexivity.
 Qed.
 
-Lemma nodup_cons: forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates m -> Undef m l -> NoDuplicates ((l, a) :: m).
+(* Adding an unassigned literal keeps an assignment free of duplicates. *)
+Lemma nodup_cons: forall (m: PA) (l: Lit), NoDuplicates m -> Undef m l -> NoDuplicates ⟨m, l⟩.
 Proof.
-  unfold Undef, NoDuplicates. intros. simpl. constructor.
-  - unfold not. intros. funelim (l_eval m l).
-    + contradiction.
+  unfold NoDuplicates, Undef. intros m l Hnodup Hundef. simpl. constructor.
+  - intros Hin. apply PA.in_atoms in Hin as [l' [Hin Heq]].
+    destruct (proj2 (l_eval_some_iff m l)) as [b Hb].
+    + apply Neg.extract_eq in Heq as [<- | ->].
+      * now left.
+      * now right.
     + congruence.
-    + congruence.
-    + simpl in *. destruct H2. 
-      * destruct l, l'.
-        -- simp extract in H2. subst p0. now rewrite Lit.eqb_refl in Heq0.
-        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite Lit.eqb_refl in Heq.
-        -- simp extract in H2. subst p0. simp neg in Heq. now rewrite Lit.eqb_refl in Heq.
-        -- simp extract in H2. subst p0. now rewrite Lit.eqb_refl in Heq0.
-      * apply (H m l dec).
-        -- now inversion H0.
-        -- congruence.
-        -- assumption.
-        -- reflexivity.
-        -- reflexivity.  
   - assumption.
 Qed.
 
 Lemma bounded_incl: forall (m m': PA) (f: CNF),
-  incl m m' -> Bounded m' f -> Bounded m f.
+  (forall (l: Lit), l ∈ m -> l ∈ m') -> Bounded m' f -> Bounded m f.
 Proof.
-  unfold Bounded, incl. intros m m' f Hincl Hbounded l a Hin.
+  unfold Bounded. intros m m' f Hincl Hbounded l Hin.
   apply Hincl in Hin. now apply Hbounded in Hin.
 Qed.
 
-Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  Bounded m f -> l_in_f f l = true -> Bounded ((l, a) :: m) f.
+(* Adding a literal of the formula keeps an assignment bounded. *)
+Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit),
+  Bounded m f -> l ∈ f \/ ¬l ∈ f -> Bounded ⟨m, l⟩ f.
 Proof.
-  unfold Bounded. intros m f l a Hbounded Hl_in_f l' a' Hin. 
-  apply CNF.l_in_f_true_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
-  - destruct Hin.
-    + injection H as <- <-. exists c. intuition.
-    + now apply Hbounded in H.
-  - destruct Hin.
-    + injection H as <- <-. exists c. intuition.
-    + now apply Hbounded in H.
+  unfold Bounded. intros m f l Hbounded Hl_in_f l' [<-|Hin].
+  - assumption.
+  - now apply Hbounded.
+Qed.
+
+(* Adding an unassigned literal of the formula keeps an assignment well-formed. *)
+Lemma well_formed_cons: forall (m: PA) (f: CNF) (l: Lit),
+  WellFormed (state m f) -> Undef m l -> l ∈ f \/ ¬l ∈ f -> WellFormed (state ⟨m, l⟩ f).
+Proof.
+  intros m f l [Hnodup Hbounded] Hundef Hl_in_f. split.
+  - now apply nodup_cons.
+  - now apply bounded_cons.
+Qed.
+
+Lemma initial_well_formed: forall (f: CNF), WellFormed (state ⟨⟩ f).
+Proof.
+  unfold WellFormed, NoDuplicates, Bounded. split.
+  - constructor.
+  - now intros.
 Qed.

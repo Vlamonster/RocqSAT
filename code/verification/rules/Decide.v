@@ -1,0 +1,70 @@
+From Stdlib Require Import Relations.
+
+From Equations Require Import Equations.
+
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Assignment.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import State.
+From RocqSAT Require Import WellFormed.
+From RocqSAT Require Import Entails.
+From RocqSAT Require Import Measure.
+From RocqSAT Require Import Rule.
+
+(* Arbitrarily set an unassigned literal in the formula to true. *)
+Inductive DecideStep: relation State :=
+| r_decide (m: PA) (f: CNF) (l: Lit):
+  l ∈ f \/ ¬l ∈ f ->
+  Undef m l ->
+  DecideStep (state m f) (state ⟨m; l⟩ f).
+
+Lemma decide_same_formula: PreservesFormula DecideStep.
+Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
+
+Lemma decide_well_formed: PreservesWellFormed DecideStep.
+Proof.
+  intros m m' f f' Hstep Hwf.
+  inversion Hstep as [? ? l_decide Hl_in_f Hundef]; subst.
+  now apply well_formed_cons.
+Qed.
+
+Lemma decide_entails: PreservesEntails DecideStep.
+Proof.
+  intros m m' f f' Hstep Hentails.
+  inversion Hstep as [? ? l_decide Hl_in_f Hundef]; subst.
+  now apply e_decide.
+Qed.
+
+Lemma decide_state_lt: Decreasing DecideStep.
+Proof.
+  intros m f s' Hwf Hstep.
+  inversion Hstep as [? ? l_decide Hl_in_f Hundef]; subst.
+  apply decide_well_formed in Hstep. apply Hstep in Hwf.
+  unfold StateLt, MR. simp state_measure. apply right_slex. rewrite score_decide.
+  - apply right_slex. now apply score_total_decide.
+  - assumption.
+Qed.
+
+Lemma decide_model_final: ModelFinal DecideStep.
+Proof.
+  intros m f Heq Hall_def [s Hstep].
+  inversion Hstep as [? ? l_decide Hl_in_f Hundef]; subst.
+  destruct Hl_in_f as [Hl_in_f|Hnegl_in_f].
+  - assert (Def m l_decide).
+    + now apply Hall_def.
+    + now apply def_iff_not_undef in H.
+  - assert (Def m (¬l_decide)).
+    + now apply Hall_def.
+    + apply def_iff_not_undef in H. unfold Undef in H. now rewrite <- l_eval_neg_none_iff in H.
+Qed.
+
+(* Decide as a rule of the transition system. *)
+Definition Decide: Rule := {|
+  step := DecideStep;
+  rule_equivalence := preserves_formula_equivalence DecideStep decide_same_formula;
+  rule_well_formed := decide_well_formed;
+  rule_entails := decide_entails;
+  rule_decreasing := decide_state_lt;
+  rule_model_final := decide_model_final
+|}.

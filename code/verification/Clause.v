@@ -2,6 +2,7 @@ From Stdlib Require Import MSets.MSetAVL.
 From Stdlib Require Import MSets.MSetEqProperties.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.utils Require Export Member.
 
 Module Clause.
   Include MSetAVL.Make(LitOrderType).
@@ -13,11 +14,15 @@ Module Clause.
 
     (* Print elements as literals rather than as Clause.elt. *)
     Notation "'Lit'" := elt (only printing).
+
+    #[export]
+    Instance MemberClause: Member Lit Clause := In.
   End Definitions.
 
   Include Definitions.
 
   Module Lemmas.
+    (* exists_ gives the same result on equal clauses (as sets), for any predicate. *)
     Lemma c_equal_exists: forall (f: Lit -> bool) (c1 c2: Clause), 
       Equal c1 c2 -> exists_ f c1 = exists_ f c2.
     Proof.
@@ -40,6 +45,7 @@ Module Clause.
       - reflexivity.
     Qed.
 
+    (* for_all gives the same result on equal clauses (as sets), for any predicate. *)
     Lemma c_equal_forall: forall (f: Lit -> bool) (c1 c2: Clause),
       Equal c1 c2 -> for_all f c1 = for_all f c2.
     Proof.

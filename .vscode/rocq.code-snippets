@@ -1,0 +1,52 @@
+{
+	// Unicode symbols used in the Rocq notations of code/verification.
+	// Type the prefix and accept the suggestion with Tab or Enter.
+	"Trail open": {
+		"scope": "rocq",
+		"prefix": "\\<",
+		"body": "⟨",
+		"description": "⟨ (start of a trail, Assignment.v)"
+	},
+	"Trail close": {
+		"scope": "rocq",
+		"prefix": "\\>",
+		"body": "⟩",
+		"description": "⟩ (end of a trail, Assignment.v)"
+	},
+	"Trail": {
+		"scope": "rocq",
+		"prefix": "\\tr",
+		"body": "⟨$1⟩$0",
+		"description": "⟨…⟩ (a trail, Assignment.v)"
+	},
+	"Member": {
+		"scope": "rocq",
+		"prefix": "\\in",
+		"body": "∈",
+		"description": "∈ (membership, utils/Member.v)"
+	},
+	"Not member": {
+		"scope": "rocq",
+		"prefix": "\\notin",
+		"body": "∉",
+		"description": "∉ (non-membership, utils/Member.v)"
+	},
+	"Negation": {
+		"scope": "rocq",
+		"prefix": ["\\neg", "\\not"],
+		"body": "¬",
+		"description": "¬ (literal negation, Lit.v)"
+	},
+	"Models": {
+		"scope": "rocq",
+		"prefix": "\\models",
+		"body": "⊨",
+		"description": "⊨ (Model.v)"
+	},
+	"Empty trail": {
+		"scope": "rocq",
+		"prefix": "\\empty",
+		"body": "∅",
+		"description": "∅ (the empty trail inside ⟨ ⟩, Assignment.v)"
+	}
+}

@@ -5,6 +5,7 @@
     - `opam install . --deps-only`
 3. If you want to work with **VSRocq** (tested with version 2.3.3): 
     - `opam install vsrocq-language-server`
+    - Open the repository root in VS Code to get the snippets in `.vscode/rocq.code-snippets` for the notation symbols: `\<` `⟨`, `\>` `⟩`, `\tr` `⟨…⟩`, `\in` `∈`, `\notin` `∉`, `\neg` `¬`, `\models` `⊨`, `\empty` `∅`.
 4. Finally, build **RocqSAT** with:
     - `opam exec -- dune build`
 

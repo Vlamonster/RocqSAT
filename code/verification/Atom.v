@@ -1,6 +1,6 @@
 From Stdlib Require Import Arith.
 
-From RocqSAT Require Export EqB.
+From RocqSAT.utils Require Export EqB.
 
 Module Atom.
   Module Definitions.

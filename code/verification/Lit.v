@@ -3,10 +3,8 @@ From Stdlib Require Import Bool.
 From Stdlib Require Import Lia.
 From Stdlib Require Import Structures.Orders.
 
-From Equations Require Import Equations.
-
 From RocqSAT Require Import Atom.
-From RocqSAT Require Export EqB.
+From RocqSAT.utils Require Export EqB.
 
 Module Lit.
   Module Definitions.
@@ -23,9 +21,12 @@ Module Lit.
     | _,      _      => false
     end.
 
-    Equations extract (l: Lit): Atom :=
-    extract (Pos p) := p;
-    extract (Neg p) := p.
+    (* The atom underlying a literal. *)
+    Definition extract (l: Lit): Atom :=
+    match l with
+    | Pos p => p
+    | Neg p => p
+    end.
   End Definitions.
 
   Include Definitions.
@@ -50,12 +51,12 @@ Module Lit.
     Definition eq_dec: forall (l1 l2: Lit), {l1 = l2} + {l1 <> l2}.
     Proof.
       destruct l1 as [p1|p1], l2 as [p2|p2].
-      - destruct (eq_dec p1 p2).
+      - destruct (Nat.eq_dec p1 p2).
         + left. congruence.
         + right. congruence.
       - right. now unfold not.
       - right. now unfold not.
-      - destruct (eq_dec p1 p2).
+      - destruct (Nat.eq_dec p1 p2).
         + left. congruence.
         + right. congruence.
     Qed.
@@ -74,6 +75,7 @@ Module LitOrderType <: OrderedType.
   Lemma eq_equiv: Equivalence eq.
   Proof. constructor; congruence. Qed.
 
+  (* Positive literals come before negative ones; literals of the same sign are ordered by their atom. *)
   Definition lt (l1 l2: Lit): Prop :=
   match l1, l2 with
   | Pos p1, Pos p2 => p1 < p2
@@ -125,9 +127,11 @@ End LitOrderType.
 Module Neg.
   Module Definitions.
     (* Negates a literal (i.e. Pos becomes Neg and Neg becomes Pos). *)
-    Equations neg (l: Lit): Lit :=
-    neg (Pos p) := Neg p;
-    neg (Neg p) := Pos p.
+    Definition neg (l: Lit): Lit :=
+    match l with
+    | Pos p => Neg p
+    | Neg p => Pos p
+    end.
 
     Declare Scope neg_scope.
     Notation "¬ l" := (neg l) (at level 65, right associativity, format "'[' ¬ ']' l"): neg_scope.
@@ -144,13 +148,29 @@ Module Neg.
     Proof. intros. now destruct l. Qed.
 
     Lemma involutive: forall (l: Lit), ¬¬l = l.
-    Proof. intros. now funelim (¬l). Qed.
+    Proof. now destruct l. Qed.
 
+    (* Two literals compare the same as their negations. *)
     Lemma eqb_compat: forall (l1 l2: Lit), (l1 =? l2) = (¬l1 =? ¬l2).
     Proof. now destruct l1, l2. Qed.
 
+    (* Two literals are equal exactly when their negations are. *)
     Lemma eq_compat: forall (l1 l2: Lit), l1 = l2 <-> ¬l1 = ¬l2.
     Proof. intros. repeat rewrite <- Lit.eqb_eq. now rewrite eqb_compat. Qed.
+
+    (* Two literals have the same atom exactly when they are equal or each other's negation. *)
+    Lemma extract_eq: forall (l l': Lit), extract l = extract l' <-> l = l' \/ l = ¬l'.
+    Proof.
+      intros l l'. split.
+      - intros Heq. destruct l, l'; simpl in Heq; subst.
+        + now left.
+        + now right.
+        + now right.
+        + now left.
+      - intros [-> | ->].
+        + reflexivity.
+        + now destruct l'.
+    Qed.
   End Lemmas.
 
   Include Lemmas.
