@@ -536,20 +536,11 @@ Proof.
       * assumption.
     + apply rt_step. destruct Hwf as [Hno_dup Hbounded].
       apply nodup_cons__undef in Hno_dup as Hundef.
-      destruct (Hbounded l) as [[c [Hl_in_c Hc_in_f]]|[c [Hnegl_in_c Hc_in_f]]].
-      * now left.
-      * apply (t_step Decide).
-        -- right. right. now left.
-        -- apply (r_decide m f c l).
-          ++ now left.
-          ++ assumption.
-          ++ assumption.
-      * apply (t_step Decide).
-        -- right. right. now left.
-        -- apply (r_decide m f c l).
-          ++ now right.
-          ++ assumption.
-          ++ assumption.
+      apply (t_step Decide).
+      * right. right. now left.
+      * apply r_decide.
+        -- apply Hbounded. now left.
+        -- assumption.
 Qed.
 
 (* Hence the normalization of any assignment is reachable from the initial state. *)

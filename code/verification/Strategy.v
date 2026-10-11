@@ -320,9 +320,10 @@ Proof.
            destruct (find_decision_decomp m f l_decide Hfind_decision) as [c_decide [Hc Hc_in_f]].
            apply (t_step Decide).
           ++ right. right. now left.
-          ++ apply (r_decide m f c_decide l_decide).
-            ** left. now apply (find_undef_l_in_c m c_decide l_decide).
-            ** assumption.
+          ++ apply r_decide.
+            ** left. exists c_decide. split.
+              --- now apply (find_undef_l_in_c m c_decide l_decide).
+              --- assumption.
             ** now apply (find_undef_l_undef m c_decide l_decide).
         -- discriminate.
 Qed.
@@ -349,15 +350,11 @@ Proof.
       * now exists c_conflict.
       * congruence.
     (* Decide *)
-    + inversion Hstep as [? ? c_decide l_decide Hx_in_c Hc_in_f Hundef]; subst.
-      destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
-      * assert (Hl_in_f: l_decide ∈ f).
-        -- now exists c_decide.
-        -- destruct (find_decision_exists m f l_decide Hl_in_f Hundef). congruence.
-      * assert (Hnegl_in_f: ¬l_decide ∈ f).
-        -- now exists c_decide.
-        -- apply l_eval_neg_none_iff in Hundef.
-           destruct (find_decision_exists m f (¬l_decide) Hnegl_in_f Hundef). congruence.
+    + inversion Hstep as [? ? l_decide Hl_in_f Hundef]; subst.
+      destruct Hl_in_f as [Hl_in_f|Hnegl_in_f].
+      * destruct (find_decision_exists m f l_decide Hl_in_f Hundef). congruence.
+      * apply l_eval_neg_none_iff in Hundef.
+        destruct (find_decision_exists m f (¬l_decide) Hnegl_in_f Hundef). congruence.
     (* Backtrack *)
     + inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
       destruct (proj2 (find_conflict_exists_iff ⟨m_split; l_split ++ n_split⟩ f)).

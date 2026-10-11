@@ -95,9 +95,8 @@ Proof.
     + inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
       exists (state ⟨m; l_unit⟩ f). apply (t_step Decide).
       * right. now left.
-      * apply (r_decide m f c_unit l_unit).
-        -- now left.
-        -- assumption.
+      * apply r_decide.
+        -- left. now exists c_unit.
         -- assumption.
     + exists s'. apply (t_step Decide).
       * right. now left.
@@ -108,9 +107,8 @@ Proof.
     + inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
       exists (state ⟨m; l_pure⟩ f). apply (t_step Decide).
       * right. now left.
-      * apply (r_decide m f c_pure l_pure).
-        -- now left.
-        -- assumption.
+      * apply r_decide.
+        -- left. now exists c_pure.
         -- assumption.
 Qed.
 

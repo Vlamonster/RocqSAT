@@ -63,9 +63,10 @@ Proof.
     pose proof (find_decision_decomp m f l_decide Hfind_dec) as [c_decide [Hfind_undef_l Hc_in_f]].
     apply (t_step Decide).
     + right. right. now left.
-    + apply (r_decide m f c_decide l_decide).
-      * left. now apply find_undef_l_in_c in Hfind_undef_l.
-      * assumption.
+    + apply r_decide.
+      * left. exists c_decide. split.
+        -- now apply find_undef_l_in_c in Hfind_undef_l.
+        -- assumption.
       * now apply find_undef_l_undef in Hfind_undef_l.
 Qed.
 
