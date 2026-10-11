@@ -124,7 +124,7 @@ General-purpose helpers in `utils/`, independent of the rest of the development.
 | File                | Contents                                                                                                                        |
 |---------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | `utils/EqB.v`       | The `EqB` typeclass for computational (Boolean) equality, with the notation `x =? y`.                                           |
-| `utils/Member.v`    | The `Member` typeclass for membership, with the notation `x ∈ y`.                                                               |
+| `utils/Member.v`    | The `Member` typeclass for membership, with the notations `x ∈ y` and `x ∉ y`.                                                  |
 | `utils/Inspect.v`   | `inspect`, a helper for keeping an equation when matching on a value in Equations definitions.                                  |
 | `utils/Dedupe.v`    | `dedupe_by`, which removes duplicates from a list with respect to a Boolean relation.                                           |
 | `utils/Invariant.v` | `clos_refl_trans_invariant`: a property preserved by every step of a relation is preserved by its reflexive-transitive closure. |

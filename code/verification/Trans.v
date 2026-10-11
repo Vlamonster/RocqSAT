@@ -104,11 +104,11 @@ Proof.
     + exists s'. apply (t_step Backtrack).
       * right. right. now left.
       * assumption.
-    + inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
+    + inversion Hstep as [? ? l_pure Hl_in_f Hpure Hundef]; subst.
       exists (state ⟨m; l_pure⟩ f). apply (t_step Decide).
       * right. now left.
       * apply r_decide.
-        -- left. now exists c_pure.
+        -- now left.
         -- assumption.
 Qed.
 

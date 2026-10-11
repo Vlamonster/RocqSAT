@@ -3,4 +3,5 @@ Class Member (A B: Type) := member: A -> B -> Prop.
 
 Declare Scope member_scope.
 Infix "∈" := member (at level 70): member_scope.
+Notation "x ∉ y" := (~ member x y) (at level 70): member_scope.
 Open Scope member_scope.

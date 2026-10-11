@@ -44,7 +44,7 @@ Module CNF.
       - intros c1 c2 Heq. now rewrite Heq.
     Qed.
 
-    Lemma not_mem_lit_iff: forall (f: CNF) (l: Lit), ~ l ∈ f <-> mem_lit l f = false.
+    Lemma not_mem_lit_iff: forall (f: CNF) (l: Lit), l ∉ f <-> mem_lit l f = false.
     Proof. intros f l. now rewrite <- not_true_iff_false, mem_lit_spec. Qed.
   End Lemmas.
 

@@ -25,6 +25,12 @@
 		"body": "∈",
 		"description": "∈ (membership, utils/Member.v)"
 	},
+	"Not member": {
+		"scope": "rocq",
+		"prefix": "\\notin",
+		"body": "∉",
+		"description": "∉ (non-membership, utils/Member.v)"
+	},
 	"Negation": {
 		"scope": "rocq",
 		"prefix": ["\\neg", "\\not"],
