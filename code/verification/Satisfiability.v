@@ -10,7 +10,8 @@ From RocqSAT Require Import State.
 From RocqSAT Require Import Entails.
 From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
-From RocqSAT Require Import Strategy.
+From RocqSAT.refinement Require Import Search.
+From RocqSAT.refinement Require Import NextState.
 From RocqSAT Require Import Normalization.
 From RocqSAT Require Import Solve.
 From RocqSAT.rules Require Import Fail.

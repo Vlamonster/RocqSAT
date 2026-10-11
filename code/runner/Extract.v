@@ -6,7 +6,7 @@ From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import State.
-From RocqSAT Require Import Strategy.
+From RocqSAT.refinement Require Import NextState.
 From RocqSAT Require Import Solve.
 
 (* The solver: the verified strategy run from the initial state of f. *)

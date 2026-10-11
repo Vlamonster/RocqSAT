@@ -18,16 +18,16 @@ qualified by that directory, e.g. `From RocqSAT.rules Require Import Unit.`
 
 ## Main results
 
-| Theorem                          | File               | Statement (informally)                                              |
-|----------------------------------|--------------------|---------------------------------------------------------------------|
-| `final_exists`                   | `Satisfiability.v` | From the initial state, some final state is reachable.              |
-| `final_model`                    | `Satisfiability.v` | A final state other than `fail` is a model of the formula.          |
-| `final_sat_refl`                 | `Satisfiability.v` | A formula is satisfiable iff a final non-`fail` state is reachable. |
-| `final_unsat_refl`               | `Satisfiability.v` | A formula is unsatisfiable iff `fail` is reachable.                 |
-| `sat_decidable`                  | `Satisfiability.v` | Every formula is satisfiable or unsatisfiable.                      |
-| `strict_derivation_well_founded` | `Termination.v`    | There are no infinite derivations from well-formed states.          |
-| `derivation_entails`             | `Trans.v`          | Every derivation preserves entailment.                              |
-| `next_state_strategy`            | `Strategy.v`       | The concrete solver step is a valid strategy.                       |
+| Theorem                          | File                     | Statement (informally)                                              |
+|----------------------------------|--------------------------|---------------------------------------------------------------------|
+| `final_exists`                   | `Satisfiability.v`       | From the initial state, some final state is reachable.              |
+| `final_model`                    | `Satisfiability.v`       | A final state other than `fail` is a model of the formula.          |
+| `final_sat_refl`                 | `Satisfiability.v`       | A formula is satisfiable iff a final non-`fail` state is reachable. |
+| `final_unsat_refl`               | `Satisfiability.v`       | A formula is unsatisfiable iff `fail` is reachable.                 |
+| `sat_decidable`                  | `Satisfiability.v`       | Every formula is satisfiable or unsatisfiable.                      |
+| `strict_derivation_well_founded` | `Termination.v`          | There are no infinite derivations from well-formed states.          |
+| `derivation_entails`             | `Trans.v`                | Every derivation preserves entailment.                              |
+| `next_state_strategy`            | `refinement/NextState.v` | The concrete solver step is a valid strategy.                       |
 
 ## Module dependencies
 
@@ -65,16 +65,21 @@ are grouped into one node. The helpers in `utils/` are left out.
                         Trans
               +-----------+-----------+
               |           |           |
-         Termination   Strategy   Normalization
+          Strategy   Termination  Normalization
               |           |           |
-              +-----+-----+           |
-                    |                 |
-                  Solve               |
-                    |                 |
-                    +--------+--------+
-                             |
-                      Satisfiability
+              +-----+     |           |
+              |     |     |           |
+              |     +--+--+           |
+              |        |              |
+       refinement (1) Solve           |
+              |        |              |
+              +--------+------+-------+
+                              |
+                        Satisfiability
 ```
+
+(1) The files in `refinement/`: `Lookup` (which only depends on `Evaluation`), `Search`
+(on `Lookup`) and `NextState` (on `Search`, `Strategy` and the rules).
 
 ## Adding a rule
 
@@ -203,10 +208,20 @@ proves its properties, and bundles them as `<Rule>: Rule`:
 
 ### Strategy and solver
 
-| File         | Contents                                                                                                                                                                                                                                                                                                                                                                 |
-|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Strategy.v` | `Strategy next`: a step function that only takes `==>+` steps, never steps from `fail`, and only stops at final states of `Basic`; the search functions `find_conflict`, `find_unit`, `find_decision` (and helpers) with their specifications; `next_state`, one solver step, with `next_state_sound`, `next_state_none`, `next_state_exists` and `next_state_strategy`. |
-| `Solve.v`    | `solve`: iterates a strategy until a final state, by well-founded recursion on `strict_derivation_well_founded` (every reachable state is well-formed, by `derivation_well_formed`); `solve_final_derivation` states that the result is reachable and final.                                                                                                             |
+| File         | Contents                                                                                                                                                                                                                                                     |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Strategy.v` | `Strategy next`: a step function that only takes `==>+` steps, never steps from `fail`, and only stops at final states of `Basic`; `strategy_trans`.                                                                                                         |
+| `Solve.v`    | `solve`: iterates a strategy until a final state, by well-founded recursion on `strict_derivation_well_founded` (every reachable state is well-formed, by `derivation_well_formed`); `solve_final_derivation` states that the result is reachable and final. |
+
+### Refinement
+
+A concrete strategy in `refinement/`, implemented efficiently and proved to agree with the specification.
+
+| File                     | Contents                                                                                                                                                                                                                                                                              |
+|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `refinement/Lookup.v`    | `Values`, a map from atoms to the value they were assigned most recently, and `values m`, the values of a trail; `lookup` and `c_lookup`, which evaluate literals and clauses through such a map, with `lookup_values` and `c_lookup_values` (they agree with `l_eval` and `c_eval`). |
+| `refinement/Search.v`    | The search functions `find_conflict`, `find_unit`, `find_decision` (and helpers), which evaluate through the values of the trail, with their specifications in terms of `l_eval` and `c_eval`.                                                                                        |
+| `refinement/NextState.v` | `next_state`, one solver step that computes the values of the trail once, with `next_state_sound`, `next_state_none`, `next_state_exists` and `next_state_strategy`.                                                                                                                  |
 
 ### Main results
 
