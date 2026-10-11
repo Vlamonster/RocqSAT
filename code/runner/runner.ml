@@ -1,14 +1,16 @@
 open Solver
+open Lit.Definitions
+open PA.Definitions
 
 exception ParseError of string
 
-let lit_of_int (n: int): Lit.coq_Lit =
+let lit_of_int (n: int): coq_Lit =
   match n with
   | 0 -> invalid_arg "DIMACS CNF has no literals with atom 0"
-  | n when n > 0 -> Lit.Pos n
-  | n -> Lit.Neg (-n)
+  | n when n > 0 -> Pos n
+  | n -> Neg (-n)
 
-let parse_stdin (): Lit.coq_Lit list list =
+let parse_stdin (): coq_Lit list list =
   let ic = stdin in
 
   let rec skip_comments () =
@@ -58,24 +60,36 @@ let parse_stdin (): Lit.coq_Lit list list =
   parse_header header;
   read_clauses [] []
 
-let string_of_lit (l: Lit.coq_Lit): string =
+let string_of_lit (l: coq_Lit): string =
   match l with
-  | Lit.Pos n -> string_of_int n
-  | Lit.Neg n -> "-" ^ string_of_int n
+  | Pos n -> string_of_int n
+  | Neg n -> "-" ^ string_of_int n
 
-let int_of_lit (l: Lit.coq_Lit): int =
+let int_of_lit (l: coq_Lit): int =
   match l with
-  | Lit.Pos n -> n
-  | Lit.Neg n -> n
+  | Pos n -> n
+  | Neg n -> n
+
+(* The formula as a set of clauses, each a set of literals. *)
+let cnf_of_lists (f: coq_Lit list list): CNF.t =
+  List.fold_left
+    (fun f c -> CNF.add (List.fold_left (fun c l -> Clause.add l c) Clause.empty c) f)
+    CNF.empty f
+
+(* The literals of a trail, most recent first. *)
+let rec lits_of_pa (m: coq_PA): coq_Lit list =
+  match m with
+  | Coq_empty -> []
+  | Coq_propagate (m, l) | Coq_decide (m, l) -> l :: lits_of_pa m
 
 let (): unit =
-  match solve (parse_stdin ()) with
-  | Trans.Coq_fail -> 
+  match run (cnf_of_lists (parse_stdin ())) with
+  | Fail ->
     print_endline "UNSAT"
-  | Trans.Coq_state (m, _) ->
+  | State (m, _) ->
     Printf.printf "SAT %s\n"
       (m
-        |> List.map fst
+        |> lits_of_pa
         |> List.sort (fun l1 l2 -> compare (int_of_lit l1) (int_of_lit l2))
         |> List.map string_of_lit
         |> String.concat " ")

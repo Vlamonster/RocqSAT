@@ -1,3 +1,9 @@
+(rocq.extraction
+ (prelude Extract)
+ (extracted_files solver.ml solver.mli)
+ (theories Stdlib Equations RocqSAT))
+
 (executable
  (name runner)
+ (public_name rocqsat)
  (modules solver runner))
