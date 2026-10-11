@@ -93,7 +93,7 @@ Proof.
       * now left.
       * assumption.
     + inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
-      exists (state (m ++d l_unit) f). apply (t_step Decide).
+      exists (state ⟨m; l_unit⟩ f). apply (t_step Decide).
       * right. now left.
       * apply (r_decide m f c_unit l_unit).
         -- now left.
@@ -106,7 +106,7 @@ Proof.
       * right. right. now left.
       * assumption.
     + inversion Hstep as [? ? c_pure l_pure Hl_in_c Hc_in_f Hpure Hundef]; subst.
-      exists (state (m ++d l_pure) f). apply (t_step Decide).
+      exists (state ⟨m; l_pure⟩ f). apply (t_step Decide).
       * right. now left.
       * apply (r_decide m f c_pure l_pure).
         -- now left.
@@ -114,7 +114,7 @@ Proof.
         -- assumption.
 Qed.
 
-Lemma initial_refl: forall (f: CNF), state [] f ==>* state [] f.
+Lemma initial_refl: forall (f: CNF), state ⟨⟩ f ==>* state ⟨⟩ f.
 Proof. intros. apply rt_refl. Qed.
 
 (* A property of assignments that every transition between states preserves is preserved by every derivation between states. *)

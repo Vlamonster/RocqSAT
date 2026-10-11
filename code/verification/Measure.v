@@ -27,9 +27,9 @@ list_max (map extract (flat_map Clause.elements (CNF.elements f))).
 
 (* Per decision level, newest first: n minus its number of propagations (x counts them so far). *)
 Equations score_aux (m: PA) (n x: nat): list nat :=
-score_aux []        n x := [n - x];
-score_aux (m ++p l) n x := score_aux m n (S x);
-score_aux (m ++d l) n x := n - x :: score_aux m n 0.
+score_aux ⟨⟩    n x := [n - x];
+score_aux ⟨m, l⟩ n x := score_aux m n (S x);
+score_aux ⟨m; l⟩ n x := n - x :: score_aux m n 0.
 
 (* l padded with x up to length n. *)
 Definition pad (x n: nat) (l: list nat): list nat := l ++ repeat x (n - length l).
@@ -192,7 +192,7 @@ Qed.
 
 (* Below a well-formed literal, the score has room for one more entry. *)
 Lemma score_aux_length_tail: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (n x: nat),
-  WellFormed (state ((l, a) :: m) f) -> length (score_aux m n x) <= S (max_atom_f f).
+  WellFormed (state (add m l a) f) -> length (score_aux m n x) <= S (max_atom_f f).
 Proof.
   intros m f l a n x Hwf. transitivity (S (length m)).
   - apply score_aux_length.
@@ -215,8 +215,8 @@ Qed.
 
 (* A decision does not change the score: the new level adds an entry equal to the padding value. *)
 Lemma score_decide: forall (m: PA) (f: CNF) (l: Lit),
-  WellFormed (state (m ++d l) f) ->
-  score (m ++d l) f = score m f.
+  WellFormed (state ⟨m; l⟩ f) ->
+  score ⟨m; l⟩ f = score m f.
 Proof.
   intros m f l Hwf. unfold score, pad. simp score_aux. simpl rev.
   rewrite length_app, length_rev, <- app_assoc. simpl length. f_equal.
@@ -227,8 +227,8 @@ Qed.
 
 (* A decision does decrease score_total, since it assigns one more literal. *)
 Lemma score_total_decide: forall (m: PA) (f: CNF) (l: Lit),
-  WellFormed (state (m ++d l) f) ->
-  score_total (m ++d l) f < score_total m f.
+  WellFormed (state ⟨m; l⟩ f) ->
+  score_total ⟨m; l⟩ f < score_total m f.
 Proof.
   intros m f l Hwf. apply well_formed_length_le in Hwf.
   unfold score_total. simpl length in *. lia.
@@ -260,10 +260,10 @@ Qed.
 
 (* Lists that start with the same entries are related when their rests are. *)
 Lemma prefix_lt_app_l: forall (m1 m2 n: list nat) (x: nat),
-  length (m1 ++a n) <= x ->
-  length (m2 ++a n) <= x ->
+  length (n ++ m1) <= x ->
+  length (n ++ m2) <= x ->
   PrefixLt x m1 m2 ->
-  PrefixLt x (m1 ++a n) (m2 ++a n).
+  PrefixLt x (n ++ m1) (n ++ m2).
 Proof. 
   intros m1 m2 n. generalize dependent m1. generalize dependent m2.
   induction n.
@@ -286,7 +286,7 @@ Lemma score_aux_more_props: forall (m: PA) (f: CNF) (x: nat),
            (rev (score_aux m (S (max_atom_f f)) x)).
 Proof.
   intros m f x Hwf Hle. generalize dependent x.
-  induction m as [|[l [|]] m IH].
+  induction m as [|m IH l [|]].
   - intros. simp score_aux. simpl. destruct x; apply p_head; simpl in *; lia.
   - intros. simp score_aux. simpl rev. apply prefix_lt_app_l.
     + rewrite length_app, length_rev, Nat.add_1_r. apply le_n_S.
@@ -301,9 +301,9 @@ Qed.
 
 (* Extending the larger of two related lists keeps them related. *)
 Lemma prefix_lt_app_r: forall (m1 m2 n: list nat) (x: nat),
-  length (n ++a m2) <= x ->
+  length (m2 ++ n) <= x ->
   PrefixLt x m1 m2 ->
-  PrefixLt x m1 (n ++a m2).
+  PrefixLt x m1 (m2 ++ n).
 Proof.
   intros m1 m2. generalize dependent m1.
   induction m2.
@@ -322,15 +322,12 @@ Qed.
 
 (* A decision splits the score into the parts before and after it. *)
 Lemma score_aux_split: forall (m1 m2: PA) (l: Lit) (n x: nat),
-  score_aux (m1 ++d l ++a m2) n x = (score_aux m1 n 0) ++a (score_aux m2 n x).
+  score_aux ⟨m1; l ++ m2⟩ n x = (score_aux m2 n x) ++ (score_aux m1 n 0).
 Proof.
-  intros.
-  generalize dependent x.
-  induction m2.
-  - intros. rewrite app_nil_l. simp score_aux. simpl. reflexivity.
-  - intros. simpl. destruct a. destruct a.
-    + simp score_aux. simpl. now rewrite IHm2.
-    + simp score_aux.
+  intros m1 m2 l n. induction m2 as [|m2 IH l' [|]].
+  - intros x. now simp score_aux.
+  - intros x. simpl. simp score_aux. simpl. now rewrite IH.
+  - intros x. simpl. simp score_aux.
 Qed.
 
 (* For well-formed assignments, scores compare like their unpadded versions. *)
@@ -356,8 +353,8 @@ Qed.
 
 (* A propagation decreases the score: it lowers the entry of the newest level. *)
 Lemma score_propagate: forall (m: PA) (f: CNF) (l: Lit),
-  WellFormed (state (m ++p l) f) ->
-  PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score m f).
+  WellFormed (state ⟨m, l⟩ f) ->
+  PrefixLt (S (S (max_atom_f f))) (score ⟨m, l⟩ f) (score m f).
 Proof.
   intros m f l Hwf. apply prefix_lt_score.
   - assumption.
@@ -369,9 +366,9 @@ Qed.
 
 (* Backtracking decreases the score: it lowers the entry of the level before the decision. *)
 Lemma score_backtrack: forall (m n: PA) (f: CNF) (l l': Lit),
-  WellFormed (state (m ++p l) f) ->
-  WellFormed (state (m ++d l' ++a n) f) ->
-  PrefixLt (S (S (max_atom_f f))) (score (m ++p l) f) (score (m ++d l' ++a n) f).
+  WellFormed (state ⟨m, l⟩ f) ->
+  WellFormed (state ⟨m; l' ++ n⟩ f) ->
+  PrefixLt (S (S (max_atom_f f))) (score ⟨m, l⟩ f) (score ⟨m; l' ++ n⟩ f).
 Proof.
   intros m n f l l' Hwf Hwf'. apply prefix_lt_score.
   - assumption.

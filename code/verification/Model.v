@@ -41,7 +41,7 @@ Qed.
 Lemma model_units_iff: forall (m m': PA),
   Model m (units m') <-> forall (l: Lit) (a: Ann), In (l, a) m' -> l_eval m l = Some true.
 Proof.
-  intros m m'. unfold Model. rewrite f_eval_true_iff. induction m' as [|[l a] m' IH].
+  intros m m'. unfold Model. rewrite f_eval_true_iff. induction m' as [|m' IH l a].
   - split.
     + intros _ l a [].
     + intros _ c Hc. simpl in Hc. now apply CNF.empty_spec in Hc.

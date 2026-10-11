@@ -25,7 +25,7 @@ Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
 Definition Unsat (f: CNF): Prop := ~ Sat f.
 
 Theorem final_exists: forall (f: CNF),
-  exists (s: State), state [] f ==>* s /\ Final DPLL s.
+  exists (s: State), state ⟨⟩ f ==>* s /\ Final DPLL s.
 Proof.
   intros. destruct (solve f next_state next_state_strategy) as [|m' f'] eqn:H.
   - exists fail. now apply solve_final_derivation in H.
@@ -42,7 +42,7 @@ Proof.
       destruct (proj2 (find_conflict_exists_iff m f)) as [c_conflict Hfind_conflict]. now exists c.
       destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
       (* Backtrack *)
-      * exists (state (m_split ++p (¬l_split)) f).
+      * exists (state ⟨m_split, (¬l_split)⟩ f).
         pose proof Hsplit as Hdecomp.
         apply split_last_decision_some_iff in Hdecomp as [n_split [-> Hno_dec]].
         apply (t_step Backtrack).
@@ -60,7 +60,7 @@ Proof.
           ++ now apply split_last_decision_none_iff.
   (* Decide *)
   - exfalso. apply H. apply undef_decision_exists in Heq as [l_decide Hfind_dec].
-    exists (state (m ++d l_decide) f).
+    exists (state ⟨m; l_decide⟩ f).
     pose proof (find_decision_decomp m f l_decide Hfind_dec) as [c_decide [Hfind_undef_l Hc_in_f]].
     apply (t_step Decide).
     + right. right. now left.
@@ -72,7 +72,7 @@ Qed.
 
 (* A formula is satisfiable exactly when a final state other than fail is reachable. *)
 Theorem final_sat_refl: forall (f: CNF),
-  (exists (m: PA), state [] f ==>* state m f /\ Final DPLL (state m f)) <-> Sat f.
+  (exists (m: PA), state ⟨⟩ f ==>* state m f /\ Final DPLL (state m f)) <-> Sat f.
 Proof.
   intros. split.
   - intros [m [Htrans Hfinal]]. exists m. now apply final_model in Hfinal.
@@ -92,7 +92,7 @@ Qed.
 
 (* A formula is unsatisfiable exactly when fail is reachable. *)
 Theorem final_unsat_refl: forall (f: CNF),
-  state [] f ==>* fail /\ Final DPLL fail <-> Unsat f.
+  state ⟨⟩ f ==>* fail /\ Final DPLL fail <-> Unsat f.
 Proof.
   intros. split.
   - intros [Hderivation _]. apply fail_predecessor in Hderivation as [m [f' [Hderivation Htrans]]].
@@ -101,13 +101,13 @@ Proof.
     pose proof Hderivation as Hequivalent. apply derivation_equivalent in Hequivalent as [Hff' _].
     apply derivation_entails in Hderivation.
     + unfold Unsat. unfold Sat. unfold not. intros [m' Hsat]. apply Hff' in Hsat.
-      destruct (entails_extend f' [] m m') as [m'' Hm''].
-      * now rewrite app_nil_r.
+      destruct (entails_extend f' ⟨⟩ m m') as [m'' Hm''].
+      * now rewrite extend_empty_l.
       * assumption.
       * apply model_union_iff. split.
         -- assumption.
         -- apply model_units_iff. intros l a [].
-      * apply model_union_iff in Hm'' as [Hf Htrail]. rewrite app_nil_r in Htrail.
+      * apply model_union_iff in Hm'' as [Hf Htrail]. rewrite extend_empty_l in Htrail.
         unfold Model in Hf. rewrite f_eval_true_iff in Hf. apply Hf in Hc_in_f.
         apply (units_transfer_c m'' _ _ Htrail) in Hconflict. congruence.
     + constructor.

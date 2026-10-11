@@ -24,8 +24,8 @@ Definition Strategy (next: State -> option State): Prop :=
 (* States produced by a strategy stay reachable from the initial state. *)
 Lemma strategy_trans: forall (f: CNF) (s s': State) (next: State -> option State) (Hstrat: Strategy next),
   next s = Some s' ->
-  state [] f ==>* s ->
-  state [] f ==>* s'.
+  state ⟨⟩ f ==>* s ->
+  state ⟨⟩ f ==>* s'.
 Proof.
   intros f s s' next Hstrat ns H. eapply rt_trans.
   - apply H.
@@ -255,16 +255,16 @@ match s with
     (* Fail *)
     | None         => Some fail
     (* Backtrack *)
-    | Some (m', l) => Some (state (m' ++p (¬l)) f)
+    | Some (m', l) => Some (state ⟨m', (¬l)⟩ f)
     end
   | None   =>
   (* Unit *)
   match find_unit m f with
-  | Some (_, l) => Some (state (m ++p l) f)
+  | Some (_, l) => Some (state ⟨m, l⟩ f)
   | None        =>
   (* Decide *)
   match find_decision m f with
-  | Some l => Some (state (m ++d l) f)
+  | Some l => Some (state ⟨m; l⟩ f)
   | None   => None
   end end end
 end.
@@ -293,8 +293,8 @@ Proof.
         apply (t_step Backtrack).
         -- right. right. right. now left.
         -- apply (r_backtrack m_split n_split f c_conflict l_split).
-          ++ now apply (find_conflict_c_in_f (m_split ++d l_split ++a n_split) f c_conflict).
-          ++ now apply (find_conflict_conflicting (m_split ++d l_split ++a n_split) f c_conflict).
+          ++ now apply (find_conflict_c_in_f ⟨m_split; l_split ++ n_split⟩ f c_conflict).
+          ++ now apply (find_conflict_conflicting ⟨m_split; l_split ++ n_split⟩ f c_conflict).
           ++ assumption.
       (* Fail *)
       * injection Hnext as <-. apply (t_step Fail).
@@ -354,7 +354,7 @@ Proof.
         destruct (find_decision_exists m f c_decide (¬l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
     (* Backtrack *)
     + inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
-      destruct (proj2 (find_conflict_exists_iff (m_split ++d l_split ++a n_split) f)).
+      destruct (proj2 (find_conflict_exists_iff ⟨m_split; l_split ++ n_split⟩ f)).
       * now exists c_conflict.
       * congruence.
 Qed.

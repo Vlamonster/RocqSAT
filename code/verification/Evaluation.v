@@ -11,8 +11,8 @@ From RocqSAT Require Import Assignment.
 
 (* The first instance of `l` or `¬l` determines the value. *)
 Equations l_eval (m: PA) (l: Lit): option bool :=
-l_eval [] _ := None;
-l_eval ((l', _) :: m) l with l =? l', l =? ¬l' :=
+l_eval empty _ := None;
+l_eval (add m l' _) l with l =? l', l =? ¬l' :=
   | true, _    := Some true
   | _   , true := Some false
   | _   , _    := l_eval m l.
@@ -345,7 +345,7 @@ Qed.
 
 (* Assigning a literal that was unassigned does not change the value of any literal that already had one. *)
 Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
-  Undef m l' -> l_eval m l = Some b -> l_eval ((l', a) :: m) l = Some b.
+  Undef m l' -> l_eval m l = Some b -> l_eval (add m l' a) l = Some b.
 Proof.
   unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
   - exfalso. rewrite Lit.eqb_eq in G2. subst l'. now rewrite Neg.self_neqb_neg in G1.
@@ -356,7 +356,7 @@ Qed.
 
 (* Likewise for clauses. *)
 Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (a: Ann) (b: bool),
-  Undef m l -> c_eval m c = Some b -> c_eval ((l, a) :: m) c = Some b.
+  Undef m l -> c_eval m c = Some b -> c_eval (add m l a) c = Some b.
 Proof.
   intros m c l a b Hundef Hc. destruct b.
   - rewrite c_eval_true_iff in *. destruct Hc as [l' [Hin Hl']].
@@ -370,7 +370,7 @@ Qed.
 
 (* Likewise for formulas. *)
 Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (b: bool),
-  Undef m l -> f_eval m f = Some b -> f_eval ((l, a) :: m) f = Some b.
+  Undef m l -> f_eval m f = Some b -> f_eval (add m l a) f = Some b.
 Proof.
   intros m f l a b Hundef Hf. destruct b.
   - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_extend_undef.

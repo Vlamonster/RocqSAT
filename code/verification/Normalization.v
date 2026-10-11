@@ -19,7 +19,7 @@ From RocqSAT.utils Require Import Dedupe.
 (* Assign l as a decision if it has no value yet. *)
 Definition l_totalize (m: PA) (l: Lit): PA :=
 match l_eval m l with
-| None => m ++d l
+| None => ⟨m; l⟩
 | _    => m
 end.
 
@@ -136,8 +136,8 @@ Qed.
 
 (* Turn every assigned literal into a decision. *)
 Equations convert_prop (m: PA): PA :=
-convert_prop []            := [];
-convert_prop ((l, _) :: m) := convert_prop m ++d l.
+convert_prop ⟨⟩         := ⟨⟩;
+convert_prop (add m l _) := ⟨(convert_prop m); l⟩.
 
 (* Turning literals into decisions does not change the value of any literal. *)
 Lemma convert_prop_l: forall (m: PA) (l: Lit) (v: option bool),
@@ -195,9 +195,9 @@ Qed.
 
 (* Drop the literals whose atom does not occur in f. *)
 Equations bound (m: PA) (f: CNF): PA :=
-bound [] f := [];
-bound ((l, a) :: m) f with l_in_f f l :=
-  | true  := (l, a) :: bound m f
+bound ⟨⟩ f := ⟨⟩;
+bound (add m l a) f with l_in_f f l :=
+  | true  := add (bound m f) l a
   | false := bound m f.
 
 (* A true literal of f stays true after dropping literals outside f. *)
@@ -296,7 +296,7 @@ eqb_by_atom (l, _) (l', _) := extract l =? extract l'.
 
 (* Keep only the most recent assignment of every atom (the head of the list is the most recent). *)
 Equations dedupe (m: PA): PA :=
-dedupe m := dedupe_by eqb_by_atom m.
+dedupe m := of_list (dedupe_by eqb_by_atom m).
 
 (* A literal that differs from both l' and ¬l' has a different atom than l'. *)
 Lemma extract_neqb_iff: forall (l l': Lit),
@@ -305,14 +305,14 @@ Lemma extract_neqb_iff: forall (l l': Lit),
   (extract l =? extract l') = false.
 Proof. intros. destruct l, l'; simp extract neg in *; now simpl in *. Qed.
 
-Lemma dedupe_l_aux: forall (m: PA) (l l': Lit) (a: Ann),
+Lemma dedupe_l_aux: forall (m: list (Lit * Ann)) (l l': Lit) (a: Ann),
   (l =? l') = false ->
   (l =? ¬l') = false ->
-  l_eval m l = l_eval (filter (neqb_of eqb_by_atom (l', a)) m) l.
+  l_eval (of_list m) l = l_eval (of_list (filter (neqb_of eqb_by_atom (l', a)) m)) l.
 Proof.
   induction m as [|[l a] m IH].
   - intros. reflexivity.
-  - intros. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
+  - intros. simpl of_list. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
     + rewrite Lit.eqb_eq in G1. subst l0. now rewrite Neg.self_neqb_neg in G2.
     + rewrite Lit.eqb_eq in G1. subst l0. simpl. simp neqb_of.
       simp eqb_by_atom. assert ((extract l' =? extract l) = false).
@@ -324,7 +324,7 @@ Proof.
         rewrite Neg.involutive in H. now apply extract_neqb_iff.
       * rewrite H1. simpl. simp l_eval. rewrite Lit.eqb_refl. rewrite Lit.eqb_sym. now rewrite Neg.self_neqb_neg.
     + simpl. simp neqb_of. simp eqb_by_atom. destruct (negb (extract l' =? extract l)).
-      * simp l_eval. rewrite G1. rewrite G2. simpl. now apply IH.
+      * simpl of_list. simp l_eval. rewrite G1. rewrite G2. simpl. now apply IH.
       * now apply IH.
 Qed.
 
@@ -332,9 +332,10 @@ Qed.
 Lemma dedupe_l: forall (m: PA) (l: Lit) (v: option bool),
   l_eval m l = v -> l_eval (dedupe m) l = v.
 Proof.
-  intros. simp dedupe. funelim (dedupe_by eqb_by_atom m).
+  intros m l v H. rewrite <- (of_list_to_list m) in H. simp dedupe. revert H. generalize (to_list m). clear m. intros m H.
+  funelim (dedupe_by eqb_by_atom m).
   - reflexivity.
-  - destruct l. simp l_eval. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
+  - destruct l. simpl of_list in *. simp l_eval in *. destruct (l0 =? l) eqn:G1, (l0 =? ¬l) eqn:G2.
     + simpl. reflexivity.
     + simpl. reflexivity.
     + simpl. reflexivity.
@@ -365,18 +366,19 @@ Proof. unfold Def. intros. destruct H0. apply dedupe_l in H0. now exists x. Qed.
 Lemma dedupe_only_dec: forall (m: PA),
   (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) ->
   (forall (l: Lit) (a: Ann), In (l, a) (dedupe m) -> a = dec).
-Proof. intros. apply (H l). simp dedupe in H0. now apply incl_dedupe in H0. Qed.
+Proof. intros. apply (H l). simp dedupe in H0. rewrite to_list_of_list in H0. now apply incl_dedupe in H0. Qed.
 
 Lemma dedupe_bounded: forall (m: PA) (f: CNF),
   Bounded m f ->
   Bounded (dedupe m) f.
 Proof. 
-  unfold Bounded. intros. apply (H l a). simp dedupe in H0. now apply incl_dedupe in H0.
+  unfold Bounded. intros. apply (H l a). simp dedupe in H0. rewrite to_list_of_list in H0. now apply incl_dedupe in H0.
 Qed.
 
 Lemma dedupe_no_duplicates: forall (m: PA), NoDuplicates (dedupe m).
 Proof.
-  unfold NoDuplicates. intros. simp dedupe. funelim (dedupe_by eqb_by_atom m).
+  unfold NoDuplicates. intros. simp dedupe. rewrite to_list_of_list. generalize (to_list m). clear m. intros m.
+  funelim (dedupe_by eqb_by_atom m).
   - simpl. constructor.
   - simpl. constructor.
     + unfold not. intros. destruct l. apply in_map_iff in H0 as [x [Heq Hin]].
@@ -439,9 +441,9 @@ Qed.
 Lemma normalize_derivation_aux: forall (m: PA) (f: CNF),
   WellFormed (state m f) ->
   (forall (l: Lit) (a: Ann), In (l, a) m -> a = dec) ->
-  state [] f ==>* state m f.
+  state ⟨⟩ f ==>* state m f.
 Proof.
-  induction m as [|[l a] m IH].
+  induction m as [|m IH l a].
   - intros. apply rt_refl.
   - intros. destruct a.
     + apply well_formed_tail in H as H'. apply IH in H' as Htrans.
@@ -449,7 +451,7 @@ Proof.
         -- assumption.
         -- apply rt_step. destruct H as [Hno_dup Hbounded].
            unfold Bounded in Hbounded.
-           assert (In (l, dec) (m ++d l)).
+           assert (In (l, dec) ⟨m; l⟩).
           ++ now left.
           ++ apply Hbounded in H. destruct H as [c [Hc_in_f Hx_in_c]].
              apply nodup_cons__undef in Hno_dup as Hundef.
@@ -460,14 +462,14 @@ Proof.
                --- assumption.
                --- assumption.
       * intros. apply (H0 l0). now right.
-    + assert (In (l, prop) (m ++p l)).
+    + assert (In (l, prop) ⟨m, l⟩).
       * now left.
       * now apply H0 in H1.
 Qed.
 
 (* Hence the normalization of any assignment is reachable from the initial state. *)
 Lemma normalize_derivation: forall (m: PA) (f: CNF),
-  state [] f ==>* state (normalize m f) f.
+  state ⟨⟩ f ==>* state (normalize m f) f.
 Proof.
   intros. apply normalize_derivation_aux.
   - apply normalize_well_formed.

@@ -21,7 +21,7 @@ Inductive UnitStep: relation State :=
   CNF.In c f ->
   c_eval m (Clause.remove l c) = Some false ->
   Undef m l ->
-  UnitStep (state m f) (state (m ++p l) f).
+  UnitStep (state m f) (state ⟨m, l⟩ f).
 
 Lemma unit_same_formula: PreservesFormula UnitStep.
 Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.

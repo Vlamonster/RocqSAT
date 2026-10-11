@@ -27,24 +27,22 @@ match s with
 end.
 
 Lemma nodup_cons__nodup: forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates ((l, a) :: m) -> NoDuplicates m.
+  NoDuplicates (add m l a) -> NoDuplicates m.
 Proof. intros. now inversion H. Qed.
 Lemma nodup_app__nodup: forall (m n: PA),
-  NoDuplicates (m ++a n) -> NoDuplicates m.
+  NoDuplicates ⟨m ++ n⟩ -> NoDuplicates m.
 Proof.
   induction n.
   - now intros.
-  - intros. simpl in H. apply nodup_cons__nodup in H.
-    + now apply IHn.
-    + apply dec.
+  - intros. simpl in H. apply nodup_cons__nodup in H. now apply IHn.
 Qed.
 Lemma bounded_cons__bounded: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  Bounded ((l, a) :: m) f -> Bounded m f.
+  Bounded (add m l a) f -> Bounded m f.
 Proof.
   unfold Bounded. intros m f l a Hbounded l' a' Hin. apply (Hbounded l' a'). now right.
 Qed.
 Lemma well_formed_tail: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  WellFormed (state ((l, a) :: m) f) -> WellFormed (state m f).
+  WellFormed (state (add m l a) f) -> WellFormed (state m f).
 Proof.
   unfold WellFormed. intros. destruct H. split.
   - now apply nodup_cons__nodup in H.
@@ -52,7 +50,7 @@ Proof.
 Qed.
 (* The literal on top of an assignment without duplicates was unassigned in the rest. *)
 Lemma nodup_cons__undef: forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates ((l, a) :: m) -> Undef m l.
+  NoDuplicates (add m l a) -> Undef m l.
 Proof. 
   unfold NoDuplicates, Undef. intros. simpl in *. inversion H.
   destruct (l_eval m l) eqn:G.
@@ -67,7 +65,7 @@ Qed.
 
 (* Adding an unassigned literal keeps an assignment free of duplicates. *)
 Lemma nodup_cons: forall (m: PA) (l: Lit) (a: Ann),
-  NoDuplicates m -> Undef m l -> NoDuplicates ((l, a) :: m).
+  NoDuplicates m -> Undef m l -> NoDuplicates (add m l a).
 Proof.
   unfold Undef, NoDuplicates. intros. simpl. constructor.
   - unfold not. intros. funelim (l_eval m l).
@@ -98,7 +96,7 @@ Qed.
 
 (* Adding a literal of the formula keeps an assignment bounded. *)
 Lemma bounded_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  Bounded m f -> l_in_f f l = true -> Bounded ((l, a) :: m) f.
+  Bounded m f -> l_in_f f l = true -> Bounded (add m l a) f.
 Proof.
   unfold Bounded. intros m f l a Hbounded Hl_in_f l' a' Hin. 
   apply CNF.l_in_f_true_iff in Hl_in_f as [c [[Hl_in_c|Hnegl_in_c] Hc_in_f ]].
@@ -112,14 +110,14 @@ Qed.
 
 (* Adding an unassigned literal of the formula keeps an assignment well-formed. *)
 Lemma well_formed_cons: forall (m: PA) (f: CNF) (l: Lit) (a: Ann),
-  WellFormed (state m f) -> Undef m l -> l_in_f f l = true -> WellFormed (state ((l, a) :: m) f).
+  WellFormed (state m f) -> Undef m l -> l_in_f f l = true -> WellFormed (state (add m l a) f).
 Proof.
   intros m f l a [Hnodup Hbounded] Hundef Hl_in_f. split.
   - now apply nodup_cons.
   - now apply bounded_cons.
 Qed.
 
-Lemma initial_well_formed: forall (f: CNF), WellFormed (state [] f).
+Lemma initial_well_formed: forall (f: CNF), WellFormed (state ⟨⟩ f).
 Proof.
   unfold WellFormed, NoDuplicates, Bounded. split.
   - constructor.

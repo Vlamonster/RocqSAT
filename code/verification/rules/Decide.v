@@ -19,7 +19,7 @@ Inductive DecideStep: relation State :=
   Clause.In l c \/ Clause.In (¬l) c ->
   CNF.In c f ->
   Undef m l ->
-  DecideStep (state m f) (state (m ++d l) f).
+  DecideStep (state m f) (state ⟨m; l⟩ f).
 
 Lemma decide_same_formula: PreservesFormula DecideStep.
 Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.

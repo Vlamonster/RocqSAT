@@ -21,7 +21,7 @@ Inductive PureStep: relation State :=
   CNF.In c f ->
   (forall (c': Clause), CNF.In c' f -> ~ Clause.In (¬l) c') ->
   Undef m l ->
-  PureStep (state m f) (state (m ++p l) f).
+  PureStep (state m f) (state ⟨m, l⟩ f).
 
 Lemma pure_same_formula: PreservesFormula PureStep.
 Proof. intros m m' f f' Hstep. now inversion Hstep. Qed.
