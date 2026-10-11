@@ -189,6 +189,19 @@ Section Clauses.
   | _    => false
   end.
 
+  (* c_true and c_false give the same result on equal clauses. *)
+  Lemma c_true_equal: forall (m: PA) (c1 c2: Clause), Clause.Equal c1 c2 -> c_true m c1 = c_true m c2.
+  Proof.
+    intros m c1 c2 Heq. unfold c_true, c_eval.
+    rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+  Qed.
+
+  Lemma c_false_equal: forall (m: PA) (c1 c2: Clause), Clause.Equal c1 c2 -> c_false m c1 = c_false m c2.
+  Proof.
+    intros m c1 c2 Heq. unfold c_false, c_eval.
+    rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+  Qed.
+
   Lemma c_eval_true_iff: forall (m: PA) (c: Clause),
     c_eval m c = Some true <-> exists (l: Lit), l ∈ c /\ l_eval m l = Some true.
   Proof.
@@ -360,15 +373,13 @@ Section Formulas.
     - intros Hf c Hin. unfold f_eval in Hf. destruct (CNF.for_all (c_true m) f) eqn:Hforall.
       + apply CNF.for_all_spec in Hforall.
         * apply Hforall in Hin as Htrue. unfold c_true in Htrue. destruct (c_eval m c) as [[|]|]; easy.
-        * intros c1 c2 Heq. unfold c_true. unfold c_eval.
-          rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+        * intros c1 c2 Heq. now apply c_true_equal.
       + destruct (CNF.exists_ (c_false m) f) eqn:Hexists.
         * discriminate.
         * discriminate.
     - intros Hforall. unfold f_eval. assert (CNF.for_all (c_true m) f = true) as Hforall'.
       + apply CNF.for_all_spec.
-        * intros c1 c2 Heq. unfold c_true. unfold c_eval.
-          rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+        * intros c1 c2 Heq. now apply c_true_equal.
         * intros c Hin. apply Hforall in Hin as Hc. unfold c_true. destruct (c_eval m c) as [[|]|]; easy.
       + now rewrite Hforall'.
   Qed.
@@ -384,23 +395,53 @@ Section Formulas.
           -- exists c. split.
             ++ assumption.
             ++ unfold c_false in Hfalse. destruct (c_eval m c) as [[|]|]; easy.
-          -- intros c1 c2 Heq. unfold c_false. unfold c_eval.
-             rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+          -- intros c1 c2 Heq. now apply c_false_equal.
         * discriminate.
     - intros [c [Hin Hc]]. unfold f_eval. assert (CNF.for_all (c_true m) f = false) as Hforall.
       + apply CNF.for_all_mem_3 with (x:=c).
-        * intros c1 c2 Heq. unfold c_true. unfold c_eval.
-          rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+        * intros c1 c2 Heq. now apply c_true_equal.
         * now apply CNF.mem_spec.
         * unfold c_true. destruct (c_eval m c) as [[|]|]; easy.
       + rewrite Hforall. assert (CNF.exists_ (c_false m) f = true) as Hexists.
         * apply CNF.exists_spec.
-          -- intros c1 c2 Heq. unfold c_false. unfold c_eval.
-             rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+          -- intros c1 c2 Heq. now apply c_false_equal.
           -- exists c. split.
             ++ assumption.
             ++ unfold c_false. destruct (c_eval m c) as [[|]|]; easy.
         * now rewrite Hexists.
+  Qed.
+
+  (* A formula is undefined when no clause is false and at least one clause is undefined. *)
+  Lemma f_eval_none_iff: forall (m: PA) (f: CNF),
+    f_eval m f = None <->
+      (~ exists (c: Clause), c ∈ f /\ c_eval m c = Some false) /\
+         exists (c: Clause), c ∈ f /\ c_eval m c = None.
+  Proof.
+    intros m f. split.
+    - intros Hf. split.
+      + intros Hconflict. apply f_eval_false_iff in Hconflict. congruence.
+      + unfold f_eval in Hf. destruct (CNF.for_all (c_true m) f) eqn:Hforall.
+        * discriminate.
+        * destruct (CNF.exists_ (c_false m) f) eqn:Hexists.
+          -- discriminate.
+          -- apply CNF.for_all_mem_4 in Hforall as [c [Hc_in_f Hc_true]].
+            ++ apply CNF.mem_spec in Hc_in_f. exists c. split.
+              ** assumption.
+              ** destruct (c_eval m c) as [[|]|] eqn:Hc.
+                --- unfold c_true in Hc_true. now rewrite Hc in Hc_true.
+                --- enough (Htrue: CNF.exists_ (c_false m) f = true).
+                  +++ congruence.
+                  +++ apply CNF.exists_spec.
+                    *** intros c1 c2 Heq. now apply c_false_equal.
+                    *** exists c. split.
+                      ---- assumption.
+                      ---- unfold c_false. now rewrite Hc.
+                --- reflexivity.
+            ++ intros c1 c2 Heq. now apply c_true_equal.
+    - intros [Hno_conflict [c [Hc_in_f Hc]]]. destruct (f_eval m f) as [[|]|] eqn:Hf.
+      + rewrite f_eval_true_iff in Hf. apply Hf in Hc_in_f. congruence.
+      + exfalso. apply Hno_conflict. now apply f_eval_false_iff.
+      + reflexivity.
   Qed.
 
   (* Likewise for formulas. *)

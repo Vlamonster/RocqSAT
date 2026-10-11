@@ -178,28 +178,11 @@ Qed.
 Lemma undef_decision_exists: forall (m: PA) (f: CNF),
   f_eval m f = None -> exists (l: Lit), find_decision (values m) f = Some l.
 Proof.
-  intros m f Hf. unfold f_eval in Hf.
-  destruct (CNF.for_all (c_true m) f) eqn:Hall.
-  - discriminate.
-  - destruct (CNF.exists_ (c_false m) f) eqn:Hexists.
-    + discriminate.
-    + apply CNF.for_all_mem_4 in Hall as [c [Hc_in_f Hc_true]].
-      * apply CNF.mem_spec in Hc_in_f. destruct (c_eval m c) as [[|]|] eqn:Hc.
-        -- unfold c_true in Hc_true. now rewrite Hc in Hc_true.
-        -- assert (Hc_false: CNF.exists_ (c_false m) f = true).
-          ++ apply CNF.exists_spec.
-            ** intros c1 c2 Heq. unfold c_false. unfold c_eval.
-               rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
-            ** exists c. split.
-              --- assumption.
-              --- unfold c_false. now rewrite Hc.
-          ++ congruence.
-        -- apply c_eval_none_iff in Hc as [_ [l [Hl_in_c Hl]]].
-           apply find_decision_exists with l.
-           ++ now exists c.
-           ++ assumption.
-      * intros c1 c2 Heq. unfold c_true. unfold c_eval.
-        rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
+  intros m f Hf. apply f_eval_none_iff in Hf as [_ [c [Hc_in_f Hc]]].
+  apply c_eval_none_iff in Hc as [_ [l [Hl_in_c Hl]]].
+  apply find_decision_exists with l.
+  - now exists c.
+  - assumption.
 Qed.
 
 Lemma find_decision_undef: forall (m: PA) (f: CNF) (l: Lit),

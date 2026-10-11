@@ -11,7 +11,6 @@ From RocqSAT Require Import State.
 From RocqSAT Require Import Entails.
 From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
-From RocqSAT.refinement Require Import Search.
 From RocqSAT Require Import Normalization.
 From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import Termination.
@@ -24,77 +23,6 @@ Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit), l ∈ f -> Def m l.
 
 Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
 Definition Unsat (f: CNF): Prop := ~ Sat f.
-
-(* Every state is final for Basic, or a Basic step is possible from it. *)
-Lemma final_or_step: forall (m: PA) (f: CNF), Final Basic (state m f) \/ exists (s': State), state m f ==>[Basic] s'.
-Proof.
-  intros m f.
-  assert (Hcompat_false: forall (c1 c2: Clause), Clause.Equal c1 c2 -> c_false m c1 = c_false m c2).
-  - intros c1 c2 Heq. unfold c_false, c_eval.
-    rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
-  - destruct (CNF.exists_ (c_false m) f) eqn:Hconflict.
-    (* A false clause: Fail or Backtrack *)
-    + right. apply CNF.exists_spec in Hconflict as [c [Hc_in_f Hc]].
-      * assert (Hc_false: c_eval m c = Some false).
-        -- unfold c_false in Hc. destruct (c_eval m c) as [[|]|]; easy.
-        -- destruct (split_last_decision m) as [[m' l]|] eqn:Hsplit.
-          ++ apply PA.split_last_decision_some_iff in Hsplit as [n [-> Hno_dec]].
-             exists (state ⟨m', (¬l)⟩ f). apply (t_step Backtrack).
-            ** right. right. now left.
-            ** now apply (r_backtrack m' n f c l).
-          ++ exists fail. apply (t_step Fail).
-            ** now left.
-            ** apply (r_fail m f c).
-              --- assumption.
-              --- assumption.
-              --- now apply PA.split_last_decision_none_iff.
-      * intros c1 c2 Heq. now apply Hcompat_false.
-    + destruct (CNF.exists_ (fun (c: Clause) => Clause.exists_ (l_undef m) c) f) eqn:Hundef.
-      (* An unassigned literal: Decide *)
-      * right. apply CNF.exists_spec in Hundef as [c [Hc_in_f Hc]].
-        -- apply Clause.exists_spec in Hc as [l [Hl_in_c Hl]].
-          ++ exists (state ⟨m; l⟩ f). apply (t_step Decide).
-            ** right. now left.
-            ** apply r_decide.
-              --- left. now exists c.
-              --- unfold l_undef in Hl. unfold Undef. destruct (l_eval m l); easy.
-          ++ now intros ? ? ->.
-        -- intros c1 c2 Heq. now apply Clause.c_equal_exists.
-      (* Neither: no rule of Basic applies *)
-      * left. intros [s' Htrans]. inversion Htrans as [r ? ? s'' Hr Hstep]; subst.
-        assert (Hno_conflict: forall (c: Clause), c ∈ f -> c_eval m c <> Some false).
-        -- intros c Hc_in_f Hc. enough (Htrue: CNF.exists_ (c_false m) f = true).
-          ++ congruence.
-          ++ apply CNF.exists_spec.
-            ** intros c1 c2 Heq. now apply Hcompat_false.
-            ** exists c. split.
-              --- assumption.
-              --- unfold c_false. now rewrite Hc.
-        -- assert (Hall_def: forall (l: Lit), l ∈ f -> ~ Undef m l).
-          ++ intros l [c [Hl_in_c Hc_in_f]] Hl.
-             enough (Htrue: CNF.exists_ (fun (c: Clause) => Clause.exists_ (l_undef m) c) f = true).
-            ** congruence.
-            ** apply CNF.exists_spec.
-              --- intros c1 c2 Heq. now apply Clause.c_equal_exists.
-              --- exists c. split.
-                +++ assumption.
-                +++ apply Clause.exists_spec.
-                  *** now intros ? ? ->.
-                  *** exists l. split.
-                    ---- assumption.
-                    ---- unfold l_undef. unfold Undef in Hl. now rewrite Hl.
-          ++ destruct Hr as [<-|[<-|[<-|[]]]].
-            (* Fail *)
-            ** inversion Hstep as [? ? c Hc_in_f Hc Hno_dec]; subst. now apply (Hno_conflict c).
-            (* Decide *)
-            ** inversion Hstep as [? ? l [Hl_in_f|Hnegl_in_f] Hl]; subst.
-              --- now apply (Hall_def l).
-              --- apply (Hall_def (¬l)).
-                +++ assumption.
-                +++ now apply l_eval_neg_none_iff in Hl.
-            (* Backtrack *)
-            ** inversion Hstep as [m' n ? c l Hc_in_f Hc Hno_dec]; subst. now apply (Hno_conflict c).
-Qed.
 
 (* Since there are no infinite derivations, every derivation from the initial state can be extended to a final state. *)
 Theorem final_exists: forall (f: CNF),
@@ -132,7 +60,6 @@ Proof.
   - destruct b.
     + reflexivity.
     + exfalso. apply H. apply f_eval_false_iff in Heq as [c [Hc_in_f Hconflict]].
-      destruct (proj2 (find_conflict_exists_iff m f)) as [c_conflict Hfind_conflict]. now exists c.
       destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
       (* Backtrack *)
       * exists (state ⟨m_split, (¬l_split)⟩ f).
@@ -140,28 +67,22 @@ Proof.
         apply PA.split_last_decision_some_iff in Hdecomp as [n_split [-> Hno_dec]].
         apply (t_step Backtrack).
         -- right. right. right. now left.
-        -- apply (r_backtrack m_split n_split f c_conflict l_split).
-          ++ now apply find_conflict_c_in_f in Hfind_conflict.
-          ++ now apply find_conflict_conflicting in Hfind_conflict.
-          ++ assumption.
+        -- now apply (r_backtrack m_split n_split f c l_split).
       (* Fail *)
       * exists fail. apply (t_step Fail).
         -- now left.
-        -- apply (r_fail m f c_conflict).
-          ++ now apply find_conflict_c_in_f in Hfind_conflict.
-          ++ now apply find_conflict_conflicting in Hfind_conflict.
+        -- apply (r_fail m f c).
+          ++ assumption.
+          ++ assumption.
           ++ now apply PA.split_last_decision_none_iff.
   (* Decide *)
-  - exfalso. apply H. apply undef_decision_exists in Heq as [l_decide Hfind_dec].
-    exists (state ⟨m; l_decide⟩ f).
-    pose proof (find_decision_decomp m f l_decide Hfind_dec) as [c_decide [Hfind_undef_l Hc_in_f]].
-    apply (t_step Decide).
+  - exfalso. apply H. apply f_eval_none_iff in Heq as [_ [c [Hc_in_f Hc]]].
+    apply c_eval_none_iff in Hc as [_ [l [Hl_in_c Hl]]].
+    exists (state ⟨m; l⟩ f). apply (t_step Decide).
     + right. right. now left.
     + apply r_decide.
-      * left. exists c_decide. split.
-        -- now apply find_undef_l_in_c in Hfind_undef_l.
-        -- assumption.
-      * now apply find_undef_l_undef in Hfind_undef_l.
+      * left. now exists c.
+      * assumption.
 Qed.
 
 (* A formula is satisfiable exactly when a final state other than fail is reachable. *)
