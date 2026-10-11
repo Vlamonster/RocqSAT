@@ -167,7 +167,7 @@ Module Neg.
         + now right.
         + now right.
         + now left.
-      - intros [<- | ->].
+      - intros [-> | ->].
         + reflexivity.
         + now destruct l'.
     Qed.
