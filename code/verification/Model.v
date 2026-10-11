@@ -77,6 +77,18 @@ Proof.
       * intros l' Hin. apply Hall. now right.
 Qed.
 
+(* Assigning l keeps a model of f a model, as long as ¬l does not occur in f. *)
+Lemma model_cons: forall (m: PA) (f: CNF) (l: Lit), ¬l ∉ f -> Model m f -> Model ⟨m, l⟩ f.
+Proof.
+  unfold Model. intros m f l Hnegl Hm. rewrite f_eval_true_iff in *. intros c Hc_in_f.
+  apply Hm in Hc_in_f as Hc. rewrite c_eval_true_iff in *. destruct Hc as [l' [Hl'_in_c Hl']].
+  exists l'. split.
+  - assumption.
+  - apply l_eval_cons_true.
+    + intros ->. apply Hnegl. now exists c.
+    + assumption.
+Qed.
+
 (* A model of the units of m' makes every literal false that m' makes false. *)
 Lemma units_transfer_l: forall (m m': PA) (l: Lit),
   Model m (units m') -> l_eval m' l = Some false -> l_eval m l = Some false.

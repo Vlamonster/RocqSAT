@@ -40,24 +40,12 @@ Proof.
   inversion Hstep as [? ? l_pure Hl_in_f Hpure Hundef]; subst.
   apply e_pure.
   - intros m'' Hm''. apply model_union_iff in Hm'' as [Hf Hm]. apply model_union_iff. split.
-    + apply f_eval_true_iff. intros c Hc. apply c_eval_true_iff.
-      unfold Model in Hf. rewrite f_eval_true_iff in Hf. apply Hf in Hc as G.
-      rewrite c_eval_true_iff in G. destruct G as [l [Hin Hl]].
-      exists l. split.
-      * assumption.
-      * simpl. unfold l_eval_step. destruct (l =? l_pure).
-        -- reflexivity.
-        -- destruct (l =? ¬l_pure) eqn:G.
-          ++ exfalso. apply Lit.eqb_eq in G. subst l. apply Hpure. now exists c.
-          ++ assumption.
-    + rewrite model_units_iff in *.
-      intros l Hin. simpl. unfold l_eval_step. destruct (l =? l_pure).
-      * reflexivity.
-      * destruct (l =? ¬l_pure) eqn:G.
-        -- exfalso. apply Lit.eqb_eq in G. subst l. apply (def_undef m l_pure).
-          ++ apply l_eval_some_iff. now right.
-          ++ assumption.
-        -- now apply Hm.
+    + now apply model_cons.
+    + rewrite model_units_iff in *. intros l Hin. apply l_eval_cons_true.
+      * intros ->. apply (def_undef m l_pure).
+        -- apply l_eval_some_iff. now right.
+        -- assumption.
+      * now apply Hm.
   - assumption.
 Qed.
 
