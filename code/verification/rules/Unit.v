@@ -47,8 +47,8 @@ Proof.
     unfold Model in Hf. rewrite f_eval_true_iff in Hf. apply Hf in Hc_in_f.
     destruct (l_eval m'' l_unit) as [[|]|] eqn:Hl.
     + reflexivity.
-    + rewrite (c_eval_remove_false_l _ _ _ Hconflict Hl) in Hc_in_f. discriminate.
-    + rewrite (c_eval_remove_none_l _ _ _ Hl_in_c Hconflict Hl) in Hc_in_f. discriminate.
+    + rewrite (c_eval_remove_false _ _ _ Hconflict Hl) in Hc_in_f. discriminate.
+    + rewrite (c_eval_remove_none _ _ _ Hl_in_c Hconflict Hl) in Hc_in_f. discriminate.
   - assumption.
 Qed.
 
@@ -67,7 +67,7 @@ Proof.
   inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
   assert (Def m l_unit).
   - apply Hall_def. now exists c_unit.
-  - now apply def_undef in H.
+  - now apply def_iff_not_undef in H.
 Qed.
 
 (* Unit as a rule of the transition system. *)

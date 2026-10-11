@@ -83,7 +83,7 @@ Proof.
   - exfalso. now apply (backtrack_no_model m n f l m').
   - now apply l_eval_neg_some_iff in Hl.
   - exfalso. apply (backtrack_no_model m n f l ⟨m', l⟩ Hno_dec Hentails Hconflict).
-    + now apply f_eval_extend_undef.
+    + now apply f_eval_cons_undef.
     + simpl. unfold l_eval_step. now rewrite Lit.eqb_refl.
 Qed.
 

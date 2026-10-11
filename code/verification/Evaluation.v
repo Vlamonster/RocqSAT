@@ -39,7 +39,7 @@ Section Literals.
   Definition Def (m: PA) (l: Lit): Prop := exists (b: bool), l_eval m l = Some b.
   Definition Undef (m: PA) (l: Lit): Prop := l_eval m l = None.
 
-  Lemma def_undef: forall (m: PA) (l: Lit), Def m l <-> ~ Undef m l.
+  Lemma def_iff_not_undef: forall (m: PA) (l: Lit), Def m l <-> ~ Undef m l.
   Proof.
     unfold Def, Undef. intros. destruct (l_eval m l).
     - intuition.
@@ -138,7 +138,7 @@ Section Literals.
   Proof. intros m l Hl. apply l_eval_true_in. now rewrite l_eval_neg, Hl. Qed.
 
   (* Assigning a literal that was unassigned does not change the value of any literal that already had one. *)
-  Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (b: bool),
+  Lemma l_eval_cons_undef: forall (m: PA) (l l': Lit) (b: bool),
     Undef m l' -> l_eval m l = Some b -> l_eval ⟨m, l'⟩ l = Some b.
   Proof.
     unfold Undef. intros m l l' b Hundef Hl. simpl. unfold l_eval_step. destruct (l =? l') eqn:G1.
@@ -277,7 +277,7 @@ Section Clauses.
   Qed.
 
   (* If c without l is false and l is false, then c is false. *)
-  Lemma c_eval_remove_false_l: forall (m: PA) (c: Clause) (l: Lit),
+  Lemma c_eval_remove_false: forall (m: PA) (c: Clause) (l: Lit),
     c_eval m (Clause.remove l c) = Some false -> l_eval m l = Some false -> c_eval m c = Some false.
   Proof.
     intros m c l Hc Hl. apply c_eval_false_iff. intros l' Hin. rewrite c_eval_false_iff in Hc.
@@ -289,7 +289,7 @@ Section Clauses.
   Qed.
 
   (* If c without l is false and l is unassigned, then c is undefined (it is a unit clause). *)
-  Lemma c_eval_remove_none_l: forall (m: PA) (c: Clause) (l: Lit),
+  Lemma c_eval_remove_none: forall (m: PA) (c: Clause) (l: Lit),
     l ∈ c -> c_eval m (Clause.remove l c) = Some false -> l_eval m l = None -> c_eval m c = None.
   Proof.
     intros m c l Hin Hc Hl. rewrite c_eval_false_iff in Hc. apply c_eval_none_iff. split.
@@ -315,15 +315,15 @@ Section Clauses.
   Qed.
 
   (* Assigning a literal that was unassigned does not change the value of any clause that already had one. *)
-  Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
+  Lemma c_eval_cons_undef: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
     Undef m l -> c_eval m c = Some b -> c_eval ⟨m, l⟩ c = Some b.
   Proof.
     intros m c l b Hundef Hc. destruct b.
     - rewrite c_eval_true_iff in *. destruct Hc as [l' [Hin Hl']].
       exists l'. split.
       + assumption.
-      + now apply l_eval_extend_undef.
-    - rewrite c_eval_false_iff in *. intros l' Hin. apply l_eval_extend_undef.
+      + now apply l_eval_cons_undef.
+    - rewrite c_eval_false_iff in *. intros l' Hin. apply l_eval_cons_undef.
       + assumption.
       + now apply Hc.
   Qed.
@@ -413,17 +413,17 @@ Section Formulas.
   Qed.
 
   (* Assigning a literal that was unassigned does not change the value of any formula that already had one. *)
-  Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
+  Lemma f_eval_cons_undef: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
     Undef m l -> f_eval m f = Some b -> f_eval ⟨m, l⟩ f = Some b.
   Proof.
     intros m f l b Hundef Hf. destruct b.
-    - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_extend_undef.
+    - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_cons_undef.
       + assumption.
       + now apply Hf.
     - rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
       exists c. split.
       + assumption.
-      + now apply c_eval_extend_undef.
+      + now apply c_eval_cons_undef.
   Qed.
 
   (* Formula evaluation does not distinguish decided from propagated literals either. *)

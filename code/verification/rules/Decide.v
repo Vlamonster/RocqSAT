@@ -53,10 +53,10 @@ Proof.
   destruct Hl_in_f as [Hl_in_f|Hnegl_in_f].
   - assert (Def m l_decide).
     + now apply Hall_def.
-    + now apply def_undef in H.
+    + now apply def_iff_not_undef in H.
   - assert (Def m (¬l_decide)).
     + now apply Hall_def.
-    + apply def_undef in H. unfold Undef in H. now rewrite <- l_eval_neg_none_iff in H.
+    + apply def_iff_not_undef in H. unfold Undef in H. now rewrite <- l_eval_neg_none_iff in H.
 Qed.
 
 (* Decide as a rule of the transition system. *)

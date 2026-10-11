@@ -42,7 +42,7 @@ Proof.
   - intros m'' Hm''. apply model_union_iff in Hm'' as [Hf Hm]. apply model_union_iff. split.
     + now apply model_cons.
     + rewrite model_units_iff in *. intros l Hin. apply l_eval_cons_true.
-      * intros ->. apply (def_undef m l_pure).
+      * intros ->. apply (def_iff_not_undef m l_pure).
         -- apply l_eval_some_iff. now right.
         -- assumption.
       * now apply Hm.
@@ -64,7 +64,7 @@ Proof.
   inversion Hstep as [? ? l_pure Hl_in_f Hpure Hundef]; subst.
   assert (Def m l_pure).
   - now apply Hall_def.
-  - now apply def_undef in H.
+  - now apply def_iff_not_undef in H.
 Qed.
 
 (* Pure as a rule of the transition system. *)

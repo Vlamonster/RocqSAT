@@ -36,7 +36,7 @@ Lemma l_totalize_l: forall (m: PA) (l l': Lit) (b: bool),
 Proof.
   intros. unfold l_totalize. destruct (l_eval m l) eqn:Hl.
   - assumption.
-  - now apply l_eval_extend_undef.
+  - now apply l_eval_cons_undef.
 Qed.
 
 Lemma l_totalize_c: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
@@ -44,7 +44,7 @@ Lemma l_totalize_c: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
 Proof.
   intros. unfold l_totalize. destruct (l_eval m l) eqn:Hl.
   - assumption.
-  - now apply c_eval_extend_undef.
+  - now apply c_eval_cons_undef.
 Qed.
 
 Lemma l_totalize_f: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
@@ -52,7 +52,7 @@ Lemma l_totalize_f: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
 Proof.
   intros. unfold l_totalize. destruct (l_eval m l) eqn:Hl.
   - assumption.
-  - now apply f_eval_extend_undef.
+  - now apply f_eval_cons_undef.
 Qed.
 
 Lemma c_totalize_l: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
