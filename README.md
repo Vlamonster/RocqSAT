@@ -32,11 +32,11 @@ machine):
 | `simple.cnf`        |         3 |       2 | SAT     | < 0.01s |
 | `tutorial.cnf`      |         5 |       5 | SAT     | < 0.01s |
 | `test.cnf`          |         6 |      15 | SAT     | < 0.01s |
-| `hole6.cnf`         |        42 |     133 | UNSAT   |   0.06s |
+| `hole6.cnf`         |        42 |     133 | UNSAT   |   0.04s |
 | `zebra.cnf`         |       155 |    1135 | SAT     |   0.04s |
-| `queens16.cnf`      |       256 |    6336 | SAT     |   0.28s |
-| `hanoi4.cnf`        |       718 |    4934 | SAT     |     51s |
-| `factor1234321.cnf` |      1433 |    7585 | SAT     |    153s |
+| `queens16.cnf`      |       256 |    6336 | SAT     |   0.17s |
+| `hanoi4.cnf`        |       718 |    4934 | SAT     |     25s |
+| `factor1234321.cnf` |      1433 |    7585 | SAT     |     60s |
 | `bf.cnf`            |      1040 |    3668 | timeout |       - |
 | `factor1235321.cnf` |      1433 |    7585 | timeout |       - |
 | `subsets100.cnf`    |      3357 |   15212 | timeout |       - |

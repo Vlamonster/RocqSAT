@@ -83,6 +83,10 @@ let rec lits_of_pa (m: coq_PA): coq_Lit list =
   | Coq_empty -> []
   | Coq_propagate (m, l) | Coq_decide (m, l) -> l :: lits_of_pa m
 
+(* A large minor heap (16M words) and a lazier major GC: the solver allocates many short-lived values, which
+   then die young instead of being promoted. *)
+let () = Gc.set { (Gc.get ()) with Gc.minor_heap_size = 16 * 1024 * 1024; Gc.space_overhead = 200 }
+
 let (): unit =
   match run (cnf_of_lists (parse_stdin ())) with
   | Fail ->
