@@ -158,10 +158,6 @@ Section Literals.
       + now apply Lit.eqb_eq in G.
       + assumption.
   Qed.
-
-  (* Evaluation does not distinguish decided from propagated literals. *)
-  Lemma l_eval_decide_propagate: forall (m: PA) (l l': Lit), l_eval ⟨m; l'⟩ l = l_eval ⟨m, l'⟩ l.
-  Proof. reflexivity. Qed.
 End Literals.
 
 Section Clauses.
@@ -314,23 +310,18 @@ Section Clauses.
       + assumption.
   Qed.
 
-  (* Assigning a literal that was unassigned does not change the value of any clause that already had one. *)
-  Lemma c_eval_cons_undef: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
-    Undef m l -> c_eval m c = Some b -> c_eval ⟨m, l⟩ c = Some b.
+  (* If m' keeps every literal that is b under m at b, it keeps every clause that is b under m at b. *)
+  Lemma c_eval_preserve: forall (m m': PA) (c: Clause) (b: bool),
+    (forall (l: Lit), l_eval m l = Some b -> l_eval m' l = Some b) ->
+    c_eval m c = Some b -> c_eval m' c = Some b.
   Proof.
-    intros m c l b Hundef Hc. destruct b.
-    - rewrite c_eval_true_iff in *. destruct Hc as [l' [Hin Hl']].
-      exists l'. split.
+    intros m m' c b Hl Hc. destruct b.
+    - rewrite c_eval_true_iff in *. destruct Hc as [l [Hin Hl_true]].
+      exists l. split.
       + assumption.
-      + now apply l_eval_cons_undef.
-    - rewrite c_eval_false_iff in *. intros l' Hin. apply l_eval_cons_undef.
-      + assumption.
-      + now apply Hc.
+      + now apply Hl.
+    - rewrite c_eval_false_iff in *. intros l Hin. apply Hl. now apply Hc.
   Qed.
-
-  (* Clause evaluation does not distinguish decided from propagated literals either. *)
-  Lemma c_eval_decide_propagate: forall (m: PA) (c: Clause) (l: Lit), c_eval ⟨m; l⟩ c = c_eval ⟨m, l⟩ c.
-  Proof. reflexivity. Qed.
 End Clauses.
 
 Section Formulas.
@@ -412,21 +403,18 @@ Section Formulas.
         * now rewrite Hexists.
   Qed.
 
-  (* Assigning a literal that was unassigned does not change the value of any formula that already had one. *)
-  Lemma f_eval_cons_undef: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
-    Undef m l -> f_eval m f = Some b -> f_eval ⟨m, l⟩ f = Some b.
+  (* Likewise for formulas. *)
+  Lemma f_eval_preserve: forall (m m': PA) (f: CNF) (b: bool),
+    (forall (l: Lit), l_eval m l = Some b -> l_eval m' l = Some b) ->
+    f_eval m f = Some b -> f_eval m' f = Some b.
   Proof.
-    intros m f l b Hundef Hf. destruct b.
-    - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_cons_undef.
+    intros m m' f b Hl Hf. destruct b.
+    - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_preserve with m.
       + assumption.
       + now apply Hf.
     - rewrite f_eval_false_iff in *. destruct Hf as [c [Hin Hc]].
       exists c. split.
       + assumption.
-      + now apply c_eval_cons_undef.
+      + now apply c_eval_preserve with m.
   Qed.
-
-  (* Formula evaluation does not distinguish decided from propagated literals either. *)
-  Lemma f_eval_decide_propagate: forall (m: PA) (f: CNF) (l: Lit), f_eval ⟨m; l⟩ f = f_eval ⟨m, l⟩ f.
-  Proof. reflexivity. Qed.
 End Formulas.
