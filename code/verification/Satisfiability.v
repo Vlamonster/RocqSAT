@@ -27,7 +27,7 @@ Definition Unsat (f: CNF): Prop := ~ Sat f.
 Theorem final_exists: forall (f: CNF),
   exists (s: State), state ⟨⟩ f ==>* s /\ Final DPLL s.
 Proof.
-  intros. destruct (solve f next_state next_state_strategy) as [|m' f'] eqn:H.
+  intros. destruct (solve f next_state_strategy (initial_values_inv f)) as [|m' f'] eqn:H.
   - exists fail. now apply solve_final_derivation in H.
   - exists (state m' f'). now apply solve_final_derivation in H.
 Qed.

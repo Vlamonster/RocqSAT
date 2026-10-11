@@ -208,20 +208,20 @@ proves its properties, and bundles them as `<Rule>: Rule`:
 
 ### Strategy and solver
 
-| File         | Contents                                                                                                                                                                                                                                                     |
-|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Strategy.v` | `Strategy next`: a step function that only takes `==>+` steps, never steps from `fail`, and only stops at final states of `Basic`; `strategy_trans`.                                                                                                         |
-| `Solve.v`    | `solve`: iterates a strategy until a final state, by well-founded recursion on `strict_derivation_well_founded` (every reachable state is well-formed, by `derivation_well_formed`); `solve_final_derivation` states that the result is reachable and final. |
+| File         | Contents                                                                                                                                                                                                                                                                                                                  |
+|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Strategy.v` | `Strategy Inv next`: a step function `next: State * Ctx -> option (State * Ctx)` that carries a context of its own choosing, kept consistent with the state by the invariant `Inv`; it never steps from `fail`, only stops at final states of `Basic`, and only takes `==>+` steps that preserve `Inv`; `strategy_trans`. |
+| `Solve.v`    | `solve`: iterates a strategy from an initial context until a final state, by well-founded recursion on `strict_derivation_well_founded` (every reachable state is well-formed, by `derivation_well_formed`); `solve_final_derivation` states that the result is reachable and final.                                      |
 
 ### Refinement
 
 A concrete strategy in `refinement/`, implemented efficiently and proved to agree with the specification.
 
-| File                     | Contents                                                                                                                                                                                                                                                                              |
-|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `refinement/Lookup.v`    | `Values`, a map from atoms to the value they were assigned most recently, and `values m`, the values of a trail; `lookup` and `c_lookup`, which evaluate literals and clauses through such a map, with `lookup_values` and `c_lookup_values` (they agree with `l_eval` and `c_eval`). |
-| `refinement/Search.v`    | The search functions `find_conflict`, `find_unit`, `find_decision` (and helpers), which evaluate through the values of the trail, with their specifications in terms of `l_eval` and `c_eval`.                                                                                        |
-| `refinement/NextState.v` | `next_state`, one solver step that computes the values of the trail once, with `next_state_sound`, `next_state_none`, `next_state_exists` and `next_state_strategy`.                                                                                                                  |
+| File                     | Contents                                                                                                                                                                                                                                                                                                                   |
+|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `refinement/Lookup.v`    | `Values`, a map from atoms to the value they were assigned most recently, and `values m`, the values of a trail; `lookup` and `c_lookup`, which evaluate literals and clauses through such a map, with `lookup_values` and `c_lookup_values` (they agree with `l_eval` and `c_eval`).                                      |
+| `refinement/Search.v`    | The search functions `find_conflict`, `find_unit`, `find_decision` (and helpers), which evaluate through the values of the trail, with their specifications in terms of `l_eval` and `c_eval`.                                                                                                                             |
+| `refinement/NextState.v` | `next_state_values`, one solver step given the values of the trail, with `next_state_values_sound`, `_none` and `_exists`; `next_state`, the same step with the values as its context (`ValuesInv`), updated by one `add` per assignment and recomputed after a backtrack; `next_state_strategy` and `initial_values_inv`. |
 
 ### Main results
 

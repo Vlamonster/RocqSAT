@@ -10,7 +10,7 @@ From RocqSAT.refinement Require Import NextState.
 From RocqSAT Require Import Solve.
 
 (* The solver: the verified strategy run from the initial state of f. *)
-Definition run (f: CNF): State := solve f next_state next_state_strategy.
+Definition run (f: CNF): State := solve f next_state_strategy (initial_values_inv f).
 
 (* dune collects the extracted files from the current directory. *)
 Set Warnings "-extraction-default-directory".
