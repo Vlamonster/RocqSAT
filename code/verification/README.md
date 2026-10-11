@@ -33,17 +33,12 @@ qualified by that directory, e.g. `From RocqSAT.rules Require Import Unit.`
 
 Each module is drawn above the modules that import it. Only direct dependencies
 are shown (an edge implied by a longer path is left out), and the five rule files
-are grouped into one node.
+are grouped into one node. The helpers in `utils/` are left out.
 
 ```text
-                      utils/EqB
-                          |
                          Atom
                           |
-                         Lit       utils/Member
-                          |             |
-                          +-------------+
-                          |
+                         Lit
                  +--------+--------+
                  |                 |
                  |               Clause
@@ -74,15 +69,12 @@ are grouped into one node.
               |           |           |
               +-----+-----+           |
                     |                 |
-                Solve (1)             |
+                  Solve               |
                     |                 |
                     +--------+--------+
                              |
                       Satisfiability
 ```
-
-(1) `Solve` also imports the helper `utils/Inspect`, and `Trans` the helper
-`utils/Invariant`.
 
 ## Adding a rule
 
