@@ -1,6 +1,4 @@
-From Stdlib Require Import List.
 From Stdlib Require Import Relations.
-Import ListNotations.
 
 From Equations Require Import Equations.
 
@@ -19,7 +17,7 @@ From RocqSAT Require Import Rule.
 (* Backtrack by flipping the most recent decision literal. *)
 Inductive BacktrackStep: relation State :=
 | r_backtrack (m n: PA) (f: CNF) (c: Clause) (l: Lit):
-  CNF.In c f ->
+  c ∈ f ->
   c_eval ⟨m; l ++ n⟩ c = Some false ->
   NoDecisions n ->
   BacktrackStep (state ⟨m; l ++ n⟩ f) (state ⟨m, (¬l)⟩ f).
@@ -37,22 +35,22 @@ Proof.
     + now apply (nodup_cons__nodup) in Hnodup.
     + apply nodup_cons__undef in Hnodup as Hundef.
       apply l_eval_neg_none_iff in Hundef.
-      apply (nodup_cons _ _ _ Hnodup' Hundef).
+      now apply nodup_cons.
   - destruct Hwf as [_ Hbounded]. apply (bounded_incl ⟨m_split; l_split⟩) in Hbounded.
     + assert (Hbounded': Bounded m_split f').
       * apply (bounded_incl m_split) in Hbounded.
         -- assumption.
-        -- apply incl_tl. apply incl_refl.
-      * assert (In (l_split, dec) ⟨m_split; l_split⟩).
+        -- intros l Hl. now right.
+      * assert (l_split ∈ ⟨m_split; l_split⟩).
         -- now left.
-        -- apply Hbounded in H as [c [Hc_in_f' [Hl_in_c|Hnegl_in_c]]].
-          ++ intros l' a' Hin. destruct Hin.
-            ** injection H as <- <-. exists c. rewrite Neg.involutive. intuition.
-            ** now apply Hbounded' in H.
-          ++ intros l' a' Hin. destruct Hin.
-            ** injection H as <- <-. exists c. intuition.
-            ** now apply Hbounded' in H.
-    + rewrite to_list_extend. apply incl_appr. apply incl_refl.
+        -- apply Hbounded in H as [Hl_in_f|Hnegl_in_f].
+          ++ intros l' [<-|Hin].
+            ** right. now rewrite Neg.involutive.
+            ** now apply Hbounded'.
+          ++ intros l' [<-|Hin].
+            ** now left.
+            ** now apply Hbounded'.
+    + intros l Hl. apply PA.in_app_iff. now right.
 Qed.
 
 (* With a conflict after deciding l, no model of the formula and m makes l true. *)
@@ -66,9 +64,9 @@ Proof.
   destruct (entails_extend f ⟨m; l⟩ n m' Hentails Hno_dec) as [m'' Hm''].
   - apply model_union_iff in Hm' as [Hf Hm]. apply model_union_iff. split.
     + assumption.
-    + rewrite model_units_iff in *. intros l' a' [Heq|Hin].
-      * now injection Heq as <- <-.
-      * now apply (Hm l' a').
+    + rewrite model_units_iff in *. intros l' [<-|Hin].
+      * assumption.
+      * now apply Hm.
   - apply model_union_iff in Hm'' as [Hf Htrail].
     apply (units_transfer_f m'' _ _ Htrail) in Hconflict. unfold Model in Hf. congruence.
 Qed.
@@ -86,7 +84,7 @@ Proof.
   - now apply l_eval_neg_some_iff in Hl.
   - exfalso. apply (backtrack_no_model m n f l ⟨m', l⟩ Hno_dec Hentails Hconflict).
     + now apply f_eval_extend_undef.
-    + simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
+    + simpl. unfold l_eval_step. now rewrite Lit.eqb_refl.
 Qed.
 
 Lemma backtrack_entails: PreservesEntails BacktrackStep.

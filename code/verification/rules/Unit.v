@@ -17,8 +17,8 @@ From RocqSAT Require Import Rule.
 (* If a clause is false except for one unassigned literal, assign it to satisfy the clause. *)
 Inductive UnitStep: relation State :=
 | r_unit (m: PA) (f: CNF) (c: Clause) (l: Lit):
-  Clause.In l c ->
-  CNF.In c f ->
+  l ∈ c ->
+  c ∈ f ->
   c_eval m (Clause.remove l c) = Some false ->
   Undef m l ->
   UnitStep (state m f) (state ⟨m, l⟩ f).
@@ -33,7 +33,7 @@ Proof.
   apply well_formed_cons.
   - assumption.
   - assumption.
-  - apply CNF.l_in_f_true_iff. exists c_unit. intuition.
+  - left. now exists c_unit.
 Qed.
 
 Lemma unit_entails: PreservesEntails UnitStep.

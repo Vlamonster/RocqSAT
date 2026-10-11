@@ -37,7 +37,7 @@ Definition find_conflict (m: PA) (f: CNF): option Clause :=
 CNF.choose (CNF.filter (c_false m) f).
 
 Lemma find_conflict_c_in_f: forall (m: PA) (f: CNF) (c: Clause), 
-  find_conflict m f = Some c -> CNF.In c f.
+  find_conflict m f = Some c -> c ∈ f.
 Proof.
   intros m f c Hfind. unfold find_conflict in Hfind. apply CNF.choose_spec1 in Hfind.
   apply CNF.filter_spec in Hfind as [Hc_in_f _].
@@ -57,7 +57,7 @@ Proof.
 Qed.
 
 Lemma find_conflict_exists_iff: forall (m: PA) (f: CNF),
-  (exists (c: Clause), find_conflict m f = Some c) <-> exists (c: Clause), CNF.In c f /\ c_eval m c = Some false.
+  (exists (c: Clause), find_conflict m f = Some c) <-> exists (c: Clause), c ∈ f /\ c_eval m c = Some false.
 Proof.
   intros m f. split.
   - intros [c Hfind]. exists c. split.
@@ -87,7 +87,7 @@ CNF.fold (fun (c: Clause) (r: option (Clause * Lit)) =>
   end) f None.
 
 Lemma find_unit_decomp: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> find_unit_l m c = Some l /\ CNF.In c f.
+  find_unit m f = Some (c, l) -> find_unit_l m c = Some l /\ c ∈ f.
 Proof.
   intros m f c l. unfold find_unit. apply CNF.MP.fold_rec_nodep.
   - discriminate.
@@ -110,7 +110,7 @@ Proof.
 Qed.
 
 Lemma find_unit_l_l_in_c: forall (m: PA) (c: Clause) (l: Lit),
-  find_unit_l m c = Some l -> Clause.In l c.
+  find_unit_l m c = Some l -> l ∈ c.
 Proof.
   intros m c l Hfind. unfold find_unit_l in Hfind. apply Clause.choose_spec1 in Hfind.
   apply Clause.filter_spec in Hfind as [Hl_in_c _].
@@ -119,21 +119,21 @@ Proof.
 Qed.
 
 Lemma find_unit_l_in_c: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> Clause.In l c.
+  find_unit m f = Some (c, l) -> l ∈ c.
 Proof.
   intros m f c l Hfind. apply find_unit_decomp in Hfind as [Hfind _].
   now apply find_unit_l_l_in_c in Hfind.
 Qed.
 
 Lemma find_unit_c_in_f: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> CNF.In c f.
+  find_unit m f = Some (c, l) -> c ∈ f.
 Proof. intros m f c l Hfind. now apply find_unit_decomp in Hfind. Qed.
 
 Lemma find_unit_bounded: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit m f = Some (c, l) -> l_in_f f l = true.
+  find_unit m f = Some (c, l) -> l ∈ f.
 Proof.
-  intros m f c l Hfind. apply CNF.l_in_f_true_iff. exists c. split.
-  - left. now apply find_unit_l_in_c in Hfind.
+  intros m f c l Hfind. exists c. split.
+  - now apply find_unit_l_in_c in Hfind.
   - now apply find_unit_c_in_f in Hfind.
 Qed.
 
@@ -142,7 +142,7 @@ Definition find_undef_l (m: PA) (c: Clause): option Lit :=
 Clause.choose (Clause.filter (l_undef m) c).
 
 Lemma find_undef_l_in_c: forall (m: PA) (c: Clause) (l: Lit), 
-  find_undef_l m c = Some l -> Clause.In l c.
+  find_undef_l m c = Some l -> l ∈ c.
 Proof.
   intros m c l Hfind. unfold find_undef_l in Hfind. apply Clause.choose_spec1 in Hfind.
   apply Clause.filter_spec in Hfind as [Hl_in_c _].
@@ -159,7 +159,7 @@ Proof.
   - now intros ? ? ->.
 Qed.
 Lemma find_undef_l_exists : forall (m: PA) (c: Clause) (l: Lit),
-  Clause.In l c -> Undef m l -> exists (l': Lit), find_undef_l m c = Some l'.
+  l ∈ c -> Undef m l -> exists (l': Lit), find_undef_l m c = Some l'.
 Proof.
   intros m c l Hl_in_c Hundef. unfold find_undef_l.
   destruct (Clause.choose (Clause.filter (l_undef m) c)) as [l'|] eqn:Hchoose.
@@ -180,7 +180,7 @@ CNF.fold (fun (c: Clause) (r: option Lit) =>
   end) f None.
 
 Lemma find_decision_decomp: forall (m: PA) (f: CNF) (l: Lit), 
-  find_decision m f = Some l -> exists (c: Clause), find_undef_l m c = Some l /\ CNF.In c f.
+  find_decision m f = Some l -> exists (c: Clause), find_undef_l m c = Some l /\ c ∈ f.
 Proof.
   intros m f l. unfold find_decision. apply CNF.MP.fold_rec_nodep.
   - discriminate.
@@ -189,10 +189,10 @@ Proof.
     + now exists c.
 Qed.
 
-Lemma find_decision_exists: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  Clause.In l c -> CNF.In c f -> Undef m l -> exists (l': Lit), find_decision m f = Some l'.
+Lemma find_decision_exists: forall (m: PA) (f: CNF) (l: Lit),
+  l ∈ f -> Undef m l -> exists (l': Lit), find_decision m f = Some l'.
 Proof.
-  intros m f c l Hl_in_c Hc_in_f Hundef. unfold find_decision. revert Hc_in_f.
+  intros m f l [c [Hl_in_c Hc_in_f]] Hundef. unfold find_decision. revert Hc_in_f.
   apply CNF.MP.fold_rec.
   - intros f' Hempty Hc_in_f'. now apply Hempty in Hc_in_f'.
   - intros c' r f' f'' _ _ Hadd IH Hc_in_f''. destruct r as [l'|].
@@ -223,7 +223,9 @@ Proof.
               --- unfold c_false. now rewrite Hc.
           ++ congruence.
         -- apply c_eval_none_iff in Hc as [_ [l [Hl_in_c Hl]]].
-           now apply (find_decision_exists m f c l).
+           apply find_decision_exists with l.
+           ++ now exists c.
+           ++ assumption.
       * intros c1 c2 Heq. unfold c_true. unfold c_eval.
         rewrite (Clause.c_equal_exists _ c1 c2 Heq). now rewrite (Clause.c_equal_forall _ c1 c2 Heq).
 Qed.
@@ -236,11 +238,11 @@ Proof.
 Qed.
 
 Lemma find_decision_bounded: forall (m: PA) (f: CNF) (l: Lit),
-  find_decision m f = Some l -> l_in_f f l = true.
+  find_decision m f = Some l -> l ∈ f.
 Proof.
   intros m f l Hfind. apply find_decision_decomp in Hfind as [c [Hfind Hc_in_f]].
-  apply CNF.l_in_f_true_iff. exists c. split.
-  - left. now apply find_undef_l_in_c in Hfind.
+  exists c. split.
+  - now apply find_undef_l_in_c in Hfind.
   - assumption.
 Qed.
 
@@ -289,7 +291,7 @@ Proof.
     + destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
       (* Backtrack *)
       * injection Hnext as <-.
-        apply split_last_decision_some_iff in Hsplit as [n_split [-> Hno_dec]].
+        apply PA.split_last_decision_some_iff in Hsplit as [n_split [-> Hno_dec]].
         apply (t_step Backtrack).
         -- right. right. right. now left.
         -- apply (r_backtrack m_split n_split f c_conflict l_split).
@@ -302,7 +304,7 @@ Proof.
         -- apply (r_fail m f c_conflict).
           ++ now apply (find_conflict_c_in_f m f c_conflict).
           ++ now apply (find_conflict_conflicting m f c_conflict).
-          ++ now apply (split_last_decision_none_iff m).
+          ++ now apply (PA.split_last_decision_none_iff m).
     + destruct (find_unit m f) as [[c_unit l_unit]|] eqn:Hfind_unit.
       (* Unit *)
       * injection Hnext as <-. apply (t_step Unit).
@@ -349,9 +351,13 @@ Proof.
     (* Decide *)
     + inversion Hstep as [? ? c_decide l_decide Hx_in_c Hc_in_f Hundef]; subst.
       destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
-      * destruct (find_decision_exists m f c_decide l_decide Hl_in_c Hc_in_f Hundef). congruence.
-      * apply l_eval_neg_none_iff in Hundef.
-        destruct (find_decision_exists m f c_decide (¬l_decide) Hnegl_in_c Hc_in_f Hundef). congruence.
+      * assert (Hl_in_f: l_decide ∈ f).
+        -- now exists c_decide.
+        -- destruct (find_decision_exists m f l_decide Hl_in_f Hundef). congruence.
+      * assert (Hnegl_in_f: ¬l_decide ∈ f).
+        -- now exists c_decide.
+        -- apply l_eval_neg_none_iff in Hundef.
+           destruct (find_decision_exists m f (¬l_decide) Hnegl_in_f Hundef). congruence.
     (* Backtrack *)
     + inversion Hstep as [m_split n_split ? c_conflict l_split Hc_in_f Hconflict Hno_dec]; subst.
       destruct (proj2 (find_conflict_exists_iff ⟨m_split; l_split ++ n_split⟩ f)).

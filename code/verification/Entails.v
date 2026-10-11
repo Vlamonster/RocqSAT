@@ -1,11 +1,9 @@
 From Stdlib Require Import List.
-Import ListNotations.
-
-From Equations Require Import Equations.
 
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
+From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
 
 (* The entailment invariant on a trail: every propagated literal follows from f and the literals before it, except pure literals, which only have to preserve models. *)
@@ -28,8 +26,9 @@ Inductive Entails (f: CNF): PA -> Prop :=
 (* The older part of an entailed assignment is entailed. *)
 Lemma entails_prefix: forall (f: CNF) (m n: PA), Entails f ⟨m ++ n⟩ -> Entails f m.
 Proof.
-  intros f m n. induction n as [|n IH l a].
+  intros f m n. induction n as [|n IH l|n IH l].
   - now intros.
+  - intros Hentails. apply IH. now inversion Hentails.
   - intros Hentails. apply IH. now inversion Hentails.
 Qed.
 
@@ -40,28 +39,28 @@ Lemma entails_extend: forall (f: CNF) (m n m': PA),
   Model m' (CNF.union f (units m)) ->
   exists (m'': PA), Model m'' (CNF.union f (units ⟨m ++ n⟩)).
 Proof.
-  intros f m n m' Hentails Hno_dec Hm'. induction n as [|n IH l a].
+  intros f m n m' Hentails Hno_dec Hm'. induction n as [|n IH l|n IH l].
   - now exists m'.
   - inversion Hentails as [| m0 l0 Hentails' | m0 l0 Himpl Hentails' | m0 l0 Hpure Hentails']; subst.
-    + exfalso. apply Hno_dec. exists l. now left.
     + destruct IH as [m'' Hm''].
       * assumption.
-      * intros [l' Hin]. apply Hno_dec. exists l'. now right.
+      * assumption.
       * exists m''. pose proof (Himpl m'' Hm'') as Hl. apply model_unit_cnf_iff in Hl.
         apply model_union_iff in Hm'' as [Hf Hrest]. apply model_union_iff. split.
         -- assumption.
-        -- rewrite model_units_iff in *. simpl. intros l' a' [Heq|Hin].
-          ++ now injection Heq as <- <-.
-          ++ now apply (Hrest l' a').
+        -- rewrite model_units_iff in *. intros l' [<-|Hin].
+          ++ assumption.
+          ++ now apply Hrest.
     + destruct IH as [m'' Hm''].
       * assumption.
-      * intros [l' Hin]. apply Hno_dec. exists l'. now right.
+      * assumption.
       * exists ⟨m'', l⟩. apply Hpure in Hm''.
         apply model_union_iff in Hm'' as [Hf Hrest]. apply model_union_iff. split.
         -- assumption.
-        -- rewrite model_units_iff in *. simpl. intros l' a' [Heq|Hin].
-          ++ injection Heq as <- <-. simp l_eval. rewrite Neg.self_neqb_neg. now rewrite Lit.eqb_refl.
-          ++ now apply (Hrest l' a').
+        -- rewrite model_units_iff in *. intros l' [<-|Hin].
+          ++ simpl. unfold l_eval_step. now rewrite Lit.eqb_refl.
+          ++ now apply Hrest.
+  - contradiction.
 Qed.
 
 (* Entailment only depends on the models of the formula. *)

@@ -40,7 +40,10 @@ are grouped into one node.
                           |
                          Atom
                           |
-                         Lit
+                         Lit       utils/Member
+                          |             |
+                          +-------------+
+                          |
                  +--------+--------+
                  |                 |
                  |               Clause
@@ -67,7 +70,7 @@ are grouped into one node.
                         Trans
               +-----------+-----------+
               |           |           |
-         Termination   Strategy   Normalization (2)
+         Termination   Strategy   Normalization
               |           |           |
               +-----+-----+           |
                     |                 |
@@ -79,7 +82,7 @@ are grouped into one node.
 ```
 
 (1) `Solve` also imports the helper `utils/Inspect`, and `Trans` the helper
-`utils/Invariant`. (2) `Normalization` also imports the helper `utils/Dedupe`.
+`utils/Invariant`.
 
 ## Adding a rule
 
@@ -129,6 +132,7 @@ General-purpose helpers in `utils/`, independent of the rest of the development.
 | File                | Contents                                                                                                                        |
 |---------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | `utils/EqB.v`       | The `EqB` typeclass for computational (Boolean) equality, with the notation `x =? y`.                                           |
+| `utils/Member.v`    | The `Member` typeclass for membership, with the notation `x ∈ y`.                                                               |
 | `utils/Inspect.v`   | `inspect`, a helper for keeping an equation when matching on a value in Equations definitions.                                  |
 | `utils/Dedupe.v`    | `dedupe_by`, which removes duplicates from a list with respect to a Boolean relation.                                           |
 | `utils/Invariant.v` | `clos_refl_trans_invariant`: a property preserved by every step of a relation is preserved by its reflexive-transitive closure. |
@@ -139,18 +143,18 @@ General-purpose helpers in `utils/`, independent of the rest of the development.
 |------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `Atom.v`   | `Atom` (propositional variables, as natural numbers), its `EqB` instance and `eqb` lemmas.                                                                                                                                          |
 | `Lit.v`    | Literals `Lit` (`Pos`/`Neg` of an atom) with `extract`, their `EqB` instance and lemmas; `LitOrderType`, the ordering used for sets of literals; module `Neg` with negation `¬l` and its lemmas (`involutive`, `self_neqb_neg`, …). |
-| `Clause.v` | `Clause`, a finite set (MSet) of literals, read as their disjunction, plus lemmas relating set equality to `exists_`/`for_all`.                                                                                                     |
-| `CNF.v`    | `CNF`, a finite set of clauses, read as their conjunction; `l_in_f` (a literal or its negation occurs in a formula) with its characterisations.                                                                                     |
+| `Clause.v` | `Clause`, a finite set (MSet) of literals, read as their disjunction, with membership `l ∈ c`, plus lemmas relating set equality to `exists_`/`for_all`.                                                                            |
+| `CNF.v`    | `CNF`, a finite set of clauses, read as their conjunction, with membership `c ∈ f` and `l ∈ f` (`l` occurs in some clause of `f`), and `mem_lit`, its Boolean version (`mem_lit_spec`).                                             |
 
 ### Assignments, states and semantics
 
-| File           | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Assignment.v` | Partial assignments `PA`: trails of literals annotated as decision (`dec`) or propagation (`prop`), extended on the right. Trails are written left to right between `⟨ ⟩`: `⟨m, l⟩` propagates `l` and `⟨m; l⟩` decides `l` after `m`, `⟨m ++ n⟩` is `m` followed by `n`, `⟨⟩` is the empty trail, and a trail starting from it is written `⟨, l1, l2; l3⟩`. Coercions `to_list`/`of_list` connect trails to lists; `NoDecisions`; `split_last_decision`, which splits off the most recent decision. |
-| `Evaluation.v` | Three-valued evaluation of literals, clauses and formulas under a partial assignment (`l_eval`, `c_eval`, `f_eval`) and their Boolean versions (`l_true`, `c_false`, …); `Def`/`Undef`; characterisations such as `c_eval_true_iff` and `f_eval_true_iff`; lemmas about removing a literal from a clause and extending an assignment with an undefined literal.                                                                                                                                      |
-| `Model.v`      | `Model m f` (`m` makes `f` true); `unit_cnf l` (a literal as a formula) and `units m` (an assignment as one unit clause per literal); lemmas for models of unions, units and unit clauses; transferring falsity from an assignment to any model of it; semantic consequence `f ⊨ g` and equivalence `Equivalent f g` between formulas, with `equivalent_refl`/`_sym`/`_trans` and `model_union_equivalent`.                                                                                          |
-| `State.v`      | States `State`: `fail`, or an assignment for a formula.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `WellFormed.v` | Well-formed states `WellFormed s`: `fail`, or an assignment for a formula with no atom assigned twice (`NoDuplicates`) and only atoms occurring in the formula (`Bounded`); lemmas about extending and restricting assignments; `initial_well_formed`.                                                                                                                                                                                                                                               |
+| File           | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Assignment.v` | Partial assignments `PA`: trails of propagated and decided literals (`empty`, `propagate`, `decide`), extended on the right. Trails are written left to right between `⟨ ⟩`: `⟨m, l⟩` propagates `l` and `⟨m; l⟩` decides `l` after `m`, `⟨m ++ n⟩` is `m` followed by `n`, `⟨⟩` is the empty trail, and a trail starting from it is written `⟨, l1, l2; l3⟩`. The list-like `PA.app`, `PA.In` and `PA.length`, used qualified, with `PA.In` as the `Member` instance (`l ∈ m`); `atoms`; `NoDecisions` and `NoPropagations`; `split_last_decision`, which splits off the most recent decision. |
+| `Evaluation.v` | Three-valued evaluation of literals, clauses and formulas under a partial assignment (`l_eval`, `c_eval`, `f_eval`) and their Boolean versions (`l_true`, `c_false`, …); `Def`/`Undef`; characterisations such as `c_eval_true_iff` and `f_eval_true_iff`; lemmas about removing a literal from a clause and extending an assignment with an undefined literal.                                                                                                                                                                                                                                 |
+| `Model.v`      | `Model m f` (`m` makes `f` true); `unit_cnf l` (a literal as a formula) and `units m` (an assignment as one unit clause per literal); lemmas for models of unions, units and unit clauses; transferring falsity from an assignment to any model of it; semantic consequence `f ⊨ g` and equivalence `Equivalent f g` between formulas, with `equivalent_refl`/`_sym`/`_trans` and `model_union_equivalent`.                                                                                                                                                                                     |
+| `State.v`      | States `State`: `fail`, or an assignment for a formula.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `WellFormed.v` | Well-formed states `WellFormed s`: `fail`, or an assignment for a formula with no atom assigned twice (`NoDuplicates`) and only atoms occurring in the formula (`Bounded`); lemmas about extending and restricting assignments; `initial_well_formed`.                                                                                                                                                                                                                                                                                                                                          |
 
 ### Entailment
 

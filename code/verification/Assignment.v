@@ -1,131 +1,187 @@
 From Stdlib Require Import List.
 Import ListNotations.
 
+From RocqSAT Require Import Atom.
 From RocqSAT Require Import Lit.
+From RocqSAT.utils Require Export Member.
 
-(* An annotation on a literal (Lit * Ann) describing how its value was assigned. *)
-Inductive Ann: Type :=
-| dec
-| prop.
-
-(* A partial assignment: a trail of annotated literals, extended on the right. Evaluation is defined in Evaluation.v. *)
-Inductive PA: Type :=
-| empty
-| add (m: PA) (l: Lit) (a: Ann).
-
-(* m followed by n. *)
-Fixpoint extend (m n: PA): PA :=
-match n with
-| empty     => m
-| add n l a => add (extend m n) l a
-end.
-
-(* The annotated literals of m, most recent first. *)
-Fixpoint to_list (m: PA): list (Lit * Ann) :=
-match m with
-| empty     => []
-| add m l a => (l, a) :: to_list m
-end.
-
-Coercion to_list: PA >-> list.
-
-(* Conversely, the trail of a list of annotated literals, most recent first. *)
-Fixpoint of_list (m: list (Lit * Ann)): PA :=
-match m with
-| []          => empty
-| (l, a) :: m => add (of_list m) l a
-end.
-
-Lemma to_list_of_list: forall (m: list (Lit * Ann)), to_list (of_list m) = m.
-Proof.
-  induction m as [|[l a] m IH].
-  - reflexivity.
-  - simpl. now rewrite IH.
-Qed.
-
-Lemma of_list_to_list: forall (m: PA), of_list (to_list m) = m.
-Proof.
-  induction m as [|m IH l a].
-  - reflexivity.
-  - simpl. now rewrite IH.
-Qed.
-
-(* A literal on its own is the trail in which it is propagated. *)
-Definition single (l: Lit): PA := add empty l prop.
-
-Coercion single: Lit >-> PA.
-
-(* Trails are written left to right between ⟨ ⟩: ⟨m, l⟩ propagates l and ⟨m; l⟩ decides l after m.
-   On the empty trail ⟨⟩ this is written ⟨, l1, l2; l3⟩, which propagates l1 and l2 and then decides l3. *)
+(* Trails are written between ⟨ ⟩, see the notations below. *)
 Declare Custom Entry trail.
-Notation "⟨ m ⟩" := m (m custom trail at level 2).
-Notation "⟨ ⟩" := empty.
-Notation "∅" := empty (in custom trail at level 0).
-Notation "m , l" := (add m l prop) (in custom trail at level 1, left associativity, l constr at level 0).
-Notation "m ; l" := (add m l dec) (in custom trail at level 1, left associativity, l constr at level 0).
-Notation "; l" := (add empty l dec) (in custom trail at level 1, l constr at level 0).
-Notation ", l" := (add empty l prop) (in custom trail at level 1, l constr at level 0).
-Notation "m ++ n" := (extend m n) (in custom trail at level 2, left associativity, n custom trail at level 1).
-Notation "x" := x (in custom trail at level 0, x ident).
-Notation "( x )" := x (in custom trail at level 0, x constr).
 
-Lemma extend_empty_l: forall (m: PA), ⟨∅ ++ m⟩ = m.
-Proof.
-  induction m as [|m IH l a].
-  - reflexivity.
-  - simpl. now rewrite IH.
-Qed.
+Module PA.
+  Module Definitions.
+    (* A partial assignment: a trail of propagated and decided literals, extended on the right. Evaluation is defined in Evaluation.v. *)
+    Inductive PA: Type :=
+    | empty
+    | propagate (m: PA) (l: Lit)
+    | decide (m: PA) (l: Lit).
 
-Lemma to_list_extend: forall (m n: PA), to_list ⟨m ++ n⟩ = to_list n ++ to_list m.
-Proof.
-  intros m n. induction n as [|n IH l a].
-  - reflexivity.
-  - simpl. now rewrite IH.
-Qed.
+    (* Trails are written left to right between ⟨ ⟩: ⟨m, l⟩ propagates l and ⟨m; l⟩ decides l after m.
+       On the empty trail ⟨⟩ this is written ⟨, l1, l2; l3⟩, which propagates l1 and l2 and then decides l3. *)
+    Notation "⟨ m ⟩" := m (m custom trail at level 2).
+    Notation "⟨ ⟩" := empty.
+    Notation "∅" := empty (in custom trail at level 0).
+    Notation "x" := x (in custom trail at level 0, x ident).
+    Notation "( x )" := x (in custom trail at level 0, x constr).
+    Notation "m , l" := (propagate m l) (in custom trail at level 1, left associativity, l constr at level 0).
+    Notation "m ; l" := (decide m l) (in custom trail at level 1, left associativity, l constr at level 0).
+    Notation ", l" := (propagate empty l) (in custom trail at level 1, l constr at level 0).
+    Notation "; l" := (decide empty l) (in custom trail at level 1, l constr at level 0).
 
-(* An assignment without decision literals. *)
-Definition NoDecisions (m: PA): Prop := ~ exists (l: Lit), In (l, dec) m.
+    (* The atoms of the literals of m, most recent first. *)
+    Fixpoint atoms (m: PA): list Atom :=
+    match m with
+    | ⟨⟩     => []
+    | ⟨m, l⟩ => extract l :: atoms m
+    | ⟨m; l⟩ => extract l :: atoms m
+    end.
 
-(* Splits off the most recent decision literal, if any. *)
-Fixpoint split_last_decision (m: PA): option (PA * Lit) :=
-match m with
-| ⟨⟩    => None
-| ⟨m, l⟩ => split_last_decision m
-| ⟨m; l⟩ => Some (m, l)
-end.
+    (* m has no decisions, or no propagations. *)
+    Fixpoint NoDecisions (m: PA): Prop :=
+    match m with
+    | ⟨⟩     => True
+    | ⟨m, _⟩ => NoDecisions m
+    | ⟨m; _⟩ => False
+    end.
 
-Lemma split_last_decision_some_iff: forall (m m': PA) (l': Lit),
-  split_last_decision m = Some (m', l') <-> exists (n': PA), m = ⟨m'; l' ++ n'⟩ /\ NoDecisions n'.
-Proof.
-  intros m m' l'. split.
-  - induction m as [|m IH l [|]]; simpl.
-    + discriminate.
-    + intros Hsplit. injection Hsplit as <- <-. exists ⟨⟩. split.
-      * reflexivity.
-      * intros [l'' []].
-    + intros Hsplit. apply IH in Hsplit as [n' [Heq Hno_dec]]. exists ⟨n', l⟩. split.
-      * now rewrite Heq.
-      * intros [l'' [Heq'|Hin]].
-        -- discriminate.
-        -- apply Hno_dec. now exists l''.
-  - intros [n' [-> Hno_dec]]. induction n' as [|n' IH l [|]]; simpl.
-    + reflexivity.
-    + exfalso. apply Hno_dec. exists l. now left.
-    + apply IH. intros [l'' Hin]. apply Hno_dec. exists l''. now right.
-Qed.
+    Fixpoint NoPropagations (m: PA): Prop :=
+    match m with
+    | ⟨⟩     => True
+    | ⟨m, _⟩ => False
+    | ⟨m; _⟩ => NoPropagations m
+    end.
 
-Lemma split_last_decision_none_iff: forall (m: PA), split_last_decision m = None <-> NoDecisions m.
-Proof.
-  induction m as [|m IH l [|]]; simpl.
-  - split.
-    + intros _ [l []].
-    + reflexivity.
-  - split.
-    + discriminate.
-    + intros Hno_dec. exfalso. apply Hno_dec. exists l. now left.
-  - rewrite IH. split.
-    + intros Hno_dec [l' [Heq|Hin]].
-      * discriminate.
-      * apply Hno_dec. now exists l'.
-    + intros Hno_dec [l' Hin]. apply Hno_dec. exists l'. now right.
-Qed.
+    (* Splits off the most recent decision literal, if any. *)
+    Fixpoint split_last_decision (m: PA): option (PA * Lit) :=
+    match m with
+    | ⟨⟩     => None
+    | ⟨m, l⟩ => split_last_decision m
+    | ⟨m; l⟩ => Some (m, l)
+    end.
+  End Definitions.
+
+  Include Definitions.
+
+  (* The counterparts of the list operations of the same name; used qualified, or through the notations below. *)
+
+  (* m followed by n. *)
+  Fixpoint app (m n: PA): PA :=
+  match n with
+  | ⟨⟩     => m
+  | ⟨n, l⟩ => ⟨(app m n), l⟩
+  | ⟨n; l⟩ => ⟨(app m n); l⟩
+  end.
+
+  (* l is assigned in m, by a propagation or a decision. *)
+  Fixpoint In (l: Lit) (m: PA): Prop :=
+  match m with
+  | ⟨⟩      => False
+  | ⟨m, l'⟩ => l' = l \/ In l m
+  | ⟨m; l'⟩ => l' = l \/ In l m
+  end.
+
+  (* The number of literals of m. *)
+  Fixpoint length (m: PA): nat :=
+  match m with
+  | ⟨⟩     => 0
+  | ⟨m, _⟩ => S (length m)
+  | ⟨m; _⟩ => S (length m)
+  end.
+
+  Module Notations.
+    Notation "m ++ n" := (app m n) (in custom trail at level 2, left associativity, n custom trail at level 1).
+
+    #[export]
+    Instance MemberPA: Member Lit PA := In.
+  End Notations.
+
+  Import Notations.
+
+  Module Lemmas.
+    Lemma app_empty_l: forall (m: PA), ⟨∅ ++ m⟩ = m.
+    Proof.
+      induction m as [|m IH l|m IH l].
+      - reflexivity.
+      - simpl. now rewrite IH.
+      - simpl. now rewrite IH.
+    Qed.
+
+    Lemma in_app_iff: forall (m n: PA) (l: Lit), l ∈ ⟨m ++ n⟩ <-> l ∈ n \/ l ∈ m.
+    Proof.
+      intros m n l. induction n as [|n IH l'|n IH l']; cbn.
+      - split.
+        + now right.
+        + now intros [[]|Hin].
+      - rewrite IH. tauto.
+      - rewrite IH. tauto.
+    Qed.
+
+    Lemma length_atoms: forall (m: PA), List.length (atoms m) = length m.
+    Proof.
+      induction m as [|m IH l|m IH l].
+      - reflexivity.
+      - simpl. now rewrite IH.
+      - simpl. now rewrite IH.
+    Qed.
+
+    Lemma in_atoms: forall (m: PA) (p: Atom), List.In p (atoms m) <-> exists (l: Lit), l ∈ m /\ extract l = p.
+    Proof.
+      intros m p. induction m as [|m IH l|m IH l]; simpl.
+      - split.
+        + intros [].
+        + intros [l [[] _]].
+      - rewrite IH. split.
+        + intros [Heq|[l' [Hin Heq]]].
+          * exists l. split.
+            -- now left.
+            -- assumption.
+          * exists l'. split.
+            -- now right.
+            -- assumption.
+        + intros [l' [[<-|Hin] Heq]].
+          * now left.
+          * right. now exists l'.
+      - rewrite IH. split.
+        + intros [Heq|[l' [Hin Heq]]].
+          * exists l. split.
+            -- now left.
+            -- assumption.
+          * exists l'. split.
+            -- now right.
+            -- assumption.
+        + intros [l' [[<-|Hin] Heq]].
+          * now left.
+          * right. now exists l'.
+    Qed.
+
+    Lemma split_last_decision_some_iff: forall (m m': PA) (l': Lit),
+      split_last_decision m = Some (m', l') <-> exists (n': PA), m = ⟨m'; l' ++ n'⟩ /\ NoDecisions n'.
+    Proof.
+      intros m m' l'. split.
+      - induction m as [|m IH l|m IH l]; simpl.
+        + discriminate.
+        + intros Hsplit. apply IH in Hsplit as [n' [Heq Hno_dec]]. exists ⟨n', l⟩. split.
+          * now rewrite Heq.
+          * assumption.
+        + intros Hsplit. injection Hsplit as <- <-. now exists ⟨⟩.
+      - intros [n' [-> Hno_dec]]. induction n' as [|n' IH l|n' IH l]; simpl.
+        + reflexivity.
+        + now apply IH.
+        + contradiction.
+    Qed.
+
+    Lemma split_last_decision_none_iff: forall (m: PA), split_last_decision m = None <-> NoDecisions m.
+    Proof.
+      induction m as [|m IH l|m IH l]; simpl.
+      - now split.
+      - assumption.
+      - split.
+        + discriminate.
+        + contradiction.
+    Qed.
+  End Lemmas.
+
+  Include Lemmas.
+End PA.
+
+Export PA.Definitions PA.Notations.

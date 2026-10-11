@@ -17,9 +17,9 @@ From RocqSAT Require Import Rule.
 (* Adds a literal that only occurs positively. *)
 Inductive PureStep: relation State :=
 | r_pure (m: PA) (f: CNF) (c: Clause) (l: Lit):
-  Clause.In l c ->
-  CNF.In c f ->
-  (forall (c': Clause), CNF.In c' f -> ~ Clause.In (¬l) c') ->
+  l ∈ c ->
+  c ∈ f ->
+  (forall (c': Clause), c' ∈ f -> ~ ¬l ∈ c') ->
   Undef m l ->
   PureStep (state m f) (state ⟨m, l⟩ f).
 
@@ -33,7 +33,7 @@ Proof.
   apply well_formed_cons.
   - assumption.
   - assumption.
-  - apply CNF.l_in_f_true_iff. exists c_pure. intuition.
+  - left. now exists c_pure.
 Qed.
 
 Lemma pure_entails: PreservesEntails PureStep.
@@ -47,19 +47,19 @@ Proof.
       rewrite c_eval_true_iff in G. destruct G as [l [Hin Hl]].
       exists l. split.
       * assumption.
-      * simp l_eval. destruct (l =? ¬l_pure) eqn:G1, (l =? l_pure) eqn:G2; simpl.
+      * simpl. unfold l_eval_step. destruct (l =? l_pure).
         -- reflexivity.
-        -- exfalso. apply Lit.eqb_eq in G1. subst l. now apply (Hpure c).
-        -- reflexivity.
-        -- assumption.
+        -- destruct (l =? ¬l_pure) eqn:G.
+          ++ exfalso. apply Lit.eqb_eq in G. subst l. now apply (Hpure c).
+          ++ assumption.
     + rewrite model_units_iff in *.
-      intros l a Hin. simp l_eval. destruct (l =? ¬l_pure) eqn:G1, (l =? l_pure) eqn:G2; simpl.
+      intros l Hin. simpl. unfold l_eval_step. destruct (l =? l_pure).
       * reflexivity.
-      * exfalso. apply Lit.eqb_eq in G1. subst l. apply (def_undef m l_pure).
-        -- apply l_eval_some_iff. exists a. now right.
-        -- assumption.
-      * reflexivity.
-      * now apply (Hm l a).
+      * destruct (l =? ¬l_pure) eqn:G.
+        -- exfalso. apply Lit.eqb_eq in G. subst l. apply (def_undef m l_pure).
+          ++ apply l_eval_some_iff. now right.
+          ++ assumption.
+        -- now apply Hm.
   - assumption.
 Qed.
 

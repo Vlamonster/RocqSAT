@@ -16,8 +16,8 @@ From RocqSAT Require Import Rule.
 (* Arbitrarily set an unassigned literal in the formula to true. *)
 Inductive DecideStep: relation State :=
 | r_decide (m: PA) (f: CNF) (c: Clause) (l: Lit):
-  Clause.In l c \/ Clause.In (¬l) c ->
-  CNF.In c f ->
+  l ∈ c \/ ¬l ∈ c ->
+  c ∈ f ->
   Undef m l ->
   DecideStep (state m f) (state ⟨m; l⟩ f).
 
@@ -31,7 +31,9 @@ Proof.
   apply well_formed_cons.
   - assumption.
   - assumption.
-  - apply CNF.l_in_f_true_iff. exists c_decide. intuition.
+  - destruct Hx_in_c as [Hl_in_c|Hnegl_in_c].
+    + left. now exists c_decide.
+    + right. now exists c_decide.
 Qed.
 
 Lemma decide_entails: PreservesEntails DecideStep.

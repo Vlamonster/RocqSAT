@@ -1,6 +1,3 @@
-From Stdlib Require Import List.
-Import ListNotations.
-
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
@@ -14,8 +11,12 @@ Definition Model (m: PA) (f: CNF): Prop := f_eval m f = Some true.
 Definition unit_cnf (l: Lit): CNF := CNF.singleton (Clause.singleton l).
 
 (* An assignment as a formula: one unit clause per assigned literal. *)
-Definition units (m: PA): CNF :=
-fold_right (fun '(l, _) (f: CNF) => CNF.add (Clause.singleton l) f) CNF.empty m.
+Fixpoint units (m: PA): CNF :=
+match m with
+| ⟨⟩     => CNF.empty
+| ⟨m, l⟩ => CNF.add (Clause.singleton l) (units m)
+| ⟨m; l⟩ => CNF.add (Clause.singleton l) (units m)
+end.
 
 Lemma model_union_iff: forall (m: PA) (f g: CNF), Model m (CNF.union f g) <-> Model m f /\ Model m g.
 Proof.
@@ -37,27 +38,43 @@ Proof.
   - intros Hl c Hc. apply CNF.singleton_spec in Hc. now apply (c_eval_singleton_true_iff m c l).
 Qed.
 
+(* Adding the unit clause {l} to a formula adds the requirement that l is true. *)
+Lemma model_add_unit_iff: forall (m: PA) (f: CNF) (l: Lit),
+  Model m (CNF.add (Clause.singleton l) f) <-> l_eval m l = Some true /\ Model m f.
+Proof.
+  intros m f l. unfold Model. rewrite !f_eval_true_iff. split.
+  - intros H. split.
+    + apply (c_eval_singleton_true_iff m (Clause.singleton l)).
+      * reflexivity.
+      * apply H. apply CNF.add_spec. now left.
+    + intros c Hc. apply H. apply CNF.add_spec. now right.
+  - intros [Hl Hf] c Hc. apply CNF.add_spec in Hc as [Hc|Hc].
+    + now apply (c_eval_singleton_true_iff m c l Hc).
+    + now apply Hf.
+Qed.
+
 (* m satisfies the unit clauses of m' exactly when it makes every literal of m' true. *)
 Lemma model_units_iff: forall (m m': PA),
-  Model m (units m') <-> forall (l: Lit) (a: Ann), In (l, a) m' -> l_eval m l = Some true.
+  Model m (units m') <-> forall (l: Lit), l ∈ m' -> l_eval m l = Some true.
 Proof.
-  intros m m'. unfold Model. rewrite f_eval_true_iff. induction m' as [|m' IH l a].
+  intros m m'. induction m' as [|m' IH l|m' IH l]; simpl.
   - split.
-    + intros _ l a [].
-    + intros _ c Hc. simpl in Hc. now apply CNF.empty_spec in Hc.
-  - simpl. split.
-    + intros H l' a' [Heq|Hin].
-      * injection Heq as -> ->. apply (c_eval_singleton_true_iff m (Clause.singleton l')).
-        -- reflexivity.
-        -- apply H. apply CNF.add_spec. now left.
-      * apply IH with (a := a').
-        -- intros c Hc. apply H. apply CNF.add_spec. now right.
-        -- assumption.
-    + intros H c Hc. apply CNF.add_spec in Hc as [Hc|Hc].
-      * apply (c_eval_singleton_true_iff m c l Hc). apply (H l a). now left.
-      * apply IH.
-        -- intros l' a' Hin. apply (H l' a'). now right.
-        -- assumption.
+    + intros _ l [].
+    + intros _. unfold Model. rewrite f_eval_true_iff. intros c Hc. now apply CNF.empty_spec in Hc.
+  - rewrite model_add_unit_iff, IH. split.
+    + intros [Hl Hall] l' [<-|Hin].
+      * assumption.
+      * now apply Hall.
+    + intros Hall. split.
+      * apply Hall. now left.
+      * intros l' Hin. apply Hall. now right.
+  - rewrite model_add_unit_iff, IH. split.
+    + intros [Hl Hall] l' [<-|Hin].
+      * assumption.
+      * now apply Hall.
+    + intros Hall. split.
+      * apply Hall. now left.
+      * intros l' Hin. apply Hall. now right.
 Qed.
 
 (* A model of the units of m' makes every literal false that m' makes false. *)
@@ -65,7 +82,7 @@ Lemma units_transfer_l: forall (m m': PA) (l: Lit),
   Model m (units m') -> l_eval m' l = Some false -> l_eval m l = Some false.
 Proof.
   intros m m' l Hm Hl. apply l_eval_neg_some_iff. simpl. rewrite model_units_iff in Hm.
-  apply l_eval_false_in in Hl as [a Hin]. now apply Hm in Hin.
+  apply l_eval_false_in in Hl. now apply Hm in Hl.
 Qed.
 
 (* Hence it also makes every clause false that m' makes false. *)

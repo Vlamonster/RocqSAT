@@ -1,21 +1,19 @@
-From Stdlib Require Import List.
-From Stdlib Require Import Bool.
-Import ListNotations.
-
-From Equations Require Import Equations.
-
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 
-(* The first instance of `l` or `¬l` determines the value. *)
-Equations l_eval (m: PA) (l: Lit): option bool :=
-l_eval empty _ := None;
-l_eval (add m l' _) l with l =? l', l =? ¬l' :=
-  | true, _    := Some true
-  | _   , true := Some false
-  | _   , _    := l_eval m l.
+(* The value of l after l' was assigned, given its value v before. *)
+Definition l_eval_step (l l': Lit) (v: option bool): option bool :=
+if l =? l' then Some true else if l =? ¬l' then Some false else v.
+
+(* The most recent assignment of l or ¬l determines the value. *)
+Fixpoint l_eval (m: PA) (l: Lit): option bool :=
+match m with
+| ⟨⟩      => None
+| ⟨m, l'⟩ => l_eval_step l l' (l_eval m l)
+| ⟨m; l'⟩ => l_eval_step l l' (l_eval m l)
+end.
 
 (* Boolean tests for the three possible values of a literal. *)
 Definition l_true (m: PA) (l: Lit): bool :=
@@ -86,94 +84,97 @@ Proof.
   - intuition. destruct H. discriminate.
 Qed.
 
-Lemma l_eval_neg_none_iff: forall (m: PA) (l: Lit), l_eval m l = None <-> l_eval m (¬l) = None.
+(* Negating l negates the value of a step. *)
+Lemma l_eval_step_neg: forall (l l': Lit) (v: option bool),
+  l_eval_step (¬l) l' (option_map negb v) = option_map negb (l_eval_step l l' v).
 Proof.
-  unfold Undef. intros. funelim (l_eval m l).
-  - intuition.
-  - intuition.
-    + discriminate.
-    + apply Lit.eqb_eq in Heq. subst. simp l_eval in H. rewrite Lit.eqb_refl in H. 
-      rewrite Lit.eqb_sym in H. rewrite Neg.self_neqb_neg in H. discriminate.
-  - intuition.
-    + discriminate.
-    + apply Lit.eqb_eq in Heq. subst. simp neg in H. rewrite Neg.involutive in H.
-      simp l_eval in H. rewrite Lit.eqb_refl in H. rewrite Neg.self_neqb_neg in H. discriminate.
-  - intuition.
-    + simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. rewrite Neg.eqb_compat in Heq.
-      rewrite Neg.involutive in Heq. now rewrite Heq.
-    + autorewrite with l_eval in H. rewrite <- Neg.eqb_compat in H. rewrite Heq0 in H.
-      rewrite Neg.eqb_compat in Heq. rewrite Neg.involutive in Heq. rewrite Heq in H. simpl in H. 
-      apply H1. apply H.
+  intros l l' v. unfold l_eval_step.
+  rewrite (Neg.eqb_compat (¬l) l'), Neg.involutive, <- Neg.eqb_compat.
+  destruct (l =? l') eqn:G1, (l =? ¬l') eqn:G2.
+  - apply Lit.eqb_eq in G1. subst l'. now rewrite Neg.self_neqb_neg in G2.
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
 Qed.
 
 (* Negation flips the value of a literal. *)
+Lemma l_eval_neg: forall (m: PA) (l: Lit), l_eval m (¬l) = option_map negb (l_eval m l).
+Proof.
+  intros m l. induction m as [|m IH l'|m IH l'].
+  - reflexivity.
+  - simpl. rewrite IH. apply l_eval_step_neg.
+  - simpl. rewrite IH. apply l_eval_step_neg.
+Qed.
+
+Lemma l_eval_neg_none_iff: forall (m: PA) (l: Lit), l_eval m l = None <-> l_eval m (¬l) = None.
+Proof.
+  intros m l. rewrite l_eval_neg. destruct (l_eval m l).
+  - split; discriminate.
+  - reflexivity.
+Qed.
+
 Lemma l_eval_neg_some_iff: forall (m: PA) (l: Lit) (b: bool),
   l_eval m l = Some b <-> l_eval m (¬l) = Some (negb b).
 Proof.
-  intros. split.
-  - intros. funelim (l_eval m l).
-    + congruence.
-    + rewrite Lit.eqb_eq in Heq. subst l'. rewrite H in Heqcall. injection Heqcall as <-.
-      simp l_eval. rewrite Lit.eqb_refl. rewrite Neg.eqb_compat. rewrite Neg.involutive. now rewrite Neg.self_neqb_neg.
-    + rewrite Lit.eqb_eq in Heq. subst l. rewrite H in Heqcall. injection Heqcall as <-.
-      rewrite Neg.involutive. simp l_eval. rewrite Lit.eqb_refl. now rewrite Neg.self_neqb_neg.
-    + simp l_eval. rewrite <- Neg.eqb_compat. rewrite Heq0. rewrite Neg.eqb_compat. rewrite Neg.involutive.
-      rewrite Heq. simpl. apply H. congruence.
-  - intros. funelim (l_eval m l).
-    + discriminate.
-    + rewrite Lit.eqb_eq in Heq. subst l'. simp l_eval in H. rewrite Lit.eqb_refl in H. rewrite Neg.eqb_compat in H.
-      rewrite Neg.involutive in H. rewrite Neg.self_neqb_neg in H. simpl in H. injection H. intros.
-      symmetry in H0. apply negb_false_iff in H0. congruence.
-    + rewrite Lit.eqb_eq in Heq. subst l. rewrite Neg.involutive in H. simp l_eval in H. rewrite Lit.eqb_refl in H.
-      rewrite Neg.self_neqb_neg in H. simpl in H. injection H. intros. symmetry in H0.
-      apply negb_true_iff in H0. congruence.
-    + apply H. simp l_eval in H0. rewrite <- Neg.eqb_compat in H0. rewrite Heq0 in H0.
-      rewrite Neg.eqb_compat in H0. rewrite Neg.involutive in H0. now rewrite Heq in H0.
+  intros m l b. rewrite l_eval_neg. destruct (l_eval m l) as [b'|].
+  - destruct b, b'; split; easy.
+  - split; discriminate.
 Qed.
 
-(* A literal has a value exactly when it or its negation occurs in the assignment. *)
-Lemma l_eval_some_iff: forall (m: PA) (l: Lit), 
-  (exists (b: bool), l_eval m l = Some b) <-> exists (a: Ann), In (l, a) m \/ In (¬l, a) m.
-Proof. 
-  intros. split.
-  - intros [b H]. funelim (l_eval m l).
-    + congruence.
-    + rewrite Lit.eqb_eq in Heq. subst l'. exists a. left. now left.
-    + rewrite Lit.eqb_eq in Heq. subst. exists a. right. rewrite Neg.involutive. now left.
-    + rewrite H0 in Heqcall. apply H in Heqcall as [a' [G|G]].
-      * exists a'. left. now right.
-      * exists a'. right. now right.
-  - intros [a [H|H]].
-    + funelim (l_eval m l).
-      * contradiction.
-      * now exists true.
-      * now exists false.
-      * apply (H a0). destruct H0.
-        -- injection H0 as <- <-. now rewrite Lit.eqb_refl in Heq0.
-        -- assumption.
-    + funelim (l_eval m l).
-      * contradiction.
-      * now exists true.
-      * now exists false.
-      * apply (H a0). destruct H0.
-        -- injection H0 as -> ->. rewrite Neg.involutive in Heq. now rewrite Lit.eqb_refl in Heq.
-        -- assumption.
-Qed.
-
-(* A literal can only be false because its negation was assigned. *)
-Lemma l_eval_false_in: forall (m: PA) (l: Lit),
-  l_eval m l = Some false -> exists (a: Ann), In (¬l, a) m.
+(* A step assigns a value to l exactly when it assigns l or ¬l, or l already had a value. *)
+Lemma l_eval_step_some_iff: forall (l l': Lit) (v: option bool),
+  (exists (b: bool), l_eval_step l l' v = Some b) <-> l' = l \/ l' = ¬l \/ exists (b: bool), v = Some b.
 Proof.
-  intros. funelim (l_eval m l); try congruence.
-  - rewrite Lit.eqb_eq in Heq. subst l. exists a. rewrite Neg.involutive. now left.
-  - rewrite H0 in Heqcall. apply H in Heqcall.
-    + destruct Heqcall as [a' Hin]. exists a'. now right.
-    + reflexivity.
-    + reflexivity.
+  intros l l' v. unfold l_eval_step. destruct (l =? l') eqn:G1.
+  - apply Lit.eqb_eq in G1. subst l'. split.
+    + now left.
+    + now exists true.
+  - destruct (l =? ¬l') eqn:G2.
+    + apply Lit.eqb_eq in G2. subst l. split.
+      * intros _. right. left. now rewrite Neg.involutive.
+      * now exists false.
+    + apply Lit.eqb_neq in G1, G2. split.
+      * intros Hv. right. now right.
+      * intros [<-|[->|Hv]].
+        -- contradiction.
+        -- rewrite Neg.involutive in G2. contradiction.
+        -- assumption.
 Qed.
+
+(* A literal has a value exactly when it or its negation is assigned. *)
+Lemma l_eval_some_iff: forall (m: PA) (l: Lit),
+  (exists (b: bool), l_eval m l = Some b) <-> l ∈ m \/ ¬l ∈ m.
+Proof.
+  intros m l. induction m as [|m IH l'|m IH l']; cbn.
+  - split.
+    + now intros [b Hb].
+    + now intros [[]|[]].
+  - rewrite l_eval_step_some_iff, IH. tauto.
+  - rewrite l_eval_step_some_iff, IH. tauto.
+Qed.
+
+(* A literal can only be true because it was assigned, and only be false because its negation was. *)
+Lemma l_eval_true_in: forall (m: PA) (l: Lit), l_eval m l = Some true -> l ∈ m.
+Proof.
+  intros m l. induction m as [|m IH l'|m IH l']; simpl; unfold l_eval_step.
+  - discriminate.
+  - destruct (l =? l') eqn:G1.
+    + intros _. left. symmetry. now apply Lit.eqb_eq.
+    + destruct (l =? ¬l').
+      * discriminate.
+      * intros Hl. right. now apply IH.
+  - destruct (l =? l') eqn:G1.
+    + intros _. left. symmetry. now apply Lit.eqb_eq.
+    + destruct (l =? ¬l').
+      * discriminate.
+      * intros Hl. right. now apply IH.
+Qed.
+
+Lemma l_eval_false_in: forall (m: PA) (l: Lit), l_eval m l = Some false -> ¬l ∈ m.
+Proof. intros m l Hl. apply l_eval_true_in. now rewrite l_eval_neg, Hl. Qed.
 
 Lemma c_eval_true_iff: forall (m: PA) (c: Clause),
-  c_eval m c = Some true <-> exists (l: Lit), Clause.In l c /\ l_eval m l = Some true.
+  c_eval m c = Some true <-> exists (l: Lit), l ∈ c /\ l_eval m l = Some true.
 Proof.
   intros m c. split.
   - intros Hc. unfold c_eval in Hc. destruct (Clause.exists_ (l_true m) c) eqn:Hexists.
@@ -193,7 +194,7 @@ Proof.
 Qed.
 
 Lemma c_eval_false_iff: forall (m: PA) (c: Clause),
-  c_eval m c = Some false <-> forall (l: Lit), Clause.In l c -> l_eval m l = Some false.
+  c_eval m c = Some false <-> forall (l: Lit), l ∈ c -> l_eval m l = Some false.
 Proof.
   intros m c. split.
   - intros Hc l Hin. unfold c_eval in Hc. destruct (Clause.exists_ (l_true m) c) eqn:Hexists.
@@ -217,8 +218,8 @@ Qed.
 (* A clause is undefined when no literal is true and at least one literal is unassigned. *)
 Lemma c_eval_none_iff: forall (m: PA) (c: Clause),
   c_eval m c = None <-> 
-    (~ exists (l: Lit), Clause.In l c /\ l_eval m l = Some true) /\
-       exists (l: Lit), Clause.In l c /\ l_eval m l = None.
+    (~ exists (l: Lit), l ∈ c /\ l_eval m l = Some true) /\
+       exists (l: Lit), l ∈ c /\ l_eval m l = None.
 Proof.
   intros m c. split.
   - intros Hc. split.
@@ -269,12 +270,12 @@ Qed.
 
 (* If c without l is false and l is unassigned, then c is undefined (it is a unit clause). *)
 Lemma c_eval_remove_none_l: forall (m: PA) (c: Clause) (l: Lit),
-  Clause.In l c -> c_eval m (Clause.remove l c) = Some false -> l_eval m l = None -> c_eval m c = None.
+  l ∈ c -> c_eval m (Clause.remove l c) = Some false -> l_eval m l = None -> c_eval m c = None.
 Proof.
   intros m c l Hin Hc Hl. rewrite c_eval_false_iff in Hc. apply c_eval_none_iff. split.
   - unfold not. intros [l' [Hin' Hl']]. destruct (l =? l') eqn:Heq.
     + rewrite Lit.eqb_eq in Heq. congruence.
-    + rewrite Lit.eqb_neq in Heq. assert (Hin_remove: Clause.In l' (Clause.remove l c)).
+    + rewrite Lit.eqb_neq in Heq. assert (Hin_remove: l' ∈ Clause.remove l c).
       * apply Clause.remove_spec. split.
         -- assumption.
         -- congruence.
@@ -294,7 +295,7 @@ Proof.
 Qed.
 
 Lemma f_eval_true_iff: forall (m: PA) (f: CNF),
-  f_eval m f = Some true <-> forall (c: Clause), CNF.In c f -> c_eval m c = Some true.
+  f_eval m f = Some true <-> forall (c: Clause), c ∈ f -> c_eval m c = Some true.
 Proof.
   intros m f. split.
   - intros Hf c Hin. unfold f_eval in Hf. destruct (CNF.for_all (c_true m) f) eqn:Hforall.
@@ -314,7 +315,7 @@ Proof.
 Qed.
 
 Lemma f_eval_false_iff: forall (m: PA) (f: CNF),
-  f_eval m f = Some false <-> exists (c: Clause), CNF.In c f /\ c_eval m c = Some false.
+  f_eval m f = Some false <-> exists (c: Clause), c ∈ f /\ c_eval m c = Some false.
 Proof.
   intros m f. split.
   - intros Hf. unfold f_eval in Hf. destruct (CNF.for_all (c_true m) f) eqn:Hforall.
@@ -344,21 +345,21 @@ Proof.
 Qed.
 
 (* Assigning a literal that was unassigned does not change the value of any literal that already had one. *)
-Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (a: Ann) (b: bool),
-  Undef m l' -> l_eval m l = Some b -> l_eval (add m l' a) l = Some b.
+Lemma l_eval_extend_undef: forall (m: PA) (l l': Lit) (b: bool),
+  Undef m l' -> l_eval m l = Some b -> l_eval ⟨m, l'⟩ l = Some b.
 Proof.
-  unfold Undef. intros. simp l_eval. destruct (l =? ¬l') eqn:G1, (l =? l') eqn:G2.
-  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. now rewrite Neg.self_neqb_neg in G1.
-  - exfalso. rewrite Lit.eqb_eq in G1. subst l. apply (l_eval_neg_none_iff m l') in H. congruence.
-  - exfalso. rewrite Lit.eqb_eq in G2. subst l'. congruence.
-  - assumption.
+  unfold Undef. intros m l l' b Hundef Hl. simpl. unfold l_eval_step. destruct (l =? l') eqn:G1.
+  - apply Lit.eqb_eq in G1. subst l'. congruence.
+  - destruct (l =? ¬l') eqn:G2.
+    + apply Lit.eqb_eq in G2. subst l. apply l_eval_neg_none_iff in Hundef. congruence.
+    + assumption.
 Qed.
 
 (* Likewise for clauses. *)
-Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (a: Ann) (b: bool),
-  Undef m l -> c_eval m c = Some b -> c_eval (add m l a) c = Some b.
+Lemma c_eval_extend_undef: forall (m: PA) (c: Clause) (l: Lit) (b: bool),
+  Undef m l -> c_eval m c = Some b -> c_eval ⟨m, l⟩ c = Some b.
 Proof.
-  intros m c l a b Hundef Hc. destruct b.
+  intros m c l b Hundef Hc. destruct b.
   - rewrite c_eval_true_iff in *. destruct Hc as [l' [Hin Hl']].
     exists l'. split.
     + assumption.
@@ -369,10 +370,10 @@ Proof.
 Qed.
 
 (* Likewise for formulas. *)
-Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (a: Ann) (b: bool),
-  Undef m l -> f_eval m f = Some b -> f_eval (add m l a) f = Some b.
+Lemma f_eval_extend_undef: forall (m: PA) (f: CNF) (l: Lit) (b: bool),
+  Undef m l -> f_eval m f = Some b -> f_eval ⟨m, l⟩ f = Some b.
 Proof.
-  intros m f l a b Hundef Hf. destruct b.
+  intros m f l b Hundef Hf. destruct b.
   - rewrite f_eval_true_iff in *. intros c Hin. apply c_eval_extend_undef.
     + assumption.
     + now apply Hf.
@@ -381,3 +382,13 @@ Proof.
     + assumption.
     + now apply c_eval_extend_undef.
 Qed.
+
+(* Evaluation does not distinguish decided from propagated literals. *)
+Lemma l_eval_decide: forall (m: PA) (l l': Lit), l_eval ⟨m; l'⟩ l = l_eval ⟨m, l'⟩ l.
+Proof. reflexivity. Qed.
+
+Lemma c_eval_decide: forall (m: PA) (c: Clause) (l: Lit), c_eval ⟨m; l⟩ c = c_eval ⟨m, l⟩ c.
+Proof. reflexivity. Qed.
+
+Lemma f_eval_decide: forall (m: PA) (f: CNF) (l: Lit), f_eval ⟨m; l⟩ f = f_eval ⟨m, l⟩ f.
+Proof. reflexivity. Qed.

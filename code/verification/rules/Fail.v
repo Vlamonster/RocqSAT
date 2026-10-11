@@ -14,7 +14,7 @@ From RocqSAT Require Import Rule.
 (* Fail if all literals are assigned and there is a conflict. *)
 Inductive FailStep: relation State :=
 | r_fail (m: PA) (f: CNF) (c: Clause):
-  CNF.In c f ->
+  c ∈ f ->
   c_eval m c = Some false ->
   NoDecisions m ->
   FailStep (state m f) fail.

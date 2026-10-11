@@ -2,6 +2,7 @@ From Stdlib Require Import MSets.MSetAVL.
 From Stdlib Require Import MSets.MSetEqProperties.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.utils Require Export Member.
 
 Module Clause.
   Include MSetAVL.Make(LitOrderType).
@@ -13,6 +14,9 @@ Module Clause.
 
     (* Print elements as literals rather than as Clause.elt. *)
     Notation "'Lit'" := elt (only printing).
+
+    #[export]
+    Instance MemberClause: Member Lit Clause := In.
   End Definitions.
 
   Include Definitions.

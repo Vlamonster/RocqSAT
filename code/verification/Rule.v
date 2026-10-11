@@ -34,7 +34,7 @@ Definition Decreasing (r: relation State): Prop := forall (m: PA) (f: CNF) (s': 
 (* The rule cannot fire from a model of the formula that defines every literal of it. *)
 Definition ModelFinal (r: relation State): Prop := forall (m: PA) (f: CNF),
   Model m f ->
-  (forall (l: Lit), (exists (c: Clause), Clause.In l c /\ CNF.In c f) -> Def m l) ->
+  (forall (l: Lit), l ∈ f -> Def m l) ->
   ~ exists (s: State), r (state m f) s.
 
 (* A rule that keeps the formula trivially preserves equivalence. *)

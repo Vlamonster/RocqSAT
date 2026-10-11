@@ -1,5 +1,4 @@
 From Stdlib Require Import List.
-Import ListNotations.
 
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
@@ -19,7 +18,7 @@ From RocqSAT.rules Require Import Decide.
 From RocqSAT.rules Require Import Backtrack.
 
 (* m assigns a value to every literal occurring in f. *)
-Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit) (c: Clause), Clause.In l c -> CNF.In c f -> Def m l.
+Definition Total (m: PA) (f: CNF): Prop := forall (l: Lit), l ∈ f -> Def m l.
 
 Definition Sat (f: CNF): Prop := exists (m: PA), Model m f.
 Definition Unsat (f: CNF): Prop := ~ Sat f.
@@ -44,7 +43,7 @@ Proof.
       (* Backtrack *)
       * exists (state ⟨m_split, (¬l_split)⟩ f).
         pose proof Hsplit as Hdecomp.
-        apply split_last_decision_some_iff in Hdecomp as [n_split [-> Hno_dec]].
+        apply PA.split_last_decision_some_iff in Hdecomp as [n_split [-> Hno_dec]].
         apply (t_step Backtrack).
         -- right. right. right. now left.
         -- apply (r_backtrack m_split n_split f c_conflict l_split).
@@ -57,7 +56,7 @@ Proof.
         -- apply (r_fail m f c_conflict).
           ++ now apply find_conflict_c_in_f in Hfind_conflict.
           ++ now apply find_conflict_conflicting in Hfind_conflict.
-          ++ now apply split_last_decision_none_iff.
+          ++ now apply PA.split_last_decision_none_iff.
   (* Decide *)
   - exfalso. apply H. apply undef_decision_exists in Heq as [l_decide Hfind_dec].
     exists (state ⟨m; l_decide⟩ f).
@@ -102,12 +101,12 @@ Proof.
     apply derivation_entails in Hderivation.
     + unfold Unsat. unfold Sat. unfold not. intros [m' Hsat]. apply Hff' in Hsat.
       destruct (entails_extend f' ⟨⟩ m m') as [m'' Hm''].
-      * now rewrite extend_empty_l.
+      * now rewrite PA.app_empty_l.
       * assumption.
       * apply model_union_iff. split.
         -- assumption.
-        -- apply model_units_iff. intros l a [].
-      * apply model_union_iff in Hm'' as [Hf Htrail]. rewrite extend_empty_l in Htrail.
+        -- apply model_units_iff. intros l [].
+      * apply model_union_iff in Hm'' as [Hf Htrail]. rewrite PA.app_empty_l in Htrail.
         unfold Model in Hf. rewrite f_eval_true_iff in Hf. apply Hf in Hc_in_f.
         apply (units_transfer_c m'' _ _ Htrail) in Hconflict. congruence.
     + constructor.
