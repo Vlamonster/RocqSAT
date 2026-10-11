@@ -106,6 +106,33 @@ Module PA.
       - simpl. now rewrite IH.
     Qed.
 
+    Lemma app_assoc: forall (m n k: PA), ⟨m ++ (⟨n ++ k⟩)⟩ = ⟨(⟨m ++ n⟩) ++ k⟩.
+    Proof.
+      intros m n k. induction k as [|k IH l|k IH l].
+      - reflexivity.
+      - simpl. now rewrite IH.
+      - simpl. now rewrite IH.
+    Qed.
+
+    (* Where a trail ending in a propagation or a decision can be split at a decision. *)
+    Lemma propagate_split: forall (m m' n: PA) (l l': Lit),
+      ⟨m, l⟩ = ⟨m'; l' ++ n⟩ -> exists (n': PA), n = ⟨n', l⟩ /\ m = ⟨m'; l' ++ n'⟩.
+    Proof.
+      intros m m' n l l' Heq. destruct n as [|n' l0|n' l0]; simpl in Heq.
+      - discriminate.
+      - injection Heq as -> ->. now exists n'.
+      - discriminate.
+    Qed.
+
+    Lemma decide_split: forall (m m' n: PA) (l l': Lit),
+      ⟨m; l⟩ = ⟨m'; l' ++ n⟩ -> (n = ⟨⟩ /\ m = m' /\ l = l') \/ exists (n': PA), n = ⟨n'; l⟩ /\ m = ⟨m'; l' ++ n'⟩.
+    Proof.
+      intros m m' n l l' Heq. destruct n as [|n' l0|n' l0]; simpl in Heq.
+      - injection Heq as -> ->. now left.
+      - discriminate.
+      - injection Heq as -> ->. right. now exists n'.
+    Qed.
+
     Lemma in_app_iff: forall (m n: PA) (l: Lit), l ∈ ⟨m ++ n⟩ <-> l ∈ n \/ l ∈ m.
     Proof.
       intros m n l. induction n as [|n IH l'|n IH l']; cbn.

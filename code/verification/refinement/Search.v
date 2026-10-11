@@ -1,214 +1,112 @@
 From Stdlib Require Import Bool.
+From Stdlib Require Import SetoidList.
+Import ListNotations.
 
 From RocqSAT Require Import Lit.
 From RocqSAT Require Import Clause.
 From RocqSAT Require Import CNF.
-From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT.refinement Require Import Lookup.
 
-(* Some clause of f that is false under v, if there is one. *)
-Definition find_conflict (v: Values) (f: CNF): option Clause :=
-CNF.choose (CNF.filter (c_lookup_false v) f).
-
-Lemma find_conflict_c_in_f: forall (m: PA) (f: CNF) (c: Clause), 
-  find_conflict (values m) f = Some c -> c ∈ f.
+(* The elements of a formula are its clauses, up to set equality. *)
+Lemma in_cnf_elements: forall (f: CNF) (c: Clause), In c (CNF.elements f) -> c ∈ f.
 Proof.
-  intros m f c Hfind. unfold find_conflict in Hfind. apply CNF.choose_spec1 in Hfind.
-  apply CNF.filter_spec in Hfind as [Hc_in_f _].
+  intros f c Hin. apply CNF.elements_spec1. apply In_InA.
+  - apply CNF.E.eq_equiv.
   - assumption.
-  - intros c1 c2 Heq. now apply c_lookup_false_equal.
 Qed.
 
-Lemma find_conflict_conflicting: forall (m: PA) (f: CNF) (c: Clause), 
-  find_conflict (values m) f = Some c -> c_eval m c = Some false.
+Lemma cnf_elements_in: forall (f: CNF) (c: Clause),
+  c ∈ f -> exists (c': Clause), Clause.Equal c c' /\ In c' (CNF.elements f).
+Proof. intros f c Hc_in_f. apply CNF.elements_spec1 in Hc_in_f. now apply InA_alt in Hc_in_f. Qed.
+
+(* The elements of a clause are exactly its literals. *)
+Lemma clause_elements_iff: forall (c: Clause) (l: Lit), In l (Clause.elements c) <-> l ∈ c.
 Proof.
-  intros m f c Hfind. unfold find_conflict in Hfind. apply CNF.choose_spec1 in Hfind.
-  apply CNF.filter_spec in Hfind as [_ Hc].
-  - rewrite c_lookup_false_values in Hc. unfold c_false in Hc. destruct (c_eval m c) as [[|]|]; easy.
-  - intros c1 c2 Heq. now apply c_lookup_false_equal.
+  intros c l. split.
+  - intros Hin. apply Clause.elements_spec1. apply In_InA.
+    + apply Clause.E.eq_equiv.
+    + assumption.
+  - intros Hl_in_c. apply Clause.elements_spec1 in Hl_in_c. apply InA_alt in Hl_in_c as [l' [-> Hin]].
+    assumption.
 Qed.
 
-Lemma find_conflict_exists_iff: forall (m: PA) (f: CNF),
-  (exists (c: Clause), find_conflict (values m) f = Some c) <-> exists (c: Clause), c ∈ f /\ c_eval m c = Some false.
+(* The literals of f, without duplicates. *)
+Definition formula_lits (f: CNF): Clause := CNF.fold Clause.union f Clause.empty.
+
+Lemma formula_lits_spec: forall (f: CNF) (l: Lit), l ∈ formula_lits f <-> l ∈ f.
 Proof.
-  intros m f. split.
-  - intros [c Hfind]. exists c. split.
-    + now apply find_conflict_c_in_f in Hfind.
-    + now apply find_conflict_conflicting in Hfind.
-  - intros [c [Hc_in_f Hc]]. unfold find_conflict.
-    destruct (CNF.choose (CNF.filter (c_lookup_false (values m)) f)) as [c'|] eqn:Hchoose.
-    + now exists c'.
-    + apply CNF.choose_spec2 in Hchoose. exfalso. apply (Hchoose c). apply CNF.filter_spec.
-      * intros c1 c2 Heq. now apply c_lookup_false_equal.
-      * split.
+  intros f l. unfold formula_lits.
+  apply CNF.MP.fold_rec with (P := fun (g: CNF) (ls: Clause) => l ∈ ls <-> exists (c: Clause), l ∈ c /\ c ∈ g).
+  - intros g Hempty. split.
+    + intros Hl. now apply Clause.empty_spec in Hl.
+    + intros [c [_ Hc_in_g]]. now apply Hempty in Hc_in_g.
+  - intros c ls g g' _ _ Hadd IH. split.
+    + intros Hl. apply Clause.union_spec in Hl as [Hl_in_c|Hl_in_ls].
+      * exists c. split.
         -- assumption.
-        -- rewrite c_lookup_false_values. unfold c_false. now rewrite Hc.
+        -- apply Hadd. now left.
+      * apply IH in Hl_in_ls as [c' [Hl_in_c' Hc'_in_g]]. exists c'. split.
+        -- assumption.
+        -- apply Hadd. now right.
+    + intros [c' [Hl_in_c' Hc'_in_g']]. apply Clause.union_spec. apply Hadd in Hc'_in_g' as [Heq|Hc'_in_g].
+      * left. now apply Heq.
+      * right. apply IH. now exists c'.
 Qed.
 
-(* A literal of c that is unassigned while the rest of c is false, i.e. the unit literal if c is a unit clause. *)
-Definition find_unit_l (v: Values) (c: Clause): option Lit :=
-Clause.choose (Clause.filter (fun (l: Lit) => lookup_undef v l && c_lookup_false v (Clause.remove l c)) c).
+(* The literals ls from the first one without a value on. *)
+Fixpoint skip_assigned (v: Values) (ls: list Lit): list Lit :=
+match ls with
+| []       => []
+| l :: ls' => if lookup_undef v l then ls else skip_assigned v ls'
+end.
 
-(* The first clause of f that is a unit clause, together with its unit literal. *)
-Definition find_unit (v: Values) (f: CNF): option (Clause * Lit) :=
-CNF.fold (fun (c: Clause) (r: option (Clause * Lit)) =>
-  match r with
-  | Some p => Some p
-  | None   => option_map (pair c) (find_unit_l v c)
-  end) f None.
+(* The literals ls to decide on: they are literals of f, and include every literal of f without a value. *)
+Definition Cursor (v: Values) (f: CNF) (ls: list Lit): Prop :=
+  (forall (l: Lit), In l ls -> l ∈ f) /\ (forall (l: Lit), l ∈ f -> lookup v l = None -> In l ls).
 
-Lemma find_unit_decomp: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit (values m) f = Some (c, l) -> find_unit_l (values m) c = Some l /\ c ∈ f.
+Lemma skip_assigned_cursor: forall (v: Values) (f: CNF) (ls: list Lit),
+  Cursor v f ls -> Cursor v f (skip_assigned v ls).
 Proof.
-  intros m f c l. unfold find_unit. apply CNF.MP.fold_rec_nodep.
+  intros v f ls. induction ls as [|l ls IH]; simpl.
+  - easy.
+  - intros [Hsound Hcomplete]. unfold lookup_undef. destruct (lookup v l) as [b|] eqn:Hl.
+    + apply IH. split.
+      * intros l' Hl'. apply Hsound. now right.
+      * intros l' Hl'_in_f Hl'. destruct (Hcomplete l' Hl'_in_f Hl') as [<-|Hin].
+        -- congruence.
+        -- assumption.
+    + now split.
+Qed.
+
+(* The first literal after skipping has no value. *)
+Lemma skip_assigned_head: forall (v: Values) (ls ls': list Lit) (l: Lit),
+  skip_assigned v ls = l :: ls' -> lookup v l = None.
+Proof.
+  intros v ls ls' l. induction ls as [|l0 ls IH]; simpl.
   - discriminate.
-  - intros c' r Hc'_in_f IH Hr. destruct r as [p|].
-    + now apply IH.
-    + destruct (find_unit_l (values m) c') as [l'|] eqn:Hfind.
-      * simpl in Hr. injection Hr as <- <-. now split.
+  - unfold lookup_undef. destruct (lookup v l0) eqn:Hl0.
+    + assumption.
+    + intros Heq. injection Heq as <- _. assumption.
+Qed.
+
+(* Assigning a literal keeps a cursor valid: literals without a value had none before. *)
+Lemma cursor_set_value: forall (v: Values) (f: CNF) (ls: list Lit) (l: Lit),
+  Cursor v f ls -> Cursor (set_value v l) f ls.
+Proof.
+  intros v f ls l [Hsound Hcomplete]. split.
+  - assumption.
+  - intros l' Hl'_in_f Hl'. apply Hcomplete.
+    + assumption.
+    + rewrite lookup_add in Hl'. unfold l_eval_step in Hl'.
+      destruct (l' =? l).
       * discriminate.
+      * destruct (l' =? ¬l).
+        -- discriminate.
+        -- assumption.
 Qed.
 
-Lemma find_unit_undef: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit (values m) f = Some (c, l) -> Undef m l.
-Proof.
-  intros m f c l Hfind. apply find_unit_decomp in Hfind as [Hfind _].
-  unfold find_unit_l in Hfind. apply Clause.choose_spec1 in Hfind.
-  apply Clause.filter_spec in Hfind as [_ Hl].
-  - apply andb_true_iff in Hl as [Hundef _]. rewrite lookup_undef_values in Hundef. unfold Undef. unfold l_undef in Hundef.
-    destruct (l_eval m l); easy.
-  - now intros ? ? ->.
-Qed.
-
-Lemma find_unit_l_l_in_c: forall (m: PA) (c: Clause) (l: Lit),
-  find_unit_l (values m) c = Some l -> l ∈ c.
-Proof.
-  intros m c l Hfind. unfold find_unit_l in Hfind. apply Clause.choose_spec1 in Hfind.
-  apply Clause.filter_spec in Hfind as [Hl_in_c _].
-  - assumption.
-  - now intros ? ? ->.
-Qed.
-
-Lemma find_unit_l_in_c: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit (values m) f = Some (c, l) -> l ∈ c.
-Proof.
-  intros m f c l Hfind. apply find_unit_decomp in Hfind as [Hfind _].
-  now apply find_unit_l_l_in_c in Hfind.
-Qed.
-
-Lemma find_unit_c_in_f: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit (values m) f = Some (c, l) -> c ∈ f.
-Proof. intros m f c l Hfind. now apply find_unit_decomp in Hfind. Qed.
-
-Lemma find_unit_bounded: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit (values m) f = Some (c, l) -> l ∈ f.
-Proof.
-  intros m f c l Hfind. exists c. split.
-  - now apply find_unit_l_in_c in Hfind.
-  - now apply find_unit_c_in_f in Hfind.
-Qed.
-
-(* Some literal of c without a value. *)
-Definition find_undef_l (v: Values) (c: Clause): option Lit :=
-Clause.choose (Clause.filter (lookup_undef v) c).
-
-Lemma find_undef_l_in_c: forall (m: PA) (c: Clause) (l: Lit), 
-  find_undef_l (values m) c = Some l -> l ∈ c.
-Proof.
-  intros m c l Hfind. unfold find_undef_l in Hfind. apply Clause.choose_spec1 in Hfind.
-  apply Clause.filter_spec in Hfind as [Hl_in_c _].
-  - assumption.
-  - now intros ? ? ->.
-Qed.
-
-Lemma find_undef_l_undef: forall (m: PA) (c: Clause) (l: Lit), 
-  find_undef_l (values m) c = Some l -> Undef m l.
-Proof.
-  intros m c l Hfind. unfold find_undef_l in Hfind. apply Clause.choose_spec1 in Hfind.
-  apply Clause.filter_spec in Hfind as [_ Hundef].
-  - rewrite lookup_undef_values in Hundef. unfold Undef. unfold l_undef in Hundef. destruct (l_eval m l); easy.
-  - now intros ? ? ->.
-Qed.
-Lemma find_undef_l_exists : forall (m: PA) (c: Clause) (l: Lit),
-  l ∈ c -> Undef m l -> exists (l': Lit), find_undef_l (values m) c = Some l'.
-Proof.
-  intros m c l Hl_in_c Hundef. unfold find_undef_l.
-  destruct (Clause.choose (Clause.filter (lookup_undef (values m)) c)) as [l'|] eqn:Hchoose.
-  - now exists l'.
-  - apply Clause.choose_spec2 in Hchoose. exfalso. apply (Hchoose l). apply Clause.filter_spec.
-    + now intros ? ? ->.
-    + split.
-      * assumption.
-      * rewrite lookup_undef_values. unfold l_undef. unfold Undef in Hundef. now rewrite Hundef.
-Qed.
-
-(* Some literal of f without a value, taken from the first clause that has one. *)
-Definition find_decision (v: Values) (f: CNF): option Lit :=
-CNF.fold (fun (c: Clause) (r: option Lit) =>
-  match r with
-  | Some l => Some l
-  | None   => find_undef_l v c
-  end) f None.
-
-Lemma find_decision_decomp: forall (m: PA) (f: CNF) (l: Lit), 
-  find_decision (values m) f = Some l -> exists (c: Clause), find_undef_l (values m) c = Some l /\ c ∈ f.
-Proof.
-  intros m f l. unfold find_decision. apply CNF.MP.fold_rec_nodep.
-  - discriminate.
-  - intros c r Hc_in_f IH Hr. destruct r as [l'|].
-    + now apply IH.
-    + now exists c.
-Qed.
-
-Lemma find_decision_exists: forall (m: PA) (f: CNF) (l: Lit),
-  l ∈ f -> Undef m l -> exists (l': Lit), find_decision (values m) f = Some l'.
-Proof.
-  intros m f l [c [Hl_in_c Hc_in_f]] Hundef. unfold find_decision. revert Hc_in_f.
-  apply CNF.MP.fold_rec.
-  - intros f' Hempty Hc_in_f'. now apply Hempty in Hc_in_f'.
-  - intros c' r f' f'' _ _ Hadd IH Hc_in_f''. destruct r as [l'|].
-    + now exists l'.
-    + apply Hadd in Hc_in_f'' as [Hequal|Hc_in_f'].
-      * apply Hequal in Hl_in_c. now apply (find_undef_l_exists m c' l).
-      * apply IH in Hc_in_f' as [l' Hcontra]. discriminate.
-Qed.
-
-(* If f is undefined under m, there is still a literal to decide. *)
-Lemma undef_decision_exists: forall (m: PA) (f: CNF),
-  f_eval m f = None -> exists (l: Lit), find_decision (values m) f = Some l.
-Proof.
-  intros m f Hf. apply f_eval_none_iff in Hf as [_ [c [Hc_in_f Hc]]].
-  apply c_eval_none_iff in Hc as [_ [l [Hl_in_c Hl]]].
-  apply find_decision_exists with l.
-  - now exists c.
-  - assumption.
-Qed.
-
-Lemma find_decision_undef: forall (m: PA) (f: CNF) (l: Lit),
-  find_decision (values m) f = Some l -> Undef m l.
-Proof.
-  intros m f l Hfind. apply find_decision_decomp in Hfind as [c [Hfind _]].
-  now apply find_undef_l_undef in Hfind.
-Qed.
-
-Lemma find_decision_bounded: forall (m: PA) (f: CNF) (l: Lit),
-  find_decision (values m) f = Some l -> l ∈ f.
-Proof.
-  intros m f l Hfind. apply find_decision_decomp in Hfind as [c [Hfind Hc_in_f]].
-  exists c. split.
-  - now apply find_undef_l_in_c in Hfind.
-  - assumption.
-Qed.
-
-(* The unit clause that find_unit returns is false apart from its unit literal. *)
-Lemma find_unit_conflicting: forall (m: PA) (f: CNF) (c: Clause) (l: Lit),
-  find_unit (values m) f = Some (c, l) -> c_eval m (Clause.remove l c) = Some false.
-Proof.
-  intros m f c l Hfind. apply find_unit_decomp in Hfind as [Hfind _].
-  unfold find_unit_l in Hfind. apply Clause.choose_spec1 in Hfind.
-  apply Clause.filter_spec in Hfind as [_ Hl].
-  - apply andb_true_iff in Hl as [_ Hc]. rewrite c_lookup_false_values in Hc. unfold c_false in Hc.
-    destruct (c_eval m (Clause.remove l c)) as [[|]|]; easy.
-  - now intros ? ? ->.
-Qed.
+(* c is neither false nor unit under v: it has a true literal or two unassigned ones. *)
+Definition Settled (v: Values) (c: Clause): Prop :=
+  (exists (l: Lit), l ∈ c /\ lookup v l = Some true) \/
+  (exists (l1 l2: Lit), l1 ∈ c /\ l2 ∈ c /\ l1 <> l2 /\ lookup v l1 = None /\ lookup v l2 = None).

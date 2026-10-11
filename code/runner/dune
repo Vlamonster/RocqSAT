@@ -6,4 +6,5 @@
 (executable
  (name runner)
  (public_name rocqsat)
+ (libraries rocq-runtime.kernel)
  (modules solver runner))
