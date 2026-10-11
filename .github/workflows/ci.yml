@@ -19,22 +19,18 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd code
           opam repo add rocq-released https://coq.inria.fr/opam/released
           opam repo add rocq-extra-dev https://coq.inria.fr/opam/extra-dev
           opam install . --deps-only
 
       - name: Build project
-        run: |
-          cd code
-          opam exec -- dune build
+        run: opam exec -- dune build
 
       - name: Generate documentation
         if: github.ref == 'refs/heads/thesis'
         run: |
-          cd code
-          mkdir ../doc
-          opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v _build/default/verification/rules/*.v _build/default/verification/utils/*.v _build/default/verification/refinement/*.v -d ../doc -toc
+          mkdir doc
+          opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v _build/default/verification/rules/*.v _build/default/verification/utils/*.v _build/default/verification/refinement/*.v -d doc -toc
 
       - name: Upload documentation artifact
         if: github.ref == 'refs/heads/thesis'

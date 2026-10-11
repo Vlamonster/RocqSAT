@@ -1,5 +1,5 @@
 {
-	// Unicode symbols used in the Rocq notations of code/verification.
+	// Unicode symbols used in the Rocq notations of verification/.
 	// Type the prefix and accept the suggestion with Tab or Enter.
 	"Trail open": {
 		"scope": "rocq",

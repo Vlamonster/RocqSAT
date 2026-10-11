@@ -1,7 +1,7 @@
 # Installation
 
 1. Install **Opam** (tested with version 2.5.0).  
-2. Enter the `/code` directory and install dependencies: 
+2. Install the dependencies from the repository root: 
     - `opam install . --deps-only`
 3. If you want to work with **VSRocq** (tested with version 2.3.3): 
     - `opam install vsrocq-language-server`
@@ -11,7 +11,7 @@
     - If `dune` is not on your `PATH`, run `eval $(opam env)` first.
 
 # Running
-You can run a problem from the `/code` directory using:
+You can run a problem from the repository root using:
 ```bash
 dune exec rocqsat < problems/<problem>.cnf
 ```

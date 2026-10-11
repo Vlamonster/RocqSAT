@@ -7,7 +7,7 @@ model, and reaching `fail` means the formula is unsatisfiable), **complete**
 derivations). It also implements a concrete strategy, proves that it follows the
 system, and derives decidability of satisfiability.
 
-Build everything from the `code/` directory with:
+Build everything from the repository root with:
 
 ```sh
 dune build
