@@ -67,19 +67,18 @@ are grouped into one node. The helpers in `utils/` are left out.
               |           |           |
           Strategy   Termination  Normalization
               |           |           |
-              +-----+     |           |
-              |     |     |           |
-              |     +--+--+           |
-              |        |              |
-       refinement (1) Solve           |
-              |        |              |
-              +--------+------+-------+
-                              |
-                        Satisfiability
+       refinement (1)     |           |
+              |           |           |
+              +-----------+-----------+
+                          |
+                    Satisfiability
 ```
 
 (1) The files in `refinement/`: `Lookup` (which only depends on `Evaluation`), `Search`
 (on `Lookup`) and `NextState` (on `Search`, `Strategy` and the rules).
+
+`Solve` (on `Strategy` and `Termination`) runs a strategy until it stops; only the solver
+in `runner/` uses it.
 
 ## Adding a rule
 
@@ -225,6 +224,6 @@ A concrete strategy in `refinement/`, implemented efficiently and proved to agre
 
 ### Main results
 
-| File               | Contents                                                        |
-|--------------------|-----------------------------------------------------------------|
-| `Satisfiability.v` | `Sat`, `Unsat` and `Total`, and the main theorems listed above. |
+| File               | Contents                                                                                                                                                                                                                    |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Satisfiability.v` | `Sat`, `Unsat` and `Total`; `final_or_step` (every state is final for `Basic` or has a `Basic` step) and the main theorems listed above, with `final_exists` by well-founded induction on `strict_derivation_well_founded`. |
