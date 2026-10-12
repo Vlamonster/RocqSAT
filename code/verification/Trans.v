@@ -155,34 +155,32 @@ Qed.
 
 (* Transitions never change the formula, as long as no rule does. *)
 Lemma trans_same_formula: forall (rs: list Rule) (m m': PA) (f f': CNF),
-  Forall (fun (r: Rule) => PreservesFormula (step r)) rs ->
+  (forall (r: Rule), In r rs -> PreservesFormula (step r)) ->
   state m f ==>[rs] state m' f' -> f = f'.
 Proof.
   intros rs m m' f f' Hrs Htrans.
   apply trans_rule in Htrans as [r [Hr Hstep]].
-  rewrite Forall_forall in Hrs. apply Hrs in Hr. now apply Hr in Hstep.
+  apply Hrs in Hr. now apply Hr in Hstep.
 Qed.
 
-Lemma dpll_same_formula: Forall (fun (r: Rule) => PreservesFormula (step r)) DPLL.
+Lemma dpll_same_formula: forall (r: Rule), In r DPLL -> PreservesFormula (step r).
 Proof.
-  repeat apply Forall_cons.
+  intros r Hr. destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]].
   - apply fail_same_formula.
   - apply unit_same_formula.
   - apply decide_same_formula.
   - apply backtrack_same_formula.
   - apply pure_same_formula.
-  - apply Forall_nil.
 Qed.
 
-Lemma dpll_bj_same_formula: Forall (fun (r: Rule) => PreservesFormula (step r)) DPLL_BJ.
+Lemma dpll_bj_same_formula: forall (r: Rule), In r DPLL_BJ -> PreservesFormula (step r).
 Proof.
-  repeat apply Forall_cons.
+  intros r Hr. destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]].
   - apply fail_same_formula.
   - apply unit_same_formula.
   - apply decide_same_formula.
   - apply backjump_same_formula.
   - apply pure_same_formula.
-  - apply Forall_nil.
 Qed.
 
 (* Likewise for derivations. *)
