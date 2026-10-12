@@ -25,6 +25,7 @@ It also gives a concrete, verified strategy and derives decidability of satisfia
 | `final_unsat_refl`               | `systems/<S>.v` | A formula is unsatisfiable iff `fail` is reachable.                 |
 | `sat_decidable`                  | `systems/<S>.v` | Every formula is satisfiable or unsatisfiable.                      |
 | `strict_derivation_well_founded` | `Termination.v` | There are no infinite derivations from well-formed states.          |
+| `scheduled_terminates`           | `Schedule.v`    | Restarting on an unbounded schedule terminates.                     |
 | `derivation_entails`             | `Trans.v`       | Every derivation preserves entailment.                              |
 | `next_state_strategy`            | `Strategy.v`    | The concrete solver step is a valid strategy.                       |
 
@@ -32,6 +33,7 @@ It also gives a concrete, verified strategy and derives decidability of satisfia
 
 - Each module is drawn above the modules that import it; implied edges are left out.
 - The rule files form one node, as do the system files (each imports the one before it).
+- `Schedule.v` (restarts) imports `Termination` and `rules/Restart.v`; nothing imports it.
 - `utils/` is left out.
 
 ```text
@@ -162,6 +164,8 @@ Files are listed in dependency order.
   - `score`: per decision level, the bound minus its propagations, padded;
   - `StateLt` (`s >>[f] s'`): `fail` lowest, then by `score`, then `score_total`;
   - `state_lt_well_founded`, `state_lt_incl`, `state_lt_max_atom`;
+  - `rank`: the measure as a number (digits in a fixed base), lower after every step
+    (`state_lt_rank`), so it bounds the number of steps;
   - how each kind of step changes the score.
 
 ### Rules
@@ -181,6 +185,8 @@ Files are listed in dependency order.
       steps.
     - `backjump_backtrack`: Backtrack applies whenever Backjump does.
   - `Pure.v`: assign a literal whose negation does not occur in the formula.
+  - `Restart.v`: start over from `⟨⟩`. Not a `Rule`, since it raises the measure; only
+    `RestartStep` and its `_same_formula`, `_well_formed`, `_entails` lemmas.
 
 ### Transition system
 
@@ -193,6 +199,13 @@ Files are listed in dependency order.
   - `fail_predecessor`.
 - `Termination.v`: every transition from a well-formed state decreases the measure;
   `trans_well_founded`, `strict_derivation_well_founded`, for any rule set.
+- `Schedule.v`: restarts on a schedule `g`, where restart `k` needs `g k` steps since the
+  previous one (`Scheduled rs g`).
+  - `scheduled_terminates`: no infinite derivations if `g` is unbounded and the rules keep
+    the formula (`KeepsFormula`, e.g. `dpll_bj_keeps_formula`). Between restarts the rank
+    bounds the steps, so once `g` exceeds that bound no further restart can happen.
+  - `scheduled_derivation`: a restart returns to the initial state, so every reachable state
+    is reachable without restarts, and the results for `rs` carry over.
 
 ### Normalization
 

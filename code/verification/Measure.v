@@ -421,3 +421,78 @@ Proof.
       * injection Hp' as -> _. injection Hp as Hscore _. rewrite Hscore.
         now rewrite score_length_well_formed.
 Qed.
+
+(* The measure as a number, so that it also bounds the number of steps: the score as digits in base b, then
+   score_total as the last digit. *)
+Fixpoint digits (b: nat) (l: list nat): nat :=
+match l with
+| []     => 0
+| x :: l => x * b ^ length l + digits b l
+end.
+
+Definition rank (m: PA) (f: CNF): nat :=
+  digits (S (S (max_atom_f f))) (score m f) * S (S (max_atom_f f)) + score_total m f.
+
+(* A number with digits below b and length n is below b ^ n. *)
+Lemma digits_lt: forall (b: nat) (l: list nat), (forall (x: nat), In x l -> x < b) -> digits b l < b ^ length l.
+Proof.
+  intros b l. induction l as [|x l IH]; simpl; intros Hlt.
+  - lia.
+  - assert (Hx: x < b).
+    + apply Hlt. now left.
+    + assert (Hl: digits b l < b ^ length l).
+      * apply IH. intros y Hy. apply Hlt. now right.
+      * nia.
+Qed.
+
+(* Related lists of equal length with digits below b are ordered as numbers. *)
+Lemma prefix_lt_digits: forall (x b: nat) (l l': list nat),
+  PrefixLt x l l' ->
+  length l = length l' ->
+  (forall (y: nat), In y l -> y < b) ->
+  (forall (y: nat), In y l' -> y < b) ->
+  digits b l < digits b l'.
+Proof.
+  intros x b l l' H. induction H as [m m' n n' _ _ Hlt|m m' n _ _ _ IH]; simpl; intros Hlen Hl Hl'.
+  - injection Hlen as Hlen. rewrite <- Hlen.
+    assert (Hm: digits b m < b ^ length m).
+    + apply digits_lt. intros y Hy. apply Hl. now right.
+    + nia.
+  - injection Hlen as Hlen. rewrite <- Hlen. apply Nat.add_lt_mono_l, IH.
+    + assumption.
+    + intros y Hy. apply Hl. now right.
+    + intros y Hy. apply Hl'. now right.
+Qed.
+
+(* Every entry of the score is at most the bound. *)
+Lemma score_le_bound: forall (m: PA) (f: CNF) (k: nat), In k (score m f) -> k <= S (max_atom_f f).
+Proof.
+  intros m f k Hin. unfold score, pad in Hin. apply in_app_or in Hin as [Hin|Hin].
+  - rewrite <- in_rev in Hin. now apply score_aux_le_bound in Hin.
+  - apply repeat_spec in Hin. lia.
+Qed.
+
+(* Between well-formed states of f, a smaller measure is a smaller rank. *)
+Lemma state_lt_rank: forall (m m': PA) (f: CNF),
+  WellFormed (state m f) ->
+  WellFormed (state m' f) ->
+  state m f >>[f] state m' f ->
+  rank m' f < rank m f.
+Proof.
+  intros m m' f Hwf Hwf' Hlt. unfold StateLt, MR in Hlt. simp state_measure in Hlt. unfold rank.
+  assert (Ht: score_total m' f < S (S (max_atom_f f))).
+  - unfold score_total. lia.
+  - inversion Hlt as [? ? ? ? Hflag | ? ? ? Hlex]; subst.
+    + lia.
+    + remember (score m' f, score_total m' f) as p' eqn:Hp'.
+      remember (score m f, score_total m f) as p eqn:Hp.
+      destruct Hlex as [l l' t t' Hprefix | l t t' Htotal].
+      * injection Hp' as -> ->. injection Hp as -> ->.
+        assert (Hdigits: digits (S (S (max_atom_f f))) (score m' f) < digits (S (S (max_atom_f f))) (score m f)).
+        -- apply (prefix_lt_digits _ _ _ _ Hprefix).
+           ++ now rewrite !score_length_well_formed.
+           ++ intros y Hy. apply score_le_bound in Hy. lia.
+           ++ intros y Hy. apply score_le_bound in Hy. lia.
+        -- nia.
+      * injection Hp' as Hscore ->. injection Hp as Hscore' ->. rewrite <- Hscore, Hscore'. lia.
+Qed.
