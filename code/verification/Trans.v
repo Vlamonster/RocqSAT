@@ -53,20 +53,6 @@ Proof.
   intros rs m f s' Htrans. inversion Htrans as [r ? ? ? Hr Hstep]; subst. now exists r.
 Qed.
 
-(* A transition is in the union of the rules exactly when one of its rules allows it. *)
-Lemma trans_union: forall (rs: list Rule) (s s': State),
-  s ==>[rs] s' <-> exists (r: Rule), In r rs /\ s ==>[[r]] s'.
-Proof.
-  intros rs s s'. split.
-  - intros Htrans. inversion Htrans as [r m f s'' Hr Hstep]; subst. exists r. split.
-    + assumption.
-    + apply (t_step r).
-      * now left.
-      * assumption.
-  - intros [r [Hr Htrans]]. inversion Htrans as [r' m f s'' Hr' Hstep]; subst.
-    destruct Hr' as [<-|[]]. now apply (t_step r).
-Qed.
-
 (* Adding rules keeps every transition. *)
 Lemma trans_incl: forall (rs rs': list Rule) (s s': State),
   incl rs rs' -> s ==>[rs] s' -> s ==>[rs'] s'.
@@ -151,49 +137,6 @@ Lemma derivation_well_formed: forall (rs: list Rule) (m m': PA) (f f': CNF),
   state m f ==>*[rs] state m' f' -> WellFormed (state m f) -> WellFormed (state m' f').
 Proof.
   intros rs. apply derivation_invariant. intros m m' f f'. apply trans_well_formed.
-Qed.
-
-(* Transitions never change the formula, as long as no rule does. *)
-Lemma trans_same_formula: forall (rs: list Rule) (m m': PA) (f f': CNF),
-  (forall (r: Rule), In r rs -> PreservesFormula (step r)) ->
-  state m f ==>[rs] state m' f' -> f = f'.
-Proof.
-  intros rs m m' f f' Hrs Htrans.
-  apply trans_rule in Htrans as [r [Hr Hstep]].
-  apply Hrs in Hr. now apply Hr in Hstep.
-Qed.
-
-Lemma dpll_same_formula: forall (r: Rule), In r DPLL -> PreservesFormula (step r).
-Proof.
-  intros r Hr. destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]].
-  - apply fail_same_formula.
-  - apply unit_same_formula.
-  - apply decide_same_formula.
-  - apply backtrack_same_formula.
-  - apply pure_same_formula.
-Qed.
-
-Lemma dpll_bj_same_formula: forall (r: Rule), In r DPLL_BJ -> PreservesFormula (step r).
-Proof.
-  intros r Hr. destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]].
-  - apply fail_same_formula.
-  - apply unit_same_formula.
-  - apply decide_same_formula.
-  - apply backjump_same_formula.
-  - apply pure_same_formula.
-Qed.
-
-(* Likewise for derivations. *)
-Lemma derivation_same_formula: forall (m m': PA) (f f': CNF),
-  state m f ==>* state m' f' -> f = f'.
-Proof.
-  intros m m' f f' H.
-  apply (derivation_invariant DPLL (fun (_: PA) (g: CNF) => f = g)) with (m := m) (m' := m') (f := f).
-  - intros m0 m1 f0 f1 Htrans <-. apply trans_same_formula in Htrans.
-    + assumption.
-    + apply dpll_same_formula.
-  - assumption.
-  - reflexivity.
 Qed.
 
 (* Transitions, and hence derivations, only change the formula to an equivalent one. *)
