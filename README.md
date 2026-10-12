@@ -35,9 +35,9 @@ machine):
 | `hole6.cnf`         |        42 |     133 | UNSAT   |   0.03s |
 | `zebra.cnf`         |       155 |    1135 | SAT     |   0.03s |
 | `queens16.cnf`      |       256 |    6336 | SAT     |   0.14s |
-| `hanoi4.cnf`        |       718 |    4934 | SAT     |     10s |
-| `factor1234321.cnf` |      1433 |    7585 | SAT     |     35s |
-| `factor1235321.cnf` |      1433 |    7585 | UNSAT   |    141s |
+| `hanoi4.cnf`        |       718 |    4934 | SAT     |      9s |
+| `factor1234321.cnf` |      1433 |    7585 | SAT     |     28s |
+| `factor1235321.cnf` |      1433 |    7585 | UNSAT   |    108s |
 | `bf.cnf`            |      1040 |    3668 | timeout |       - |
 | `subsets100.cnf`    |      3357 |   15212 | timeout |       - |
 

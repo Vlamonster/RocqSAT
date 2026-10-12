@@ -102,10 +102,11 @@ Proof.
   - right. now apply (pending_drop todo p x rest i j).
 Qed.
 
-(* Each clause is watched by its two watched literals, which are literals of the clause unless it is empty. *)
+(* Each clause is watched by its two watched literals, which are literals of the clause, or equal if it is
+   empty. *)
 Definition WatchStruct (cm: ClauseMap) (w: Watches) (wl: WatchLists) (todo: list (Lit * list nat)): Prop :=
   forall (i: nat) (ls: list Lit) (w1 w2: Lit), tget cm i = Some ls -> tget w i = (w1, w2) ->
-  Watched wl todo i w1 /\ Watched wl todo i w2 /\ (ls = [] \/ (In w1 ls /\ In w2 ls)).
+  Watched wl todo i w1 /\ Watched wl todo i w2 /\ ((ls = [] /\ w1 = w2) \/ (In w1 ls /\ In w2 ls)).
 
 (* The watched literals of a clause with literals ls are fine: one of them is true, or both are distinct,
    unassigned literals of the clause. *)
@@ -234,12 +235,12 @@ match ls with
 end.
 
 Lemma repair_spec: forall (v: Values) (ls: list Lit) (w1 w2 a b: Lit),
-  ls = [] \/ (In w1 ls /\ In w2 ls) ->
+  (ls = [] /\ w1 = w2) \/ (In w1 ls /\ In w2 ls) ->
   repair v ls w1 w2 = Some (a, b) -> WatchOK v ls a b /\ In a ls /\ In b ls.
 Proof.
   intros v ls w1 w2 a b Hmembers. unfold repair. destruct ls as [|l0 ls'].
   - discriminate.
-  - destruct Hmembers as [Hnil|[Hw1 Hw2]].
+  - destruct Hmembers as [[Hnil _]|[Hw1 Hw2]].
     + discriminate.
     + destruct (lookup_true v w1 || lookup_true v w2) eqn:Htrue.
       * intros Heq. injection Heq as <- <-. split.
@@ -284,12 +285,12 @@ Qed.
 
 (* The watched literals of a settled clause can always be repaired. *)
 Lemma repair_settled: forall (v: Values) (ls: list Lit) (w1 w2: Lit),
-  ls = [] \/ (In w1 ls /\ In w2 ls) ->
+  (ls = [] /\ w1 = w2) \/ (In w1 ls /\ In w2 ls) ->
   Settled v ls -> exists (p: Lit * Lit), repair v ls w1 w2 = Some p.
 Proof.
   intros v ls w1 w2 Hmembers Hsettled. unfold repair. destruct ls as [|l0 ls'].
   - exfalso. destruct Hsettled as [[t [[] _]]|[u1 [_ [[] _]]]].
-  - destruct Hmembers as [Hnil|[Hw1 Hw2]].
+  - destruct Hmembers as [[Hnil _]|[Hw1 Hw2]].
     + discriminate.
     + destruct (lookup_true v w1 || lookup_true v w2) eqn:Htrue.
       * now exists (w1, w2).
@@ -422,28 +423,31 @@ Proof.
   - apply watching_watch. now left.
 Qed.
 
-(* Visit the clauses ws watching the false literal p: drop those that no longer watch p and repair the watches of
-   the others, putting those that keep watching p back into its watch list, until one cannot be repaired. Returns
-   the clauses still to visit, starting with that one. *)
+(* Visit the clauses ws watching the false literal p: drop those that no longer watch p, put those whose other
+   watch is true back into the watch list of p without looking at their literals, and repair the watches of the
+   others, putting those that keep watching p back as well, until one cannot be repaired. Returns the clauses
+   still to visit, starting with that one. *)
 Fixpoint visit (v: Values) (cm: ClauseMap) (p: Lit) (w: Watches) (wl: WatchLists) (ws: list nat):
   Watches * WatchLists * list nat :=
 match ws with
 | []        => (w, wl, [])
 | i :: rest =>
-  match tget cm i with
-  | Some ls =>
-    match tget w i with
-    | (w1, w2) =>
-      if (w1 =? p) || (w2 =? p) then
+  match tget w i with
+  | (w1, w2) =>
+    if (w1 =? p) || (w2 =? p) then
+      let o := if w1 =? p then w2 else w1 in
+      if negb (o =? p) && lookup_true v o then visit v cm p w (watch wl p i) rest else
+      match tget cm i with
+      | Some ls =>
         match repair v ls w1 w2 with
         | Some (a, b) =>
           if (a =? w1) && (b =? w2) then visit v cm p w (watch wl p i) rest
           else visit v cm p (tset w i (a, b)) (add_watch (add_watch wl i p w1 w2 a) i p w1 w2 b) rest
         | None        => (w, wl, ws)
         end
-      else visit v cm p w wl rest
-    end
-  | None    => visit v cm p w wl rest
+      | None    => visit v cm p w wl rest
+      end
+    else visit v cm p w wl rest
   end
 end.
 
@@ -451,14 +455,16 @@ end.
 Definition Stuck (v: Values) (cm: ClauseMap) (w: Watches) (i: nat): Prop :=
   exists (ls: list Lit) (w1 w2: Lit), tget cm i = Some ls /\ tget w i = (w1, w2) /\ repair v ls w1 w2 = None.
 
-(* Dropping clause i from the pending item of p, when it is not a clause or no longer watches p. *)
-Lemma struct_drop: forall (cm: ClauseMap) (w: Watches) (wl: WatchLists) (todo: list (Lit * list nat)) (p: Lit)
+(* Dropping clause i from the pending item of p, when it is not a clause or no longer watches p, while the watch
+   lists grow. *)
+Lemma struct_drop: forall (cm: ClauseMap) (w: Watches) (wl wl': WatchLists) (todo: list (Lit * list nat)) (p: Lit)
   (rest: list nat) (i: nat),
   WatchStruct cm w wl ((p, i :: rest) :: todo) ->
+  (forall (j: nat) (z: Lit), In j (watching wl z) -> In j (watching wl' z)) ->
   (forall (ls: list Lit) (w1 w2: Lit), tget cm i = Some ls -> tget w i = (w1, w2) -> w1 <> p /\ w2 <> p) ->
-  WatchStruct cm w wl ((p, rest) :: todo).
+  WatchStruct cm w wl' ((p, rest) :: todo).
 Proof.
-  intros cm w wl todo p rest i Hstruct Hnot j ls w1 w2 Hj Hw. destruct (Hstruct j ls w1 w2 Hj Hw) as (H1 & H2 & Hm).
+  intros cm w wl wl' todo p rest i Hstruct Hwl Hnot j ls w1 w2 Hj Hw. destruct (Hstruct j ls w1 w2 Hj Hw) as (H1 & H2 & Hm).
   assert (Hji: forall (x: Lit), x = w1 \/ x = w2 -> j <> i \/ x <> p).
   - intros x Hx. destruct (Nat.eq_dec j i) as [->|Hneq].
     + right. destruct (Hnot ls w1 w2 Hj Hw) as [Hw1 Hw2]. destruct Hx as [-> | ->].
@@ -466,13 +472,13 @@ Proof.
       * assumption.
     + now left.
   - split.
-    + apply (watched_drop wl wl todo p w1 rest i j).
-      * easy.
+    + apply (watched_drop wl wl' todo p w1 rest i j).
+      * intros z. apply Hwl.
       * apply Hji. now left.
       * assumption.
     + split.
-      * apply (watched_drop wl wl todo p w2 rest i j).
-        -- easy.
+      * apply (watched_drop wl wl' todo p w2 rest i j).
+        -- intros z. apply Hwl.
         -- apply Hji. now right.
         -- assumption.
       * assumption.
@@ -564,95 +570,141 @@ Proof.
     + split.
       * assumption.
       * now left.
-  - destruct (tget cm i) as [ls|] eqn:Hc.
-    + destruct (tget w i) as [w1 w2] eqn:Hw. destruct (Hstruct i ls w1 w2 Hc Hw) as (Hin1 & Hin2 & Hmembers).
-      destruct ((w1 =? p) || (w2 =? p)) eqn:Hwatch.
-      * destruct (repair v ls w1 w2) as [[a b]|] eqn:Hrepair.
-        -- apply (repair_spec v ls w1 w2 a b Hmembers) in Hrepair as (Hok & Ha & Hb).
-           destruct ((a =? w1) && (b =? w2)) eqn:Hsame.
-          (* The watches of i stay the same, and i goes back into the watch list of p *)
-          ++ apply andb_prop in Hsame as [Ha1 Hb2]. apply Lit.eqb_eq in Ha1, Hb2. subst a b.
-             assert (Hback: forall (x: Lit), x = w1 \/ x = w2 -> Watched (watch wl p i) ((p, rest) :: todo) i x).
-            ** intros x Hx. destruct (Lit.eq_dec x p) as [->|Hxp].
-              --- left. apply watching_watch. left. now split.
-              --- apply (watched_drop wl (watch wl p i) todo p x rest i i).
-                +++ intros z Hz. apply watching_watch. now right.
-                +++ now right.
-                +++ destruct Hx as [-> | ->].
-                  *** assumption.
-                  *** assumption.
-            ** destruct (struct_move v cm w w wl (watch wl p i) todo p rest i ls w1 w2) as [Hstruct' Hcover'].
-              --- assumption.
-              --- assumption.
-              --- assumption.
-              --- assumption.
-              --- easy.
-              --- intros j z Hz. apply watching_watch. now right.
-              --- apply Hback. now left.
-              --- apply Hback. now right.
-              --- assumption.
-              --- assumption.
-              --- assumption.
-              --- now apply (IH w w' (watch wl p i) wl' ws').
-          (* i moves its watches to a and b *)
-          ++ set (wl2 := add_watch (add_watch wl i p w1 w2 a) i p w1 w2 b).
-             assert (Hwl2: forall (j: nat) (z: Lit), In j (watching wl z) -> In j (watching wl2 z)).
-            ** intros j z Hin. now apply add_watch_keep, add_watch_keep.
-            ** (* Each new watch x of i watches it: as before if it is w1 or w2 but not p, otherwise newly added *)
-               assert (Hnew: forall (x: Lit), x = a \/ x = b -> Watched wl2 ((p, rest) :: todo) i x).
-              --- intros x Hx. destruct (Lit.eq_dec x p) as [->|Hxp].
-                +++ left. unfold wl2. destruct Hx as [<- | <-].
-                  *** apply add_watch_keep. apply add_watch_new. now left.
-                  *** apply add_watch_new. now left.
-                +++ destruct (Lit.eq_dec x w1) as [->|Hxw1].
-                  *** apply (watched_drop wl wl2 todo p w1 rest i i).
-                    ---- intros z. apply Hwl2.
-                    ---- now right.
-                    ---- assumption.
-                  *** destruct (Lit.eq_dec x w2) as [->|Hxw2].
-                    ---- apply (watched_drop wl wl2 todo p w2 rest i i).
-                      ++++ intros z. apply Hwl2.
-                      ++++ now right.
-                      ++++ assumption.
-                    ---- left. unfold wl2. destruct Hx as [-> | ->].
-                      ++++ apply add_watch_keep. apply add_watch_new. right. now split.
-                      ++++ apply add_watch_new. right. now split.
-              --- destruct (struct_move v cm w (tset w i (a, b)) wl wl2 todo p rest i ls a b) as [Hstruct' Hcover'].
-                +++ assumption.
-                +++ assumption.
-                +++ assumption.
-                +++ apply tget_tset_same.
-                +++ intros j Hneq. now apply tget_tset_other.
-                +++ assumption.
-                +++ apply Hnew. now left.
-                +++ apply Hnew. now right.
-                +++ assumption.
-                +++ assumption.
-                +++ assumption.
-                +++ now apply (IH (tset w i (a, b)) w' wl2 wl' ws').
-        (* i is stuck *)
-        -- injection Hvisit as <- <- <-. split.
-          ++ assumption.
-          ++ split.
+  - destruct (tget w i) as [w1 w2] eqn:Hw. destruct ((w1 =? p) || (w2 =? p)) eqn:Hwatch.
+    + (* Putting i back into the watch list of p keeps it watched by each literal *)
+      assert (Hgrow: forall (j: nat) (z: Lit), In j (watching wl z) -> In j (watching (watch wl p i) z)).
+      * intros j z Hz. apply watching_watch. now right.
+      * assert (Hback: forall (x: Lit), Watched wl ((p, i :: rest) :: todo) i x ->
+          Watched (watch wl p i) ((p, rest) :: todo) i x).
+        -- intros x Hx. destruct (Lit.eq_dec x p) as [->|Hxp].
+          ++ left. apply watching_watch. left. now split.
+          ++ apply (watched_drop wl (watch wl p i) todo p x rest i i).
+            ** intros z. apply Hgrow.
+            ** now right.
             ** assumption.
-            ** right. exists i, rest. split.
-              --- reflexivity.
-              --- now exists ls, w1, w2.
-      (* i no longer watches p: drop it *)
-      * apply orb_false_iff in Hwatch as [Hw1p Hw2p]. apply Lit.eqb_neq in Hw1p, Hw2p.
-        assert (Hnot: forall (ls': list Lit) (w1' w2': Lit), tget cm i = Some ls' -> tget w i = (w1', w2') ->
-          w1' <> p /\ w2' <> p).
-        -- intros ls' w1' w2' _ Hw'. rewrite Hw in Hw'. injection Hw' as <- <-. now split.
-        -- apply (IH w w' wl wl' ws').
-          ++ now apply (struct_drop cm w wl todo p rest i).
-          ++ now apply (covered_drop v cm w todo p rest i).
-          ++ assumption.
-    (* i is not a clause: drop it *)
-    + assert (Hnot: forall (ls: list Lit) (w1 w2: Lit), tget cm i = Some ls -> tget w i = (w1, w2) ->
-        w1 <> p /\ w2 <> p).
-      * intros ls w1 w2 Hi. congruence.
+        -- set (o := if w1 =? p then w2 else w1) in Hvisit.
+           destruct (negb (o =? p) && lookup_true v o) eqn:Hfast.
+          (* The other watch o is true: i goes back into the watch list of p *)
+          ++ apply andb_prop in Hfast as [Hop Ho_true]. apply negb_true_iff, Lit.eqb_neq in Hop.
+             assert (Ho: o = w1 \/ o = w2).
+            ** unfold o. destruct (w1 =? p).
+              --- now right.
+              --- now left.
+            ** destruct (tget cm i) as [ls|] eqn:Hc.
+              --- destruct (Hstruct i ls w1 w2 Hc Hw) as (Hin1 & Hin2 & Hmembers).
+                  (* i is not empty: an empty clause watches p twice, so its other watch is p *)
+                  assert (Hm: In w1 ls /\ In w2 ls).
+                +++ destruct Hmembers as [[_ Heq]|Hm].
+                  *** exfalso. apply Hop. unfold o. rewrite <- Heq in Hwatch |- *. rewrite orb_diag in Hwatch.
+                      rewrite Hwatch. simpl. now apply Lit.eqb_eq in Hwatch.
+                  *** assumption.
+                +++ destruct Hm as [Hm1 Hm2].
+                    destruct (struct_move v cm w w wl (watch wl p i) todo p rest i ls w1 w2) as [Hstruct' Hcover'].
+                  *** assumption.
+                  *** assumption.
+                  *** assumption.
+                  *** assumption.
+                  *** easy.
+                  *** assumption.
+                  *** now apply Hback.
+                  *** now apply Hback.
+                  *** unfold lookup_true in Ho_true. destruct Ho as [Heq|Heq].
+                    ---- left. split.
+                      ++++ assumption.
+                      ++++ rewrite <- Heq. destruct (lookup v o) as [[|]|]; easy.
+                    ---- right. left. split.
+                      ++++ assumption.
+                      ++++ rewrite <- Heq. destruct (lookup v o) as [[|]|]; easy.
+                  *** assumption.
+                  *** assumption.
+                  *** now apply (IH w w' (watch wl p i) wl' ws').
+              --- assert (Hnot: forall (ls: list Lit) (w1' w2': Lit), tget cm i = Some ls -> tget w i = (w1', w2') ->
+                    w1' <> p /\ w2' <> p).
+                +++ intros ls w1' w2' Hi. congruence.
+                +++ apply (IH w w' (watch wl p i) wl' ws').
+                  *** now apply (struct_drop cm w wl (watch wl p i) todo p rest i).
+                  *** now apply (covered_drop v cm w todo p rest i).
+                  *** assumption.
+          ++ destruct (tget cm i) as [ls|] eqn:Hc.
+            ** destruct (Hstruct i ls w1 w2 Hc Hw) as (Hin1 & Hin2 & Hmembers).
+               destruct (repair v ls w1 w2) as [[a b]|] eqn:Hrepair.
+              --- apply (repair_spec v ls w1 w2 a b Hmembers) in Hrepair as (Hok & Ha & Hb).
+                  destruct ((a =? w1) && (b =? w2)) eqn:Hsame.
+                (* The watches of i stay the same, and i goes back into the watch list of p *)
+                +++ apply andb_prop in Hsame as [Ha1 Hb2]. apply Lit.eqb_eq in Ha1, Hb2. subst a b.
+                    destruct (struct_move v cm w w wl (watch wl p i) todo p rest i ls w1 w2) as [Hstruct' Hcover'].
+                  *** assumption.
+                  *** assumption.
+                  *** assumption.
+                  *** assumption.
+                  *** easy.
+                  *** assumption.
+                  *** now apply Hback.
+                  *** now apply Hback.
+                  *** assumption.
+                  *** assumption.
+                  *** assumption.
+                  *** now apply (IH w w' (watch wl p i) wl' ws').
+                (* i moves its watches to a and b *)
+                +++ set (wl2 := add_watch (add_watch wl i p w1 w2 a) i p w1 w2 b).
+                    assert (Hwl2: forall (j: nat) (z: Lit), In j (watching wl z) -> In j (watching wl2 z)).
+                  *** intros j z Hin. now apply add_watch_keep, add_watch_keep.
+                  *** (* Each new watch x of i watches it: as before if it is w1 or w2 but not p, otherwise newly
+                         added *)
+                      assert (Hnew: forall (x: Lit), x = a \/ x = b -> Watched wl2 ((p, rest) :: todo) i x).
+                    ---- intros x Hx. destruct (Lit.eq_dec x p) as [->|Hxp].
+                      ++++ left. unfold wl2. destruct Hx as [<- | <-].
+                        **** apply add_watch_keep. apply add_watch_new. now left.
+                        **** apply add_watch_new. now left.
+                      ++++ destruct (Lit.eq_dec x w1) as [->|Hxw1].
+                        **** apply (watched_drop wl wl2 todo p w1 rest i i).
+                          ----- intros z. apply Hwl2.
+                          ----- now right.
+                          ----- assumption.
+                        **** destruct (Lit.eq_dec x w2) as [->|Hxw2].
+                          ----- apply (watched_drop wl wl2 todo p w2 rest i i).
+                            +++++ intros z. apply Hwl2.
+                            +++++ now right.
+                            +++++ assumption.
+                          ----- left. unfold wl2. destruct Hx as [-> | ->].
+                            +++++ apply add_watch_keep. apply add_watch_new. right. now split.
+                            +++++ apply add_watch_new. right. now split.
+                    ---- destruct (struct_move v cm w (tset w i (a, b)) wl wl2 todo p rest i ls a b) as [Hstruct' Hcover'].
+                      ++++ assumption.
+                      ++++ assumption.
+                      ++++ assumption.
+                      ++++ apply tget_tset_same.
+                      ++++ intros j Hneq. now apply tget_tset_other.
+                      ++++ assumption.
+                      ++++ apply Hnew. now left.
+                      ++++ apply Hnew. now right.
+                      ++++ assumption.
+                      ++++ assumption.
+                      ++++ assumption.
+                      ++++ now apply (IH (tset w i (a, b)) w' wl2 wl' ws').
+              (* i is stuck *)
+              --- injection Hvisit as <- <- <-. split.
+                +++ assumption.
+                +++ split.
+                  *** assumption.
+                  *** right. exists i, rest. split.
+                    ---- reflexivity.
+                    ---- now exists ls, w1, w2.
+            (* i is not a clause: drop it *)
+            ** assert (Hnot: forall (ls: list Lit) (w1' w2': Lit), tget cm i = Some ls -> tget w i = (w1', w2') ->
+                 w1' <> p /\ w2' <> p).
+              --- intros ls w1' w2' Hi. congruence.
+              --- apply (IH w w' wl wl' ws').
+                +++ now apply (struct_drop cm w wl wl todo p rest i).
+                +++ now apply (covered_drop v cm w todo p rest i).
+                +++ assumption.
+    (* i no longer watches p: drop it *)
+    + apply orb_false_iff in Hwatch as [Hw1p Hw2p]. apply Lit.eqb_neq in Hw1p, Hw2p.
+      assert (Hnot: forall (ls': list Lit) (w1' w2': Lit), tget cm i = Some ls' -> tget w i = (w1', w2') ->
+        w1' <> p /\ w2' <> p).
+      * intros ls' w1' w2' _ Hw'. rewrite Hw in Hw'. injection Hw' as <- <-. now split.
       * apply (IH w w' wl wl' ws').
-        -- now apply (struct_drop cm w wl todo p rest i).
+        -- now apply (struct_drop cm w wl wl todo p rest i).
         -- now apply (covered_drop v cm w todo p rest i).
         -- assumption.
 Qed.
@@ -688,21 +740,23 @@ Lemma visit_watches: forall (Q: list Lit -> Lit -> Lit -> Prop) (v: Values) (cm:
 Proof.
   intros Q v cm p ws. induction ws as [|i rest IH]; intros w w' wl wl' ws' Hrepair Hw Hvisit; simpl in Hvisit.
   - injection Hvisit as <- _ _. assumption.
-  - destruct (tget cm i) as [ls|] eqn:Hc.
-    + destruct (tget w i) as [w1 w2] eqn:Hwi. destruct ((w1 =? p) || (w2 =? p)).
-      * destruct (repair v ls w1 w2) as [[a b]|] eqn:Hrepair_i.
-        -- destruct ((a =? w1) && (b =? w2)).
-          ++ now apply (IH w w' (watch wl p i) wl' ws').
-          ++ apply (IH (tset w i (a, b)) w' (add_watch (add_watch wl i p w1 w2 a) i p w1 w2 b) wl' ws').
-            ** assumption.
-            ** intros j ls' w1' w2' Hj Hwj. rewrite tget_tset in Hwj. destruct (Nat.eq_dec i j) as [<-|Hneq].
-              --- injection Hwj as <- <-. rewrite Hc in Hj. injection Hj as <-. apply Hrepair with w1 w2.
-                +++ now apply (Hw i).
-                +++ assumption.
-              --- now apply (Hw j).
-            ** assumption.
-        -- injection Hvisit as <- _ _. assumption.
-      * now apply (IH w w' wl wl' ws').
+  - destruct (tget w i) as [w1 w2] eqn:Hwi. destruct ((w1 =? p) || (w2 =? p)).
+    + destruct (negb ((if w1 =? p then w2 else w1) =? p) && lookup_true v (if w1 =? p then w2 else w1)).
+      * now apply (IH w w' (watch wl p i) wl' ws').
+      * destruct (tget cm i) as [ls|] eqn:Hc.
+        -- destruct (repair v ls w1 w2) as [[a b]|] eqn:Hrepair_i.
+          ++ destruct ((a =? w1) && (b =? w2)).
+            ** now apply (IH w w' (watch wl p i) wl' ws').
+            ** apply (IH (tset w i (a, b)) w' (add_watch (add_watch wl i p w1 w2 a) i p w1 w2 b) wl' ws').
+              --- assumption.
+              --- intros j ls' w1' w2' Hj Hwj. rewrite tget_tset in Hwj. destruct (Nat.eq_dec i j) as [<-|Hneq].
+                +++ injection Hwj as <- <-. rewrite Hc in Hj. injection Hj as <-. apply Hrepair with w1 w2.
+                  *** now apply (Hw i).
+                  *** assumption.
+                +++ now apply (Hw j).
+              --- assumption.
+          ++ injection Hvisit as <- _ _. assumption.
+        -- now apply (IH w w' wl wl' ws').
     + now apply (IH w w' wl wl' ws').
 Qed.
 
@@ -828,7 +882,9 @@ Proof.
               --- now rewrite Hw.
               --- reflexivity.
             ** destruct (first_watches_in ls) as [Hnil|[Hin1 Hin2]].
-              --- now left.
+              --- left. split.
+                +++ assumption.
+                +++ rewrite Hnil in Hw. injection Hw as <- <-. reflexivity.
               --- right. rewrite Hw in Hin1, Hin2. now split.
         -- destruct (Hstruct i ls' w1 w2 Hi Hw) as (H1 & H2 & Hmembers). split.
           ++ now apply Hwatched.
@@ -890,7 +946,8 @@ Lemma process_watch_ok: forall (v' v: Values) (cm: ClauseMap) (todo: list (Lit *
   AllWatchOK v' cm w'.
 Proof.
   intros v' v cm todo w w' wl wl' todo' Hincl Hstruct Hok Hprocess i ls w1 w2 Hc Hw.
-  apply (process_watches (fun (ls: list Lit) (w1 w2: Lit) => (ls = [] \/ (In w1 ls /\ In w2 ls)) /\ WatchOK v' ls w1 w2)
+  apply (process_watches (fun (ls: list Lit) (w1 w2: Lit) =>
+    ((ls = [] /\ w1 = w2) \/ (In w1 ls /\ In w2 ls)) /\ WatchOK v' ls w1 w2)
     v cm todo w w' wl wl' todo') with i ls w1 w2 in Hprocess as [_ Hok'].
   - assumption.
   - intros ls' x y a b [Hmembers Hok_xy] Hrepair.

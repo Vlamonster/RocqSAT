@@ -29,23 +29,46 @@ Section Literals.
   Lemma lookupM_spec: forall (l: Lit) (st: Store), lookupM l st = (lookup (svals st) l, st).
   Proof. reflexivity. Qed.
 
+  (* The tests below read the value of the atom directly instead of going through lookupM, so that the extracted
+     code does not allocate the value of the literal. *)
   Definition lookup_trueM (l: Lit): M bool :=
-  bind (lookupM l) (fun (r: option bool) => ret match r with Some true => true | _ => false end).
+  bind (vget (extract l)) (fun (r: option bool) =>
+  ret match r with
+      | Some b => if is_pos l then b else negb b
+      | None   => false
+      end).
 
   Lemma lookup_trueM_spec: forall (l: Lit) (st: Store), lookup_trueM l st = (lookup_true (svals st) l, st).
-  Proof. reflexivity. Qed.
+  Proof.
+    intros l st. unfold lookup_trueM, lookup_true, lookup. rewrite (bind_spec _ _ _ _ _ (vget_spec (extract l) st)).
+    destruct (tget (svals st) (extract l)) as [[|]|]; destruct (is_pos l); reflexivity.
+  Qed.
 
   Definition lookup_undefM (l: Lit): M bool :=
-  bind (lookupM l) (fun (r: option bool) => ret match r with None => true | _ => false end).
+  bind (vget (extract l)) (fun (r: option bool) =>
+  ret match r with
+      | Some _ => false
+      | None   => true
+      end).
 
   Lemma lookup_undefM_spec: forall (l: Lit) (st: Store), lookup_undefM l st = (lookup_undef (svals st) l, st).
-  Proof. reflexivity. Qed.
+  Proof.
+    intros l st. unfold lookup_undefM, lookup_undef, lookup. rewrite (bind_spec _ _ _ _ _ (vget_spec (extract l) st)).
+    now destruct (tget (svals st) (extract l)).
+  Qed.
 
   Definition not_falseM (l: Lit): M bool :=
-  bind (lookupM l) (fun (r: option bool) => ret match r with Some false => false | _ => true end).
+  bind (vget (extract l)) (fun (r: option bool) =>
+  ret match r with
+      | Some b => if is_pos l then b else negb b
+      | None   => true
+      end).
 
   Lemma not_falseM_spec: forall (l: Lit) (st: Store), not_falseM l st = (not_false (svals st) l, st).
-  Proof. reflexivity. Qed.
+  Proof.
+    intros l st. unfold not_falseM, not_false, lookup. rewrite (bind_spec _ _ _ _ _ (vget_spec (extract l) st)).
+    destruct (tget (svals st) (extract l)) as [[|]|]; destruct (is_pos l); reflexivity.
+  Qed.
 End Literals.
 
 (* The first literal of ls that is not false, as find (not_false v). *)
@@ -174,13 +197,16 @@ Fixpoint visitM (p: Lit) (ws: list nat): M (list nat) :=
 match ws with
 | []        => ret []
 | i :: rest =>
-  bind (cget i) (fun (ci: option (list Lit)) =>
-  match ci with
-  | Some ls =>
-    bind (wget i) (fun (wi: Lit * Lit) =>
-    match wi with
-    | (w1, w2) =>
-      if (w1 =? p) || (w2 =? p) then
+  bind (wget i) (fun (wi: Lit * Lit) =>
+  match wi with
+  | (w1, w2) =>
+    if (w1 =? p) || (w2 =? p) then
+      let o := if w1 =? p then w2 else w1 in
+      bind (lookup_trueM o) (fun (t: bool) =>
+      if negb (o =? p) && t then bind (watchM p i) (fun _ => visitM p rest) else
+      bind (cget i) (fun (ci: option (list Lit)) =>
+      match ci with
+      | Some ls =>
         bind (repairM ls w1 w2) (fun (r: option (Lit * Lit)) =>
         match r with
         | Some (a, b) =>
@@ -192,9 +218,9 @@ match ws with
           visitM p rest)))
         | None        => ret ws
         end)
-      else visitM p rest
-    end)
-  | None    => visitM p rest
+      | None    => visitM p rest
+      end))
+    else visitM p rest
   end)
 end.
 
@@ -203,19 +229,22 @@ Lemma visitM_spec: forall (p: Lit) (ws: list nat) (v: Values) (cm: ClauseMap) (w
 Proof.
   intros p ws. induction ws as [|i rest IH]; intros v cm w wl; simpl.
   - reflexivity.
-  - rewrite (bind_spec _ _ _ _ _ (cget_spec i _)). simpl. destruct (tget cm i) as [ls|].
-    + rewrite (bind_spec _ _ _ _ _ (wget_spec i _)). simpl. destruct (tget w i) as [w1 w2].
-      destruct ((w1 =? p) || (w2 =? p)).
-      * rewrite (bind_spec _ _ _ _ _ (repairM_spec ls w1 w2 _)). simpl.
-        destruct (repair v ls w1 w2) as [[a b]|].
-        -- destruct ((a =? w1) && (b =? w2)).
-          ++ rewrite (bind_spec _ _ _ _ _ (watchM_spec p i _ _ _ _)). apply IH.
-          ++ rewrite (bind_spec _ _ _ _ _ (wset_spec i (a, b) _)). simpl.
-             rewrite (bind_spec _ _ _ _ _ (add_watchM_spec i p w1 w2 a _ _ _ _)).
-             rewrite (bind_spec _ _ _ _ _ (add_watchM_spec i p w1 w2 b _ _ _ _)).
-             apply IH.
-        -- reflexivity.
-      * apply IH.
+  - rewrite (bind_spec _ _ _ _ _ (wget_spec i _)). simpl. destruct (tget w i) as [w1 w2].
+    destruct ((w1 =? p) || (w2 =? p)).
+    + rewrite (bind_spec _ _ _ _ _ (lookup_trueM_spec _ _)). simpl.
+      destruct (negb ((if w1 =? p then w2 else w1) =? p) && lookup_true v (if w1 =? p then w2 else w1)).
+      * rewrite (bind_spec _ _ _ _ _ (watchM_spec p i _ _ _ _)). apply IH.
+      * rewrite (bind_spec _ _ _ _ _ (cget_spec i _)). simpl. destruct (tget cm i) as [ls|].
+        -- rewrite (bind_spec _ _ _ _ _ (repairM_spec ls w1 w2 _)). simpl.
+           destruct (repair v ls w1 w2) as [[a b]|].
+          ++ destruct ((a =? w1) && (b =? w2)).
+            ** rewrite (bind_spec _ _ _ _ _ (watchM_spec p i _ _ _ _)). apply IH.
+            ** rewrite (bind_spec _ _ _ _ _ (wset_spec i (a, b) _)). simpl.
+               rewrite (bind_spec _ _ _ _ _ (add_watchM_spec i p w1 w2 a _ _ _ _)).
+               rewrite (bind_spec _ _ _ _ _ (add_watchM_spec i p w1 w2 b _ _ _ _)).
+               apply IH.
+          ++ reflexivity.
+        -- apply IH.
     + apply IH.
 Qed.
 
@@ -292,7 +321,7 @@ mkContext (svals st) (scmap st) (flits y) (swat st) (swls st) (ftodo y) (fsaved 
 
 (* Assign l, as assign. *)
 Definition assignM (y: Frame) (l: Lit): M Frame :=
-bind (vset (extract l) (Some (is_pos l))) (fun _ =>
+bind (vset (extract l) (match l with Pos _ => Some true | Neg _ => Some false end)) (fun _ =>
 bind (lget (lit_key (¬l))) (fun (ws: list nat) =>
 bind (lset (lit_key (¬l)) []) (fun _ =>
 ret (mkFrame (flits y) ((¬l, ws) :: ftodo y) (fsaved y))))).
@@ -301,7 +330,7 @@ Lemma assignM_spec: forall (y: Frame) (l: Lit) (v: Values) (cm: ClauseMap) (w: W
   assignM y l (mkStore v cm w wl) =
   (mkFrame (flits y) ((¬l, watching wl (¬l)) :: ftodo y) (fsaved y),
    mkStore (set_value v l) cm w (tset wl (lit_key (¬l)) [])).
-Proof. reflexivity. Qed.
+Proof. intros y l v cm w wl. unfold assignM, set_value. now destruct l. Qed.
 
 (* One solver step on the store, as next_state. *)
 Definition next_stateM (s: State) (y: Frame): M (option (State * Frame)) :=
