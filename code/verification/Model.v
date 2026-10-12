@@ -53,6 +53,17 @@ Proof.
     + now apply Hf.
 Qed.
 
+(* A clause as a formula is true exactly when the clause is. *)
+Lemma model_singleton_iff: forall (m: PA) (c: Clause), Model m (CNF.singleton c) <-> c_eval m c = Some true.
+Proof.
+  intros m c. unfold Model. rewrite f_eval_true_iff. split.
+  - intros H. apply H. now apply CNF.singleton_spec.
+  - intros Hc c' Hc'. apply CNF.singleton_spec in Hc'. rewrite c_eval_true_iff in *.
+    destruct Hc as [l [Hl_in_c Hl]]. exists l. split.
+    + now apply Hc'.
+    + assumption.
+Qed.
+
 (* m satisfies the unit clauses of m' exactly when it makes every literal of m' true. *)
 Lemma model_units_iff: forall (m m': PA),
   Model m (units m') <-> forall (l: Lit), l ∈ m' -> l_eval m l = Some true.
@@ -114,6 +125,36 @@ Proof.
   exists c. split.
   - assumption.
   - now apply (units_transfer_c m m').
+Qed.
+
+(* The negation of an assignment as a clause: the negations of its literals. *)
+Fixpoint neg_clause (m: PA): Clause :=
+match m with
+| ⟨⟩     => Clause.empty
+| ⟨m, l⟩ => Clause.add (¬l) (neg_clause m)
+| ⟨m; l⟩ => Clause.add (¬l) (neg_clause m)
+end.
+
+Lemma neg_clause_spec: forall (m: PA) (l: Lit), l ∈ neg_clause m <-> ¬l ∈ m.
+Proof.
+  intros m l. induction m as [|m IH l'|m IH l']; cbn.
+  - split.
+    + intros Hin. now apply Clause.empty_spec in Hin.
+    + intros [].
+  - rewrite Clause.add_spec, IH. split.
+    + intros [->|Hin].
+      * left. now rewrite Neg.involutive.
+      * now right.
+    + intros [->|Hin].
+      * left. now rewrite Neg.involutive.
+      * now right.
+  - rewrite Clause.add_spec, IH. split.
+    + intros [->|Hin].
+      * left. now rewrite Neg.involutive.
+      * now right.
+    + intros [->|Hin].
+      * left. now rewrite Neg.involutive.
+      * now right.
 Qed.
 
 (* Semantic consequence: every model of f is a model of g. *)

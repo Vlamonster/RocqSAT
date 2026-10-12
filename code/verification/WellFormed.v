@@ -74,6 +74,27 @@ Proof.
   - assumption.
 Qed.
 
+(* Without duplicates, every literal of an assignment is true. *)
+Lemma nodup_in_true: forall (m: PA) (l: Lit), NoDuplicates m -> l ∈ m -> l_eval m l = Some true.
+Proof.
+  intros m l. induction m as [|m IH l'|m IH l']; intros Hnodup Hin.
+  - destruct Hin.
+  - destruct Hin as [<-|Hin].
+    + simpl. unfold l_eval_step. now rewrite Lit.eqb_refl.
+    + apply l_eval_cons_undef.
+      * now apply nodup_cons__undef.
+      * apply IH.
+        -- now apply nodup_cons__nodup in Hnodup.
+        -- assumption.
+  - destruct Hin as [<-|Hin].
+    + simpl. unfold l_eval_step. now rewrite Lit.eqb_refl.
+    + apply (l_eval_cons_undef m l l').
+      * now apply nodup_cons__undef.
+      * apply IH.
+        -- now apply (nodup_cons__nodup m l').
+        -- assumption.
+Qed.
+
 Lemma bounded_incl: forall (m m': PA) (f: CNF),
   (forall (l: Lit), l ∈ m -> l ∈ m') -> Bounded m' f -> Bounded m f.
 Proof.
