@@ -1,2 +1,4 @@
 /_build/
 *.cache
+/problems/sat/satlib-all/
+/problems/unsat/satlib-all/

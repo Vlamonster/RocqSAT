@@ -17,29 +17,11 @@ termination, together with a verified solver extracted to OCaml. See
 
 You can run a problem from the repository root using:
 ```bash
-dune exec rocqsat < problems/<problem>.cnf
+dune exec rocqsat < problems/sat/satlib/hanoi/hanoi4.cnf
 ```
 This rebuilds the solver from the proofs first if anything changed. It prints `UNSAT`, or `SAT` followed by a
-model.
-
-The problems in `problems/`, with a time limit of 3 minutes (all problems run in parallel on a 12-core
-machine):
-
-| Problem             | Variables | Clauses | Result  | Time    |
-|---------------------|----------:|--------:|---------|--------:|
-| `trivial.cnf`       |         1 |       1 | SAT     | < 0.01s |
-| `trivial2.cnf`      |         1 |       2 | UNSAT   | < 0.01s |
-| `simple.cnf`        |         3 |       2 | SAT     | < 0.01s |
-| `tutorial.cnf`      |         5 |       5 | SAT     | < 0.01s |
-| `test.cnf`          |         6 |      15 | SAT     | < 0.01s |
-| `hole6.cnf`         |        42 |     133 | UNSAT   |   0.03s |
-| `zebra.cnf`         |       155 |    1135 | SAT     |   0.03s |
-| `queens16.cnf`      |       256 |    6336 | SAT     |   0.14s |
-| `hanoi4.cnf`        |       718 |    4934 | SAT     |      9s |
-| `factor1234321.cnf` |      1433 |    7585 | SAT     |     28s |
-| `factor1235321.cnf` |      1433 |    7585 | UNSAT   |    108s |
-| `bf.cnf`            |      1040 |    3668 | timeout |       - |
-| `subsets100.cnf`    |      3357 |   15212 | timeout |       - |
+model. The problems are grouped by status in `problems/sat` and `problems/unsat`; see
+[`problems/README.md`](problems/README.md) for their sources.
 
 # Editor support
 

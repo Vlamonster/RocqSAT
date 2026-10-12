@@ -28,33 +28,34 @@ let parse_stdin (): coq_Lit list list =
       raise (ParseError ("Invalid problem line: " ^ line))
   in
 
+  (* Only the read is guarded by the exception handler, so that the recursive calls are tail calls and long
+     files do not overflow the stack. *)
   let rec read_clauses acc current =
-    try
-      let line = input_line ic in
-      if line = "" || line.[0] = 'c' then
-        read_clauses acc current
-      else
-        let ints =
-          line
-          |> String.map (fun ch -> if ch = '\t' || ch = '\r' then ' ' else ch)
-          |> String.split_on_char ' '
-          |> List.filter (fun s -> s <> "")
-          |> List.map int_of_string
-        in
-        let rec consume ints acc current =
-          match ints with
-          | [] ->
-              read_clauses acc current
-          | 0 :: rest ->
-              consume rest (List.rev current :: acc) []
-          | x :: rest ->
-              consume rest acc (lit_of_int x :: current)
-        in
-        consume ints acc current
-    with End_of_file ->
+    match input_line ic with
+    | exception End_of_file ->
       if current <> [] then
         raise(ParseError "Clause not terminated by 0");
       List.rev acc
+    | line when line = "" || line.[0] = 'c' ->
+      read_clauses acc current
+    | line ->
+      let ints =
+        line
+        |> String.map (fun ch -> if ch = '\t' || ch = '\r' then ' ' else ch)
+        |> String.split_on_char ' '
+        |> List.filter (fun s -> s <> "")
+        |> List.map int_of_string
+      in
+      let rec consume ints acc current =
+        match ints with
+        | [] ->
+            read_clauses acc current
+        | 0 :: rest ->
+            consume rest (List.rev current :: acc) []
+        | x :: rest ->
+            consume rest acc (lit_of_int x :: current)
+      in
+      consume ints acc current
   in
 
   let header = skip_comments () in
