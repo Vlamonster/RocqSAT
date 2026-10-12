@@ -2,3 +2,4 @@
 *.cache
 /problems/sat/satlib-all/
 /problems/unsat/satlib-all/
+compile_commands.json

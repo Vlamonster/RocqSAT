@@ -27,8 +27,9 @@ It also gives a concrete, verified strategy and derives decidability of satisfia
 | `strict_derivation_well_founded` | `Termination.v`           | There are no infinite derivations from well-formed states.          |
 | `scheduled_terminates`           | `Schedule.v`              | Restarting on an unbounded schedule terminates.                     |
 | `derivation_entails`             | `Trans.v`                 | Every derivation preserves entailment.                              |
-| `next_state_strategy`            | `refinement/NextState.v`  | The concrete solver step is a valid strategy for `DPLL_BJ`.         |
+| `step_strategy`                  | `refinement/Step.v`       | The concrete solver step is a valid strategy for `DPLL_BJ`.         |
 | `next_impl_strategy`             | `refinement/Imperative.v` | The same step on a store updated in place is a valid strategy.      |
+| `cstep_spec`                     | `refinement/CStep.v`      | The table-only step of the C solver agrees with `step`.             |
 
 ## Axioms and trusted code
 
@@ -231,16 +232,17 @@ Files are listed in dependency order.
 
 ### Refinement (`refinement/`)
 
-A concrete strategy, implemented efficiently and proved to agree with the specification.
+A concrete strategy, shaped like the arrays of a C solver, implemented efficiently and proved to agree
+with the specification.
 
 - `Table.v`: `Table A`, tables as functions (`tget`, `tset`, `tmake`); extracted as arrays.
 - `Lookup.v`: `Values` (the value of each atom), `values m`, `lookup` (agrees with `l_eval`);
   `ValuesOf`, `Fresh`, `Incl`; `unassign_level`.
-- `Search.v`: `clause_lists`, `formula_lits`; `skip_assigned` and the `Cursor` invariant;
-  `phase` (decide an atom with its last value, `phase_cases`).
-- `Watches.v`: two watched literals.
-  - `WatchStruct` (every clause is in its watches' lists or pending), `WatchOK`, `Settled`.
-  - `repair`, `visit` (with the other-watch fast path), `process`, `unpend`, `index_clauses`.
+- `Search.v`: `clause_lists`, `formula_lits`; `phase` (decide an atom with its last value,
+  `phase_cases`). Still holds the previous cursor (`skip_assigned`, `Cursor`), now unused.
+- `Watches.v`: literal keys and watch lists (`lit_key`, `watching`), `not_false`, `first_watches`.
+  Still holds the previous propagation with pending lists (`repair`, `visit`, `process`, …), now
+  unused.
 - `Analysis.v`: backjumping.
   - `Entailed`, `entailed_resolve`, `clause_of` (`entailed_consequence`).
   - `analyze`: resolve the conflict clause with reasons until one literal is at the last level,
@@ -248,17 +250,28 @@ A concrete strategy, implemented efficiently and proved to agree with the specif
   - `plan`: where to jump, checked against the trail in one pass using the marks (`marked_neg`,
     `plan_spec`); `unassign_segment`.
   - Reasons and levels are hints: soundness never depends on them.
-- `NextState.v`: `next_state` on a `SolverContext` (values, clauses, cursor, watches, queue,
-  saved cursors, and the reason, level, decision level and phase hints).
-  - On a conflict it backjumps as planned, or else flips the last decision
-    (`backtrack_backjump`); both unassign whole levels and keep the watches.
-  - `CoreInv`, `SavedWatches`, no marks between steps (`Unmarked`); `ContextInv` adds
-    well-formedness and `Entails`.
-  - `next_state_sound`, `next_state_none`, `next_state_exists`, `next_state_inv`, giving
-    `next_state_strategy`; `initial_context(_inv)`.
+- `Propagate.v`: unit propagation as in MiniSat, on a context `Ctx` of tables and scalars.
+  - The trail is a table (`TrailOf`); the watchers of the negations of the trail literals from
+    `qhead` on are still to be visited (`Queued`).
+  - `visit` moves the false watch of a clause to another literal that is not false, or
+    propagates the other watch, or stops at a false clause; only the false watch moves.
+  - Invariants: every clause is in the watch lists of both its watches (`Listed`), and a false
+    watch has its negation queued or a true other watch (`WatchQ`); `SavedQ` keeps that at every
+    decision, so a backjump keeps the watches.
+  - `visit_spec`, `propagate_spec`, `check_shorts_spec` (the clauses with fewer than two literals).
+- `Step.v`: `step`: check the short clauses, propagate, then decide (cursor `skip_from` into a
+  table of literals) or `resolve` the conflict.
+  - `StepCore`, `StepInv` (adds well-formedness and `Entails`); `resolve_spec`, `decide_spec`,
+    `final_state`; `step_spec`, `step_none`, giving `step_strategy`; `initial_of(_inv)` for any
+    clause lists with the literals of the clauses of `f` (`ClauseOf`), and `initial_ctx(_inv)`.
+- `CStep.v`: `cstep`, the step computed from the context alone, as the C solver (`c/`) does: the
+  trail is only read through its table, with the decision positions `lims` on a stack (`LimsOf`).
+  - `visit_t`, `propagate_t`, `check_shorts_t` (no trail), `analyze_t`, `plan_t`, `unset_range`
+    (on trail positions), `resolve_t`; `cstep_spec`: `cstep` `Agrees` with `step`.
 - `Store.v`: the store of tables and its state monad (`M`, `ret`, `bind`, `runM`, `vget` … `pset`).
-- `Imperative.v`: `next_stateM` and its parts (`visitM`, `processM`, …), each with a `_spec`
-  equal to its pure counterpart; `next_impl_strategy`, `initial_impl(_inv)`.
+- `Imperative.v`: `stepM` and its parts (`visitM`, `propagateM`, `resolveM`, …), each with a
+  `_spec` saying it computes its pure counterpart on the context made of the frame and the store
+  (`combine`); `next_impl_strategy`, `initial_impl(_inv)`.
 
 ### Satisfiability
 

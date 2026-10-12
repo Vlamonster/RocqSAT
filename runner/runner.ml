@@ -88,6 +88,12 @@ let rec lits_of_pa (m: coq_PA): coq_Lit list =
    then die young instead of being promoted. *)
 let () = Gc.set { (Gc.get ()) with Gc.minor_heap_size = 16 * 1024 * 1024; Gc.space_overhead = 200 }
 
+(* The C solver (c/), verified against the table-only step of verification/refinement/CStep.v. *)
+external run_c: unit -> int = "rocqsat_run_c"
+
+(* With --c, run the C solver instead, which reads the problem itself. *)
+let () = if Array.mem "--c" Sys.argv then exit (run_c ())
+
 let (): unit =
   match run (cnf_of_lists (parse_stdin ())) with
   | Fail ->

@@ -1,4 +1,4 @@
-(lang dune 3.24)
+(lang dune 3.23)
 (using rocq 0.13)
 
 (generate_opam_files true)
@@ -13,8 +13,8 @@
  (depends
   (rocq-stdlib (= 9.2.0))
   (rocq-prover (= 9.0.0))
-  (rocq-core (= 9.3.0))
-  (rocq-runtime (= 9.3.0))
-  (rocq-equations (= 1.3.2+9.3))
-  (dune (= 3.24.2))
+  (rocq-core (= 9.2.0))
+  (rocq-runtime (= 9.2.0))
+  (rocq-equations (= 1.3.2+9.2))
+  (dune (= 3.23.1))
  ))

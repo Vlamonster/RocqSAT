@@ -20,7 +20,11 @@ You can run a problem from the repository root using:
 dune exec rocqsat < problems/sat/satlib/hanoi/hanoi4.cnf
 ```
 This rebuilds the solver from the proofs first if anything changed. It prints `UNSAT`, or `SAT` followed by a
-model. The problems are grouped by status in `problems/sat` and `problems/unsat`; see
+model.
+
+`dune exec rocqsat -- --c < problem.cnf` runs the C solver of [`c/`](c/README.md) instead, which mirrors the
+table-only step `cstep` of `verification/refinement/CStep.v` and prints the same, or `UNKNOWN` if it ran out of
+room. Its VST proofs are work in progress. The problems are grouped by status in `problems/sat` and `problems/unsat`; see
 [`problems/README.md`](problems/README.md) for their sources.
 
 # Editor support

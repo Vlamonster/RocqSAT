@@ -41,6 +41,16 @@ Proof.
   - now apply in_map.
 Qed.
 
+(* ls has exactly the literals of a clause of f. *)
+Definition ClauseOf (f: CNF) (ls: list Lit): Prop := exists (c: Clause), c ∈ f /\ forall (l: Lit), In l ls <-> l ∈ c.
+
+Lemma clause_lists_clause_of: forall (f: CNF) (ls: list Lit), In ls (clause_lists f) -> ClauseOf f ls.
+Proof.
+  intros f ls Hin. apply in_clause_lists in Hin as [c [-> Hc_in_f]]. exists c. split.
+  - assumption.
+  - apply clause_elements_iff.
+Qed.
+
 (* The literals of f, without duplicates. *)
 Definition formula_lits (f: CNF): Clause := CNF.fold Clause.union f Clause.empty.
 

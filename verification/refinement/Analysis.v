@@ -22,12 +22,11 @@ Section Entailment.
     forall (m: PA), Model m f -> exists (l: Lit), In l ls /\ l_eval m l = Some true.
 
   (* Every clause of f is entailed. *)
-  Lemma entailed_clause_lists: forall (f: CNF) (ls: list Lit), In ls (clause_lists f) -> Entailed f ls.
+  Lemma entailed_clause_of: forall (f: CNF) (ls: list Lit), ClauseOf f ls -> Entailed f ls.
   Proof.
-    intros f ls Hin m Hm. apply in_clause_lists in Hin as [c [-> Hc_in_f]].
-    unfold Model in Hm. rewrite f_eval_true_iff in Hm. apply Hm in Hc_in_f.
+    intros f ls [c [Hc_in_f Hiff]] m Hm. unfold Model in Hm. rewrite f_eval_true_iff in Hm. apply Hm in Hc_in_f.
     apply c_eval_true_iff in Hc_in_f as [l [Hl_in_c Hl]]. exists l. split.
-    - now apply clause_elements_iff.
+    - now apply Hiff.
     - assumption.
   Qed.
 
