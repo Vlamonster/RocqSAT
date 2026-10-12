@@ -13,6 +13,7 @@ From RocqSAT.rules Require Import Fail.
 From RocqSAT.rules Require Import Unit.
 From RocqSAT.rules Require Import Decide.
 From RocqSAT.rules Require Import Backtrack.
+From RocqSAT.rules Require Import Backjump.
 From RocqSAT.rules Require Import Pure.
 From RocqSAT.utils Require Import Invariant.
 
@@ -29,6 +30,8 @@ Arguments t_step {rs}.
 Definition DPLL: list Rule := [Fail; Unit; Decide; Backtrack; Pure].
 (* The rules a strategy has to implement: a state is final for DPLL exactly when it is final for these (final_dpll_basic). *)
 Definition Basic: list Rule := [Fail; Decide; Backtrack].
+(* DPLL with Backjump in place of Backtrack. *)
+Definition DPLL_BJ: list Rule := [Fail; Unit; Decide; Backjump; Pure].
 
 (* Sequences of zero or more (Derivation) or one or more (DerivationStrict) transitions. *)
 Definition Derivation (rs: list Rule): relation State := clos_refl_trans State (Trans rs).
@@ -77,6 +80,34 @@ Qed.
 Definition Final (rs: list Rule) (s: State): Prop := ~ exists (s': State), s ==>[rs] s'.
 
 (* Unit and Pure are not needed to recognise final states: whenever they apply, Decide applies as well. *)
+Lemma trans_dpll_basic: forall (s s': State), s ==> s' -> exists (s'': State), s ==>[Basic] s''.
+Proof.
+  intros s s' Htrans. inversion Htrans as [r m f s'' Hr Hstep]; subst.
+  destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]].
+  - exists s'. apply (t_step Fail).
+    + now left.
+    + assumption.
+  - inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
+    exists (state ⟨m; l_unit⟩ f). apply (t_step Decide).
+    + right. now left.
+    + apply r_decide.
+      * left. now exists c_unit.
+      * assumption.
+  - exists s'. apply (t_step Decide).
+    + right. now left.
+    + assumption.
+  - exists s'. apply (t_step Backtrack).
+    + right. right. now left.
+    + assumption.
+  - inversion Hstep as [? ? l_pure Hl_in_f Hpure Hundef]; subst.
+    exists (state ⟨m; l_pure⟩ f). apply (t_step Decide).
+    + right. now left.
+    + apply r_decide.
+      * now left.
+      * assumption.
+Qed.
+
+(* Hence a state is final for DPLL exactly when it is final for Basic. *)
 Lemma final_dpll_basic: forall (s: State), Final DPLL s <-> Final Basic s.
 Proof.
   intros s. unfold Final. split.
@@ -86,30 +117,7 @@ Proof.
       * right. right. now left.
       * right. right. right. now left.
     + assumption.
-  - intros Hfinal [s' Htrans]. apply Hfinal.
-    inversion Htrans as [r m f s'' Hr Hstep]; subst.
-    destruct Hr as [<-|[<-|[<-|[<-|[<-|[]]]]]].
-    + exists s'. apply (t_step Fail).
-      * now left.
-      * assumption.
-    + inversion Hstep as [? ? c_unit l_unit Hl_in_c Hc_in_f Hconflict Hundef]; subst.
-      exists (state ⟨m; l_unit⟩ f). apply (t_step Decide).
-      * right. now left.
-      * apply r_decide.
-        -- left. now exists c_unit.
-        -- assumption.
-    + exists s'. apply (t_step Decide).
-      * right. now left.
-      * assumption.
-    + exists s'. apply (t_step Backtrack).
-      * right. right. now left.
-      * assumption.
-    + inversion Hstep as [? ? l_pure Hl_in_f Hpure Hundef]; subst.
-      exists (state ⟨m; l_pure⟩ f). apply (t_step Decide).
-      * right. now left.
-      * apply r_decide.
-        -- now left.
-        -- assumption.
+  - intros Hfinal [s' Htrans]. apply Hfinal. now apply trans_dpll_basic in Htrans.
 Qed.
 
 Lemma initial_refl: forall (f: CNF), state ⟨⟩ f ==>* state ⟨⟩ f.
@@ -166,6 +174,17 @@ Proof.
   - apply Forall_nil.
 Qed.
 
+Lemma dpll_bj_same_formula: Forall (fun (r: Rule) => PreservesFormula (step r)) DPLL_BJ.
+Proof.
+  repeat apply Forall_cons.
+  - apply fail_same_formula.
+  - apply unit_same_formula.
+  - apply decide_same_formula.
+  - apply backjump_same_formula.
+  - apply pure_same_formula.
+  - apply Forall_nil.
+Qed.
+
 (* Likewise for derivations. *)
 Lemma derivation_same_formula: forall (m m': PA) (f f': CNF),
   state m f ==>* state m' f' -> f = f'.
@@ -210,9 +229,9 @@ Lemma derivation_entails: forall (rs: list Rule) (m m': PA) (f f': CNF),
 Proof. intros rs. apply derivation_invariant. intros m m' f f'. apply trans_entails. Qed.
 
 (* A derivation that ends in fail passes through a state that steps to fail directly. *)
-Lemma fail_predecessor: forall (m: PA) (f: CNF),
-  state m f ==>* fail ->
-  exists (m': PA) (f': CNF), state m f ==>* state m' f' /\ state m' f' ==> fail.
+Lemma fail_predecessor: forall (rs: list Rule) (m: PA) (f: CNF),
+  state m f ==>*[rs] fail ->
+  exists (m': PA) (f': CNF), state m f ==>*[rs] state m' f' /\ state m' f' ==>[rs] fail.
 Proof.
   intros. apply clos_rt_rtn1_iff in H.
   remember (state m f) as s eqn:Heqs.

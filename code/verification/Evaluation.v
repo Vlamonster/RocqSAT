@@ -158,6 +158,42 @@ Section Literals.
       + now apply Lit.eqb_eq in G.
       + assumption.
   Qed.
+
+  (* In m followed by n, a literal keeps the value n gives it. *)
+  Lemma l_eval_app_some: forall (m n: PA) (l: Lit) (b: bool),
+    l_eval n l = Some b -> l_eval ⟨m ++ n⟩ l = Some b.
+  Proof.
+    intros m n l b. induction n as [|n IH l'|n IH l']; simpl; unfold l_eval_step.
+    - discriminate.
+    - destruct (l =? l').
+      + now intros.
+      + destruct (l =? ¬l').
+        * now intros.
+        * apply IH.
+    - destruct (l =? l').
+      + now intros.
+      + destruct (l =? ¬l').
+        * now intros.
+        * apply IH.
+  Qed.
+
+  (* A literal that n leaves unassigned has its value under m. *)
+  Lemma l_eval_app_undef: forall (m n: PA) (l: Lit),
+    Undef n l -> l_eval ⟨m ++ n⟩ l = l_eval m l.
+  Proof.
+    unfold Undef. intros m n l. induction n as [|n IH l'|n IH l']; simpl; unfold l_eval_step.
+    - reflexivity.
+    - destruct (l =? l').
+      + discriminate.
+      + destruct (l =? ¬l').
+        * discriminate.
+        * apply IH.
+    - destruct (l =? l').
+      + discriminate.
+      + destruct (l =? ¬l').
+        * discriminate.
+        * apply IH.
+  Qed.
 End Literals.
 
 Section Clauses.

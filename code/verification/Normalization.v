@@ -11,6 +11,7 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import State.
+From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
 From RocqSAT.rules Require Import Decide.
 From RocqSAT Require Import WellFormed.
@@ -527,31 +528,33 @@ Proof.
   - apply normalize_bounded.
 Qed.
 
-(* Every well-formed assignment that consists of decisions only is reachable from the initial state. *)
-Lemma normalize_derivation_aux: forall (m: PA) (f: CNF),
-  WellFormed (state m f) -> NoPropagations m -> state ⟨⟩ f ==>* state m f.
+(* Every well-formed assignment that consists of decisions only is reachable from the initial state, with any rules that include Decide. *)
+Lemma normalize_derivation_aux: forall (rs: list Rule) (m: PA) (f: CNF),
+  In Decide rs -> WellFormed (state m f) -> NoPropagations m -> state ⟨⟩ f ==>*[rs] state m f.
 Proof.
-  induction m as [|m IH l|m IH l].
+  intros rs m. induction m as [|m IH l|m IH l].
   - intros. apply rt_refl.
-  - intros f _ [].
-  - intros f Hwf Hdec. apply rt_trans with (y := state m f).
+  - intros f _ _ [].
+  - intros f Hdecide Hwf Hdec. apply rt_trans with (y := state m f).
     + apply IH.
+      * assumption.
       * now apply well_formed_tail in Hwf.
       * assumption.
     + apply rt_step. destruct Hwf as [Hno_dup Hbounded].
       apply nodup_cons__undef in Hno_dup as Hundef.
       apply (t_step Decide).
-      * right. right. now left.
+      * assumption.
       * apply r_decide.
         -- apply Hbounded. now left.
         -- assumption.
 Qed.
 
 (* Hence the normalization of any assignment is reachable from the initial state. *)
-Lemma normalize_derivation: forall (m: PA) (f: CNF),
-  state ⟨⟩ f ==>* state (normalize m f) f.
+Lemma normalize_derivation: forall (rs: list Rule) (m: PA) (f: CNF),
+  In Decide rs -> state ⟨⟩ f ==>*[rs] state (normalize m f) f.
 Proof.
-  intros. apply normalize_derivation_aux.
+  intros rs m f Hdecide. apply normalize_derivation_aux.
+  - assumption.
   - apply normalize_well_formed.
   - apply normalize_only_dec.
 Qed.
