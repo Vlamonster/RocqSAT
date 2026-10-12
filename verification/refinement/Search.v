@@ -126,3 +126,31 @@ Proof.
         -- discriminate.
         -- assumption.
 Qed.
+
+(* The literal of the atom of l with the value it last had in the phases ph, or l if it had none. *)
+Definition phase (ph: Values) (l: Lit): Lit :=
+match tget ph (extract l) with
+| Some true  => Pos (extract l)
+| Some false => Neg (extract l)
+| None       => l
+end.
+
+(* The phase of l is l or ¬l. *)
+Lemma phase_cases: forall (ph: Values) (l: Lit), phase ph l = l \/ phase ph l = ¬l.
+Proof. intros ph [p|p]; unfold phase; simpl; destruct (tget ph p) as [[|]|]; simpl; tauto. Qed.
+
+(* The phase of an unassigned literal is unassigned. *)
+Lemma phase_undef: forall (v ph: Values) (l: Lit), lookup v l = None -> lookup v (phase ph l) = None.
+Proof.
+  intros v ph l Hl. destruct (phase_cases ph l) as [->| ->].
+  - assumption.
+  - now rewrite lookup_neg, Hl.
+Qed.
+
+(* The phase of l is a literal of f if l is. *)
+Lemma phase_in: forall (ph: Values) (f: CNF) (l: Lit), l ∈ f -> phase ph l ∈ f \/ ¬(phase ph l) ∈ f.
+Proof.
+  intros ph f l Hl_in_f. destruct (phase_cases ph l) as [->| ->].
+  - now left.
+  - right. now rewrite Neg.involutive.
+Qed.

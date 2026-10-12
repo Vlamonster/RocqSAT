@@ -180,7 +180,7 @@ Proof.
           ++ inversion Hstep as [m' n ? c l Hc_in_f Hc Hno_dec]; subst. now apply (Hno_conflict c).
 Qed.
 
-Lemma initial_refl: forall (f: CNF), state ⟨⟩ f ==>* state ⟨⟩ f.
+Lemma initial_refl: forall (rs: list Rule) (f: CNF), state ⟨⟩ f ==>*[rs] state ⟨⟩ f.
 Proof. intros. apply rt_refl. Qed.
 
 (* A property of assignments that every transition between states preserves is preserved by every derivation between states. *)

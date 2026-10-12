@@ -26,7 +26,7 @@ It also gives a concrete, verified strategy and derives decidability of satisfia
 | `sat_decidable`                  | `systems/<S>.v`           | Every formula is satisfiable or unsatisfiable.                      |
 | `strict_derivation_well_founded` | `Termination.v`           | There are no infinite derivations from well-formed states.          |
 | `derivation_entails`             | `Trans.v`                 | Every derivation preserves entailment.                              |
-| `next_state_strategy`            | `refinement/NextState.v`  | The concrete solver step is a valid strategy.                       |
+| `next_state_strategy`            | `refinement/NextState.v`  | The concrete solver step is a valid strategy for `DPLL_BJ`.         |
 | `next_impl_strategy`             | `refinement/Imperative.v` | The same step on a store updated in place is a valid strategy.      |
 
 ## Axioms and trusted code
@@ -34,10 +34,11 @@ It also gives a concrete, verified strategy and derives decidability of satisfia
 - Everything, including the refinement, is closed under the global context: no axioms.
 - The extracted solver (`runner/`) runs `next_impl_strategy` on a store (`refinement/Store.v`)
   realized by mutable arrays (`runner/store_rt.ml`).
-- Trusted: the table operations (`tmake`, `vget` … `lset`) agree with their model in `Table.v`
+- Trusted: the table operations (`tmake`, `vget` … `pset`) agree with their model in `Table.v`
   and `Store.v`. This holds because stores are used linearly (only through the state monad
   of `Store.v`, and by `next_impl`).
-- Extraction also realizes `nat` as OCaml `int` and atom equality as `Int.equal`.
+- Extraction also realizes `nat` as OCaml `int` (with `int`-typed `Nat.eqb`, `Nat.leb`, `Nat.max`,
+  `Nat.sub`) and atom equality as `Int.equal`.
 
 ## Module dependencies
 
@@ -209,9 +210,9 @@ Files are listed in dependency order.
 
 ### Strategy and solver
 
-- `Strategy.v`: `Strategy Inv next`, a step function on a state and a context of its own
+- `Strategy.v`: `Strategy rs Inv next`, a step function on a state and a context of its own
   choosing, kept consistent by `Inv`; it never steps from `fail`, only stops at final states
-  of `Basic`, and only takes `==>+` steps preserving `Inv`; `strategy_trans`.
+  of `Basic`, and only takes `==>+[rs]` steps preserving `Inv`; `strategy_trans`.
 - `Solve.v`: `solve` iterates a strategy by well-founded recursion;
   `solve_final_derivation`.
 
@@ -222,16 +223,27 @@ A concrete strategy, implemented efficiently and proved to agree with the specif
 - `Table.v`: `Table A`, tables as functions (`tget`, `tset`, `tmake`); extracted as arrays.
 - `Lookup.v`: `Values` (the value of each atom), `values m`, `lookup` (agrees with `l_eval`);
   `ValuesOf`, `Fresh`, `Incl`; `unassign_level`.
-- `Search.v`: `clause_lists`, `formula_lits`; `skip_assigned` and the `Cursor` invariant.
+- `Search.v`: `clause_lists`, `formula_lits`; `skip_assigned` and the `Cursor` invariant;
+  `phase` (decide an atom with its last value, `phase_cases`).
 - `Watches.v`: two watched literals.
   - `WatchStruct` (every clause is in its watches' lists or pending), `WatchOK`, `Settled`.
   - `repair`, `visit` (with the other-watch fast path), `process`, `unpend`, `index_clauses`.
+- `Analysis.v`: backjumping.
+  - `Entailed`, `entailed_resolve`, `clause_of` (`entailed_consequence`).
+  - `analyze`: resolve the conflict clause with reasons until one literal is at the last level,
+    using marks for membership (`resolve_marked`); marked literals are in the clause (`MarkedIn`).
+  - `plan`: where to jump, checked against the trail in one pass using the marks (`marked_neg`,
+    `plan_spec`); `unassign_segment`.
+  - Reasons and levels are hints: soundness never depends on them.
 - `NextState.v`: `next_state` on a `SolverContext` (values, clauses, cursor, watches, queue,
-  saved cursors).
-  - `CoreInv`, `SavedWatches`; backtracking unassigns the last level and keeps the watches.
+  saved cursors, and the reason, level, decision level and phase hints).
+  - On a conflict it backjumps as planned, or else flips the last decision
+    (`backtrack_backjump`); both unassign whole levels and keep the watches.
+  - `CoreInv`, `SavedWatches`, no marks between steps (`Unmarked`); `ContextInv` adds
+    well-formedness and `Entails`.
   - `next_state_sound`, `next_state_none`, `next_state_exists`, `next_state_inv`, giving
     `next_state_strategy`; `initial_context(_inv)`.
-- `Store.v`: the store of tables and its state monad (`M`, `ret`, `bind`, `runM`, `vget` … `lset`).
+- `Store.v`: the store of tables and its state monad (`M`, `ret`, `bind`, `runM`, `vget` … `pset`).
 - `Imperative.v`: `next_stateM` and its parts (`visitM`, `processM`, …), each with a `_spec`
   equal to its pure counterpart; `next_impl_strategy`, `initial_impl(_inv)`.
 

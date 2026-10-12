@@ -41,13 +41,35 @@ Extract Inlined Constant lget => "(fun k st -> (let t = st.swls in
   Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
 Extract Inlined Constant lset => "(fun k a st -> (let t = st.swls in
   Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extract Inlined Constant rget => "(fun k st -> (let t = st.srsn in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant rset => "(fun k a st -> (let t = st.srsn in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extract Inlined Constant dget => "(fun k st -> (let t = st.slvl in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant dset => "(fun k a st -> (let t = st.slvl in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extract Inlined Constant mget => "(fun k st -> (let t = st.smrk in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant mset => "(fun k a st -> (let t = st.smrk in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
+Extract Inlined Constant pget => "(fun k st -> (let t = st.sphs in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_get t.data k else t.default)), st)".
+Extract Inlined Constant pset => "(fun k a st -> (let t = st.sphs in
+  Store_rt.(if k < Array.length t.data then Array.unsafe_set t.data k a else grow_set t k a)); ((), st))".
 Extraction Inline ret bind runM.
 
 (* Compare atoms as ints rather than with OCaml's polymorphic equality, and call the EqB instances directly. *)
 Extract Inlined Constant Atom.Definitions.EqBAtom => "Int.equal".
+(* Likewise for comparing decision levels; ExtrOcamlNatInt would extract these by unary recursion. *)
+Extract Inlined Constant Nat.eqb => "Int.equal".
+Extract Inlined Constant Nat.leb => "(<=)".
+(* ExtrOcamlNatInt uses the polymorphic Stdlib.max for these, which compares generically. *)
+Extract Inlined Constant Nat.max => "(fun (n: int) m -> if n >= m then n else m)".
+Extract Inlined Constant Nat.sub => "(fun n m -> let d = n - m in if d > 0 then d else 0)".
 Extraction Inline eqb.
 
-Extraction Inline lookupM lookup_trueM lookup_undefM not_falseM add_watchM watchM replace_watchM.
+Extraction Inline lookupM lookup_trueM lookup_undefM not_falseM add_watchM watchM replace_watchM phaseM.
 
 (* dune collects the extracted files from the current directory. *)
 Set Warnings "-extraction-default-directory".
