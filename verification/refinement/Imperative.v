@@ -752,6 +752,68 @@ Proof.
       * discriminate.
 Qed.
 
+(* Unassign all of m, as unassign_all. *)
+Fixpoint unassign_allM (m: PA): M unit :=
+match m with
+| ⟨⟩     => ret tt
+| ⟨m, l⟩ => bind (vset (extract l) None) (fun _ => unassign_allM m)
+| ⟨m; l⟩ => bind (vset (extract l) None) (fun _ => unassign_allM m)
+end.
+
+Lemma unassign_allM_spec: forall (m: PA) (v: Values) (cm: ClauseMap) (w: Watches) (wl: WatchLists)
+  (rs lv: Table nat) (mk: Table bool) (ph: Values),
+  unassign_allM m (mkStore v cm w wl rs lv mk ph) = (tt, mkStore (unassign_all v m) cm w wl rs lv mk ph).
+Proof.
+  intros m. induction m as [|m IH l|m IH l]; intros v cm w wl rs lv mk ph; simpl.
+  - reflexivity.
+  - rewrite (bind_spec _ _ _ _ _ (vset_spec (extract l) None _)). apply IH.
+  - rewrite (bind_spec _ _ _ _ _ (vset_spec (extract l) None _)). apply IH.
+Qed.
+
+(* Make the watchers of ls pending, as pend_all. *)
+Fixpoint pend_allM (ls: list Lit) (todo: list (Lit * list nat)): M (list (Lit * list nat)) :=
+match ls with
+| []       => ret todo
+| l :: ls' =>
+  bind (lget (lit_key l)) (fun (ws: list nat) =>
+  bind (lset (lit_key l) []) (fun _ =>
+  pend_allM ls' ((l, ws) :: todo)))
+end.
+
+Lemma pend_allM_spec: forall (ls: list Lit) (todo: list (Lit * list nat)) (v: Values) (cm: ClauseMap) (w: Watches)
+  (wl: WatchLists) (rs lv: Table nat) (mk: Table bool) (ph: Values),
+  pend_allM ls todo (mkStore v cm w wl rs lv mk ph) =
+  let '(wl', todo') := pend_all wl ls todo in (todo', mkStore v cm w wl' rs lv mk ph).
+Proof.
+  intros ls. induction ls as [|l ls IH]; intros todo v cm w wl rs lv mk ph; simpl.
+  - reflexivity.
+  - apply IH.
+Qed.
+
+(* Restart from m, as restart_context. *)
+Definition restartM (m: PA) (f: CNF) (y: Frame): M Frame :=
+let ls := Clause.elements (formula_lits f) in
+bind (unassign_allM m) (fun _ =>
+bind (pend_allM ls (ftodo y)) (fun (todo: list (Lit * list nat)) =>
+ret (mkFrame ls todo [] 0))).
+
+Definition restart_impl (m: PA) (f: CNF) (c: Frame * Store): Frame * Store :=
+match c with
+| (y, st) => runM (restartM m f y) st
+end.
+
+Lemma restart_impl_inv: forall (m: PA) (f: CNF) (c: Frame * Store),
+  ImpInv (state m f) c -> ImpInv (state ⟨⟩ f) (restart_impl m f c).
+Proof.
+  intros m f [y [v cm w wl rs lv mk ph]] Hinv. apply restart_context_inv in Hinv.
+  unfold restart_impl, runM, restartM. cbv zeta.
+  rewrite (bind_spec _ _ _ _ _ (unassign_allM_spec m v cm w wl rs lv mk ph)).
+  assert (Hpend := pend_allM_spec (Clause.elements (formula_lits f)) (ftodo y) (unassign_all v m) cm w wl rs lv mk ph).
+  unfold restart_context, combine in Hinv. simpl in Hinv.
+  destruct (pend_all wl (Clause.elements (formula_lits f)) (ftodo y)) as [wl' todo'].
+  rewrite (bind_spec _ _ _ _ _ Hpend). apply Hinv.
+Qed.
+
 (* Index the clauses with literals lss from k on, as index_clauses. *)
 Fixpoint index_clausesM (k: nat) (lss: list (list Lit)) (todo: list (Lit * list nat)): M (list (Lit * list nat)) :=
 match lss with

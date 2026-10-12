@@ -33,13 +33,13 @@ It also gives a concrete, verified strategy and derives decidability of satisfia
 ## Axioms and trusted code
 
 - Everything, including the refinement, is closed under the global context: no axioms.
-- The extracted solver (`runner/`) runs `next_impl_strategy` on a store (`refinement/Store.v`)
-  realized by mutable arrays (`runner/store_rt.ml`).
+- The extracted solver (`runner/`) runs `next_impl_strategy` with Luby restarts (`solve_restart`)
+  on a store (`refinement/Store.v`) realized by mutable arrays (`runner/store_rt.ml`).
 - Trusted: the table operations (`tmake`, `vget` … `pset`) agree with their model in `Table.v`
   and `Store.v`. This holds because stores are used linearly (only through the state monad
   of `Store.v`, and by `next_impl`).
 - Extraction also realizes `nat` as OCaml `int` (with `int`-typed `Nat.eqb`, `Nat.leb`, `Nat.max`,
-  `Nat.sub`) and atom equality as `Int.equal`.
+  `Nat.sub`, `le_dec`) and atom equality as `Int.equal`.
 
 ## Module dependencies
 
@@ -208,13 +208,14 @@ Files are listed in dependency order.
   - `fail_predecessor`.
 - `Termination.v`: every transition from a well-formed state decreases the measure;
   `trans_well_founded`, `strict_derivation_well_founded`, for any rule set.
-- `Schedule.v`: restarts on a schedule `g`, where restart `k` needs `g k` steps since the
-  previous one (`Scheduled rs g`).
+- `Schedule.v`: restarts on a schedule `g`, where restart `k` needs `g k` rounds of
+  `==>+[rs]` since the previous one (`Scheduled rs g`).
   - `scheduled_terminates`: no infinite derivations if `g` is unbounded and the rules keep
     the formula (`KeepsFormula`, e.g. `dpll_bj_keeps_formula`). Between restarts the rank
     bounds the steps, so once `g` exceeds that bound no further restart can happen.
   - `scheduled_derivation`: a restart returns to the initial state, so every reachable state
     is reachable without restarts, and the results for `rs` carry over.
+  - `luby`: the Luby sequence 1 1 2 1 1 2 4 …; `luby_unbounded`.
 
 ### Normalization
 
@@ -228,6 +229,9 @@ Files are listed in dependency order.
   of `Basic`, and only takes `==>+[rs]` steps preserving `Inv`; `strategy_trans`.
 - `Solve.v`: `solve` iterates a strategy by well-founded recursion;
   `solve_final_derivation`.
+  - `solve_restart`: the same with restarts on an unbounded schedule, given a `restart` of the
+    context that keeps `Inv`; it recurses on the accessibility proof of `scheduled_terminates`.
+    `solve_restart_final`: the result is reachable without restarts and final.
 
 ### Refinement (`refinement/`)
 
@@ -235,12 +239,13 @@ A concrete strategy, implemented efficiently and proved to agree with the specif
 
 - `Table.v`: `Table A`, tables as functions (`tget`, `tset`, `tmake`); extracted as arrays.
 - `Lookup.v`: `Values` (the value of each atom), `values m`, `lookup` (agrees with `l_eval`);
-  `ValuesOf`, `Fresh`, `Incl`; `unassign_level`.
+  `ValuesOf`, `Fresh`, `Incl`; `unassign_level`, `unassign_all`.
 - `Search.v`: `clause_lists`, `formula_lits`; `skip_assigned` and the `Cursor` invariant;
   `phase` (decide an atom with its last value, `phase_cases`).
 - `Watches.v`: two watched literals.
   - `WatchStruct` (every clause is in its watches' lists or pending), `WatchOK`, `Settled`.
-  - `repair`, `visit` (with the other-watch fast path), `process`, `unpend`, `index_clauses`.
+  - `repair`, `visit` (with the other-watch fast path), `process`, `unpend`, `index_clauses`;
+    `pend_all` (make every watched clause pending, for a restart).
 - `Analysis.v`: backjumping.
   - `Entailed`, `entailed_resolve`, `clause_of` (`entailed_consequence`).
   - `analyze`: resolve the conflict clause with reasons until one literal is at the last level,
@@ -256,9 +261,12 @@ A concrete strategy, implemented efficiently and proved to agree with the specif
     well-formedness and `Entails`.
   - `next_state_sound`, `next_state_none`, `next_state_exists`, `next_state_inv`, giving
     `next_state_strategy`; `initial_context(_inv)`.
+  - `restart_context(_inv)`: no values, all literals to decide on, every watched clause pending
+    (so unit clauses are found again); clauses, watches, hints, marks and phases are kept.
 - `Store.v`: the store of tables and its state monad (`M`, `ret`, `bind`, `runM`, `vget` … `pset`).
 - `Imperative.v`: `next_stateM` and its parts (`visitM`, `processM`, …), each with a `_spec`
-  equal to its pure counterpart; `next_impl_strategy`, `initial_impl(_inv)`.
+  equal to its pure counterpart; `next_impl_strategy`, `initial_impl(_inv)`,
+  `restart_impl(_inv)`.
 
 ### Satisfiability
 

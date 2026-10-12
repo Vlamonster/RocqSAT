@@ -162,6 +162,30 @@ Section Literals.
       + assumption.
   Qed.
 
+  (* v without the values of all of m, as for a restart. *)
+  Fixpoint unassign_all (v: Values) (m: PA): Values :=
+  match m with
+  | ⟨⟩     => v
+  | ⟨m, l⟩ => unassign_all (unset_value v l) m
+  | ⟨m; l⟩ => unassign_all (unset_value v l) m
+  end.
+
+  Lemma unassign_all_spec: forall (v: Values) (m: PA), ValuesOf v m -> Fresh m -> ValuesOf (unassign_all v m) ⟨⟩.
+  Proof.
+    intros v m. revert v. induction m as [|m IH l|m IH l]; intros v Hv Hfresh; simpl in Hfresh |- *.
+    - assumption.
+    - destruct Hfresh as [Hfresh Hl]. apply IH.
+      + apply values_of_unset.
+        * intros y. apply Hv.
+        * assumption.
+      + assumption.
+    - destruct Hfresh as [Hfresh Hl]. apply IH.
+      + apply values_of_unset.
+        * intros y. apply Hv.
+        * assumption.
+      + assumption.
+  Qed.
+
   (* Looking up the values of m agrees with l_eval. *)
   Lemma lookup_values: forall (m: PA) (l: Lit), lookup (values m) l = l_eval m l.
   Proof.

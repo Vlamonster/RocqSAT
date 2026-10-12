@@ -1038,3 +1038,80 @@ Proof.
   - unfold not_false in Hfind. destruct (lookup v l) as [[|]|]; easy.
   - assumption.
 Qed.
+
+(* Make the watchers of the literals ls pending, emptying their watch lists, as after a restart. *)
+Fixpoint pend_all (wl: WatchLists) (ls: list Lit) (todo: list (Lit * list nat)): WatchLists * list (Lit * list nat) :=
+match ls with
+| []       => (wl, todo)
+| l :: ls' => pend_all (tset wl (lit_key l) []) ls' ((l, watching wl l) :: todo)
+end.
+
+(* Moving the watch list of l into the pending items keeps every clause watched. *)
+Lemma watched_pend: forall (wl: WatchLists) (todo: list (Lit * list nat)) (l x: Lit) (i: nat),
+  Watched wl todo i x -> Watched (tset wl (lit_key l) []) ((l, watching wl l) :: todo) i x.
+Proof.
+  intros wl todo l x i [Hin|Hpend].
+  - unfold Watched. rewrite watching_add. destruct (Lit.eq_dec l x) as [<-|Hneq].
+    + right. apply pending_cons. left. now split.
+    + now left.
+  - right. apply pending_cons. now right.
+Qed.
+
+Lemma pend_all_watched: forall (ls: list Lit) (wl wl': WatchLists) (todo todo': list (Lit * list nat)) (i: nat)
+  (x: Lit),
+  pend_all wl ls todo = (wl', todo') -> Watched wl todo i x -> Watched wl' todo' i x.
+Proof.
+  intros ls. induction ls as [|l ls IH]; intros wl wl' todo todo' i x Hpend Hx; simpl in Hpend.
+  - now injection Hpend as <- <-.
+  - apply (IH _ _ _ _ _ _ Hpend). now apply watched_pend.
+Qed.
+
+(* Afterwards the watch lists of ls are empty. *)
+Lemma pend_all_empty: forall (ls: list Lit) (wl wl': WatchLists) (todo todo': list (Lit * list nat)) (x: Lit),
+  pend_all wl ls todo = (wl', todo') -> watching wl x = [] \/ In x ls -> watching wl' x = [].
+Proof.
+  intros ls. induction ls as [|l ls IH]; intros wl wl' todo todo' x Hpend Hx; simpl in Hpend.
+  - injection Hpend as <- <-. now destruct Hx as [Hx|[]].
+  - apply (IH _ _ _ _ _ Hpend). rewrite watching_add. destruct (Lit.eq_dec l x) as [<-|Hneq].
+    + now left.
+    + destruct Hx as [Hx|[<-|Hin]].
+      * now left.
+      * contradiction.
+      * now right.
+Qed.
+
+(* So a clause watching a literal of ls becomes pending. *)
+Lemma pend_all_pending: forall (ls: list Lit) (wl wl': WatchLists) (todo todo': list (Lit * list nat)) (i: nat)
+  (x: Lit),
+  pend_all wl ls todo = (wl', todo') -> In x ls -> Watched wl todo i x -> Pending todo' i x.
+Proof.
+  intros ls wl wl' todo todo' i x Hpend Hx Hwatched. apply (pend_all_watched ls wl wl' todo todo' i x Hpend) in Hwatched.
+  destruct Hwatched as [Hin|Hpending].
+  - rewrite (pend_all_empty ls wl wl' todo todo' x Hpend) in Hin.
+    + destruct Hin.
+    + now right.
+  - assumption.
+Qed.
+
+(* Pending clauses stay pending. *)
+Lemma pend_all_pending_old: forall (ls: list Lit) (wl wl': WatchLists) (todo todo': list (Lit * list nat)) (i: nat)
+  (x: Lit),
+  pend_all wl ls todo = (wl', todo') -> Pending todo i x -> Pending todo' i x.
+Proof.
+  intros ls. induction ls as [|l ls IH]; intros wl wl' todo todo' i x Hpend Hx; simpl in Hpend.
+  - now injection Hpend as <- <-.
+  - apply (IH _ _ _ _ _ _ Hpend). apply pending_cons. now right.
+Qed.
+
+(* The watch structure survives. *)
+Lemma pend_all_struct: forall (cm: ClauseMap) (w: Watches) (ls: list Lit) (wl wl': WatchLists)
+  (todo todo': list (Lit * list nat)),
+  pend_all wl ls todo = (wl', todo') -> WatchStruct cm w wl todo -> WatchStruct cm w wl' todo'.
+Proof.
+  intros cm w ls wl wl' todo todo' Hpend Hstruct i ls' w1 w2 Hi Hw.
+  destruct (Hstruct i ls' w1 w2 Hi Hw) as (H1 & H2 & Hmembers). split.
+  - now apply (pend_all_watched ls wl wl' todo todo').
+  - split.
+    + now apply (pend_all_watched ls wl wl' todo todo').
+    + assumption.
+Qed.

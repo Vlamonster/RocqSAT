@@ -713,3 +713,52 @@ Proof.
       * apply initial_well_formed.
       * constructor.
 Qed.
+
+(* The context after a restart from m: no values, every literal of f to decide on, and every watched clause pending,
+   so that unit clauses are found again; the clauses, watches, hints, marks and phases are kept. *)
+Definition restart_context (m: PA) (f: CNF) (x: SolverContext): SolverContext :=
+match pend_all (wls x) (Clause.elements (formula_lits f)) (todo x) with
+| (wl, todo') =>
+  mkContext (unassign_all (vals x) m) (cmap x) (Clause.elements (formula_lits f)) (wat x) wl todo' [] (rsn x) (lvl x)
+    0 (mrk x) (phs x)
+end.
+
+Lemma restart_context_inv: forall (m: PA) (f: CNF) (x: SolverContext),
+  ContextInv (state m f) x -> ContextInv (state ⟨⟩ f) (restart_context m f x).
+Proof.
+  intros m f x [([Hvals Hsound Hcomplete _ Hstruct Hcover] & Hfresh & _ & _ & Hmarks) _]. unfold restart_context.
+  destruct (pend_all (wls x) (Clause.elements (formula_lits f)) (todo x)) as [wl todo'] eqn:Hpend. split.
+  - split.
+    + split.
+      * simpl. now apply unassign_all_spec.
+      * assumption.
+      * assumption.
+      * split.
+        -- intros l Hl. simpl in Hl. now rewrite clause_elements_iff, formula_lits_spec in Hl.
+        -- intros l Hl_in_f _. simpl. now rewrite clause_elements_iff, formula_lits_spec.
+      * now apply (pend_all_struct _ _ (Clause.elements (formula_lits f)) (wls x) wl (todo x) todo').
+      (* An empty clause was pending already; any other is pending under its first watch, a literal of f *)
+      * intros i ls w1 w2 Hi Hw. simpl in Hi, Hw |- *. right. left.
+        destruct (Hstruct i ls w1 w2 Hi Hw) as (Hw1 & _ & [[-> <-]|[Hw1_in _]]).
+        -- destruct (Hcover i [] w1 w1 Hi Hw) as [Hok|[Hpending|Hpending]].
+           ++ destruct Hok as [[[] _]|[[[] _]|([] & _)]].
+           ++ now apply (pend_all_pending_old (Clause.elements (formula_lits f)) (wls x) wl (todo x) todo' i w1).
+           ++ now apply (pend_all_pending_old (Clause.elements (formula_lits f)) (wls x) wl (todo x) todo' i w1).
+        -- apply (pend_all_pending (Clause.elements (formula_lits f)) (wls x) wl (todo x) todo' i w1).
+           ++ assumption.
+           ++ apply clause_elements_iff, formula_lits_spec. apply Hsound in Hi.
+              apply in_clause_lists in Hi as [c [-> Hc_in_f]]. exists c. split.
+              ** now apply clause_elements_iff.
+              ** assumption.
+           ++ assumption.
+    + split.
+      * easy.
+      * split.
+        -- reflexivity.
+        -- split.
+           ++ easy.
+           ++ assumption.
+  - split.
+    + apply initial_well_formed.
+    + apply e_nil.
+Qed.

@@ -11,9 +11,24 @@ From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Store.
 From RocqSAT.refinement Require Import Imperative.
 From RocqSAT Require Import Solve.
+From RocqSAT Require Import Schedule.
+From RocqSAT.utils Require Import Inspect.
+From Stdlib Require Import Arith.
+From Stdlib Require Import Lia.
 
-(* The solver: the verified strategy run from the initial state of f. *)
-Definition run (f: CNF): State := solve f next_impl_strategy (initial_impl_inv f).
+(* The number of solver steps before the first restart; later ones follow the Luby sequence. *)
+Definition restart_unit: nat := 2 ^ 14.
+
+(* Restart k comes after restart_unit * luby (k + 1) steps. *)
+Definition luby_schedule (k: nat): nat := restart_unit * luby (S k).
+
+Lemma luby_schedule_unbounded: forall (n: nat), exists (k: nat), n < luby_schedule k.
+Proof. apply luby_unbounded. unfold restart_unit. simpl. lia. Qed.
+
+(* The solver: the verified strategy run from the initial state of f, with Luby restarts. *)
+Definition run (f: CNF): State :=
+  solve_restart f luby_schedule luby_schedule_unbounded dpll_bj_keeps_formula next_impl_strategy restart_impl
+    restart_impl_inv (initial_impl_inv f).
 
 (* The tables of the store in mutable arrays (runner/store_rt.ml), updated in place: each operation returns the
    same store, changed. This realizes the model of Table.v and Store.v as long as every store is used linearly
@@ -64,11 +79,13 @@ Extract Inlined Constant Atom.Definitions.EqBAtom => "Int.equal".
 (* Likewise for comparing decision levels; ExtrOcamlNatInt would extract these by unary recursion. *)
 Extract Inlined Constant Nat.eqb => "Int.equal".
 Extract Inlined Constant Nat.leb => "(<=)".
+Extract Inlined Constant le_dec => "(fun (n: int) m -> n <= m)".
 (* ExtrOcamlNatInt uses the polymorphic Stdlib.max for these, which compares generically. *)
 Extract Inlined Constant Nat.max => "(fun (n: int) m -> if n >= m then n else m)".
 Extract Inlined Constant Nat.sub => "(fun n m -> let d = n - m in if d > 0 then d else 0)".
 Extraction Inline eqb.
 
+Extraction Inline inspect.
 Extraction Inline lookupM lookup_trueM lookup_undefM not_falseM add_watchM watchM replace_watchM phaseM.
 
 (* dune collects the extracted files from the current directory. *)
