@@ -29,7 +29,7 @@ Lemma phase_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
   {{ m', v | m' = m /\ v = vint (key (phase (phs x) l)) }}.
 Proof.
   intros S N lss x lims l m [HRep Hl].
-  pose proof (key_small l N Hl (r_n _ _ _ _ _ _ HRep)) as Hkey.
+  pose proof (key_small l N Hl (r_n _ _ _ _ _ _ _ HRep)) as Hkey.
   (* The shift gives the atom a of l; 2 * a and 2 * a + 1 are the keys of its
      literals. *)
   assert (Hshr: Int.shr (Int.repr (key l)) (Int.repr 1)

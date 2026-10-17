@@ -25,7 +25,19 @@ struct solver {
   int *lims;     /* [nv] the trail position of each decision */
   int dl;        /* the number of decisions, the length of saved and lims */
   int *phs;      /* [nv] the value each atom last had (phs) */
-  int *mrk;      /* [2 nv] marks of literals, used to check them */
+  int *mrk;      /* [2 nv] marks of literals, used to check them and by the analysis (mrk) */
+  int *rsn;      /* [nv] the reason of each atom on the trail: 0 none, i + 1 input clause i, -(j + 1) reason clause j
+                    (rsn) */
+  int *lvl;      /* [nv] the decision level of each atom on the trail (lvl) */
+  int *lt;       /* [nv] the literals of the lower levels of the clause being analysed */
+  int ltlen;     /* their number, 0 outside resolve */
+  int *rlits;    /* [rcap] the literals of the reason clauses, one after the other (rcl) */
+  int rcap;      /* the room for them, laid out by the caller (rcap) */
+  int rtop;      /* the number of them */
+  int *rbeg;     /* [nv] where each reason clause starts in rlits */
+  int *rlen;     /* [nv] its length */
+  int *rpos;     /* [nv] the trail position of the literal it asserted (rps) */
+  int nr;        /* the number of reason clauses (nr) */
 };
 
 /* Set up the initial state for the clauses already in cstart and clits, with the watch lists laid out in woff and

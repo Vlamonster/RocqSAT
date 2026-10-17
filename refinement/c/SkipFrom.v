@@ -52,7 +52,7 @@ Lemma skip_from_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: C
              v = vint (Z.of_nat (skip_from (vals x) (alls x) (nlits x) (nlits x - cur x)
                                            (cur x))) }}.
 Proof.
-  intros S N lss x lims m HRep. pose proof (r_n _ _ _ _ _ _ HRep) as HN.
+  intros S N lss x lims m HRep. pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
   remember (skip_from (vals x) (alls x) (nlits x) (nlits x - cur x) (cur x))
     as res eqn:Hres.
   eapply call_simple.

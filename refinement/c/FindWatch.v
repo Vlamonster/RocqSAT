@@ -62,13 +62,13 @@ Lemma find_watch_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: 
   {{ m', v | m' = m /\ FoundWatch (vals x) cls d0 (starts S i) v }}.
 Proof.
   intros S N lss x lims i d0 cls m (HRep & Hi & Hcls & Hd0).
-  pose proof (r_n _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
   eapply call_simple.
   - reflexivity.
   - reflexivity.
   - unfold f_find_watch. cbn [fn_body fn_return].
-    pose proof (a_lits _ _ _ _ _ _ HRep) as (t & Alits & Hclauses).
-    destruct (r_starts _ _ _ _ _ _ HRep i Hi) as [Hsi Hsn].
+    pose proof (a_lits _ _ _ _ _ _ _ HRep) as (t & Alits & Hclauses).
+    destruct (r_starts _ _ _ _ _ _ _ HRep i Hi) as [Hsi Hsn].
     pose proof HRep as HRep'. destruct HRep'.
     pose proof (clause_length m S N lss x lims t i cls Hclauses Hi Hcls) as Hlen.
     apply exec_seq. unfold Swhile.

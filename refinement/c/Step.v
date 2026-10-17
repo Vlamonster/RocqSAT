@@ -209,20 +209,20 @@ Qed.
 Definition cstep_decide (x x2: Ctx) (lims: list nat): CResult :=
   let c := skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2) in
   if Nat.ltb c (nlits x2)
-  then CNext (assign (open_level x2 c) (phase (phs x2) (tget (alls x2) c)) 0)
+  then CNext (assign (open_level x2 c) (phase (phs x2) (tget (alls x2) c)) no_reason)
          (tlen x2 :: lims)
   else if Nat.eqb (tlen x2) (tlen x) then CStop else CNext (with_cursor x2 c) lims.
 
 Definition cstep_propagate (x x1: Ctx) (lims: list nat): CResult :=
   match propagate_t (Datatypes.S (nvars x1)) (clear_shorts x1) with
-  | (x2, Some _) => resolve_t x2 lims
+  | (x2, Some i) => resolve_t x2 lims i
   | (x2, None)   => cstep_decide x x2 lims
   end.
 
 Lemma cstep_parts: forall (x: Ctx) (lims: list nat),
   cstep x lims =
     match check_shorts_t (shorts x) x with
-    | (x1, Some _) => resolve_t x1 lims
+    | (x1, Some i) => resolve_t x1 lims i
     | (x1, None)   => cstep_propagate x x1 lims
     end.
 Proof. reflexivity. Qed.
@@ -236,7 +236,7 @@ Definition StepPost (S: Shape) (N: nat) (lss: list (list Lit)) (pm: PA) (cr: CRe
 (* The tests after check_shorts and after propagate, as clightgen writes them, with t
    the temporary for the result of resolve:
 
-     if (c < 0) return -1; if (c > 0) return resolve(s); rest *)
+     if (c < 0) return -1; if (c > 0) return resolve(s, c - 1); rest *)
 Definition on_conflict (t: ident) (rest: statement): statement :=
   Ssequence
     (Sifthenelse (Ebinop Olt (Etempvar _c tint) (Econst_int (Int.repr 0) tint) tint)
@@ -247,8 +247,9 @@ Definition on_conflict (t: ident) (rest: statement): statement :=
         (Ssequence
           (Scall (Some t)
             (Evar _resolve
-              (Tfunction (tptr (Tstruct _solver noattr) :: nil) tint cc_default))
-            (Etempvar _s (tptr (Tstruct _solver noattr)) :: nil))
+              (Tfunction (tptr (Tstruct _solver noattr) :: tint :: nil) tint cc_default))
+            (Etempvar _s (tptr (Tstruct _solver noattr)) ::
+             Ebinop Osub (Etempvar _c tint) (Econst_int (Int.repr 1) tint) tint :: nil))
           (Sreturn (Some (Etempvar t tint))))
         Sskip)
       rest).
@@ -262,29 +263,31 @@ Definition step_decide: statement :=
 Definition step_assign: statement := drop_stmts 5 step_decide.
 Definition step_end: statement := drop_stmts 10 (fn_body f_step).
 
-(* The tests for a conflict found in x: out of room, or a conflict to resolve, or none,
-   and then rest runs.
+(* The tests for a conflict found in x: out of room, or a conflict on clause i to
+   resolve, or none, and then rest runs.
 
-     {{ c = -1 \/ (c = enc_conf r /\ Rep x lims) }}
+     {{ c = -1 \/ (c = enc_conf r /\ Rep x lims /\ (r = Some i -> i < length lss)) }}
        if (c < 0) return -1;
      {{ result = -1 (out of room) }}
-       if (c > 0) return resolve(s);                                 (resolve_correct)
-     {{ result = what resolve returns, for the conflict r }}
+       if (c > 0) return resolve(s, c - 1);                          (resolve_correct)
+     {{ result = what resolve returns, for the conflict r = Some i, c - 1 = i }}
      {{ c = 0: no conflict, r = None /\ Rep x lims }}
        rest                                                                            *)
 Lemma on_conflict_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (pm: PA)
   (x: Ctx) (lims: list nat) (r: option nat) (cr: CResult) (t: ident) (rest: statement)
   (v: val) (le: temp_env) (m: mem),
   le ! _s = Some (sptr S) -> le ! _c = Some v ->
-  v = vint (-1) \/ (v = vint (enc_conf r) /\ Rep m S N lss x lims) ->
+  v = vint (-1) \/
+    (v = vint (enc_conf r) /\ Rep m S N lss x lims /\
+     (forall (i: nat), r = Some i -> (i < length lss)%nat)) ->
   (forall (j: nat), In j lims -> (j < tlen x)%nat) ->
-  (r <> None -> cr = resolve_t x lims) ->
+  (forall (i: nat), r = Some i -> cr = resolve_t x lims i) ->
   (r = None -> Rep m S N lss x lims ->
    Exec ge le m rest (Returns f_step (StepPost S N lss pm cr))) ->
   Exec ge le m (on_conflict t rest) (Returns f_step (StepPost S N lss pm cr)).
 Proof.
   intros S N lss pm x lims r cr t rest v le m Hs Hc Hv Hon Hres Hrest.
-  unfold on_conflict. destruct Hv as [-> | [-> HRep]].
+  unfold on_conflict. destruct Hv as [-> | (-> & HRep & Hcls)].
   - (* c = -1: out of room; return -1; *)
     run. eapply (exec_if_cmp _ _ _ Clt _ _ (-1) 0).
     + ev.
@@ -299,31 +302,41 @@ Proof.
         -- apply result_int.
         -- now left.
   - destruct r as [i|]; cbn [enc_conf].
-    + (* c = 1: a conflict; return resolve(s); *)
-      assert (Hcr: cr = resolve_t x lims) by (apply Hres; discriminate).
-      rewrite Hcr.
-      run. eapply (exec_if_cmp _ _ _ Clt _ _ 1 0).
+    + (* c = i + 1: a conflict on clause i; return resolve(s, c - 1); *)
+      rewrite (Hres i eq_refl).
+      pose proof (Hcls i eq_refl) as Hi_lt.
+      pose proof (r_lss_small _ _ _ _ _ _ _ (proj1 HRep)) as Hlss.
+      assert (Hi: Int.sub (Int.repr (enc_conf (Some i))) (Int.repr 1)
+                  = Int.repr (Z.of_nat i)).
+      { cbn [enc_conf]. rewrite sub_repr. f_equal. lia. }
+      run. eapply (exec_if_cmp _ _ _ Clt _ _ (Z.of_nat i + 1) 0).
       * ev.
       * ev.
       * reflexivity.
       * reflexivity.
       * unfold Small. lia.
       * unfold Small. lia.
-      * change (zcmp Clt 1 0) with false. cbv beta iota. run.
-        eapply (exec_if_cmp _ _ _ Cgt _ _ 1 0).
+      * replace (zcmp Clt (Z.of_nat i + 1) 0) with false
+          by (symmetry; cbn [zcmp]; apply Z.ltb_ge; lia).
+        cbv beta iota. run.
+        eapply (exec_if_cmp _ _ _ Cgt _ _ (Z.of_nat i + 1) 0).
         -- ev.
         -- ev.
         -- reflexivity.
         -- reflexivity.
         -- unfold Small. lia.
         -- unfold Small. lia.
-        -- change (zcmp Cgt 1 0) with true. cbv beta iota.
-           run. call resolve_fun. eapply call_weaken.
-           ++ apply (resolve_correct S N lss x lims
+        -- replace (zcmp Cgt (Z.of_nat i + 1) 0) with true
+             by (symmetry; cbn [zcmp]; apply Z.ltb_lt; lia).
+           cbv beta iota.
+           run. call resolve_fun. cbn [cast_int_int]. rewrite Hi. eapply call_weaken.
+           ++ apply (resolve_correct S N lss x lims i
                        (fun (m'': mem) => TrailIn m'' S N pm)).
               split.
               ** assumption.
-              ** assumption.
+              ** split.
+                 --- assumption.
+                 --- assumption.
            ++ intros m' v Hv. normal.
               assert (Hz: exists (z: Z), v = vint z).
               { destruct Hv as [-> | Hv].
@@ -359,10 +372,10 @@ Qed.
 (* Assigning the decision l, after its decision level is open:
 
      {{ RepB xo lims' /\ Arr pool tp /\ l = key l' }}
-       if (!assign(s, l)) return -1;                                  (assign_correct)
+       if (!assign(s, l, 0)) return -1;                               (assign_correct)
      {{ result = -1 (out of room) }}
        return 2;
-     {{ result = 2 /\ Rep (assign xo l' 0) lims' }}                                    *)
+     {{ result = 2 /\ Rep (assign xo l' no_reason) lims' }}                            *)
 Lemma step_assign_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (pm: PA)
   (xo: Ctx) (lims': list nat) (l: Lit) (tp: nat -> Z) (le: temp_env) (m: mem),
   RepB m S N lss xo lims' -> Arr m (b_wpool S) (2 * npool S) tp ->
@@ -370,16 +383,19 @@ Lemma step_assign_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (pm
   le ! _s = Some (sptr S) -> le ! _l = Some (vint (key l)) ->
   Exec ge le m step_assign
     (SeqK ge step_end
-       (Returns f_step (StepPost S N lss pm (CNext (assign xo l 0) lims')))).
+       (Returns f_step (StepPost S N lss pm (CNext (assign xo l no_reason) lims')))).
 Proof.
   intros S N lss pm xo lims' l tp le m HRep Apool Hpool Hl Hs Hlv.
   unfold step_assign, step_decide, f_step. cbn [fn_body drop_stmts first_stmt then_stmt].
   run. call assign_fun. eapply call_weaken.
-  - apply (assign_correct S N lss xo lims' l 0 tp). split.
+  - apply (assign_correct S N lss xo lims' l no_reason tp). split.
     + assumption.
     + split.
       * assumption.
-      * assumption.
+      * split.
+        -- (* a decision has no reason *)
+           cbn [ReasonBelow]. constructor.
+        -- assumption.
   - intros m' v Hv. normal. destruct Hv as [-> | (-> & HRep' & Apool')].
     + (* assign gave up: return -1; *)
       eapply (exec_if_int _ _ _ _ 1).
@@ -427,7 +443,7 @@ Lemma step_decide_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (pm
   le ! _s = Some (sptr S) -> le ! _k = Some (vint (Z.of_nat k)) ->
   Exec ge le m step_decide
     (SeqK ge step_end (Returns f_step (StepPost S N lss pm
-      (CNext (assign (open_level x2 k) (phase (phs x2) (tget (alls x2) k)) 0)
+      (CNext (assign (open_level x2 k) (phase (phs x2) (tget (alls x2) k)) no_reason)
          (tlen x2 :: lims))))).
 Proof.
   intros S N lss pm pm2 f x2 lims k le m [HRep (tp & Apool & Hpool)] Hcore2 Hlims2 Hk
@@ -651,7 +667,7 @@ Qed.
      {{ Rep (clear_shorts x1) lims }}
        c = propagate(s);                                           (propagate_correct)
        if (c < 0) return -1;
-       if (c > 0) return resolve(s);                             (on_conflict_correct)
+       if (c > 0) return resolve(s, c - 1);                      (on_conflict_correct)
      {{ Rep x2 lims, after propagation without a conflict }}
        ...                                                       (step_choose_correct) *)
 Lemma step_propagate_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
@@ -668,10 +684,10 @@ Proof.
     Hext1 Hne1 Hlen Htx Hs Ht0.
   destruct (reached_prop pm1 f x1 lims Hcore1 Hwf1 Hlims1 Hne1)
     as (pm2 & Hcore2 & Hlims2 & Hext2).
-  pose proof (r_nodup _ _ _ _ _ _ HRep) as Hnd.
-  pose proof (r_nvars _ _ _ _ _ _ HRep) as Hnv.
-  pose proof (r_nshorts _ _ _ _ _ _ HRep) as Fns.
-  pose proof (a_shorts _ _ _ _ _ _ HRep) as (tsh & Ash & _).
+  pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
+  pose proof (r_nvars _ _ _ _ _ _ _ HRep) as Hnv.
+  pose proof (r_nshorts _ _ _ _ _ _ _ HRep) as Fns.
+  pose proof (a_shorts _ _ _ _ _ _ _ HRep) as (tsh & Ash & _).
   unfold cstep_propagate. rewrite Hnv in Hcore2 |- *.
   unfold step_propagate, f_step. cbn [fn_body drop_stmts].
   (* s->nshorts = 0; *)
@@ -713,9 +729,7 @@ Proof.
            ++ tmp.
            ++ assumption.
            ++ assumption.
-           ++ intros Hr. destruct r2 as [i|].
-              ** reflexivity.
-              ** contradiction.
+           ++ intros i ->. reflexivity.
            ++ intros -> HRep2.
               apply (step_choose_correct S N lss pm pm2 f).
               ** assumption.
@@ -736,7 +750,7 @@ Qed.
        int t0 = s->tlen;
        int c = check_shorts(s);                                 (check_shorts_correct)
        if (c < 0) return -1;
-       if (c > 0) return resolve(s);                             (on_conflict_correct)
+       if (c > 0) return resolve(s, c - 1);                      (on_conflict_correct)
      {{ Rep x1 lims, after the short clauses without a conflict }}
        ...                                                    (step_propagate_correct)
      {{ StepPost pm (cstep x lims) }}                                  (cstep_parts) *)
@@ -751,7 +765,7 @@ Proof.
   intros S N lss x lims pm f m (HRep & Hinv & Hlims).
   destruct (reached_shorts pm f x lims Hinv Hlims)
     as (pm1 & Hcore1 & Hlims1 & Hext1 & Hwf1 & Hnonempty1).
-  pose proof (Rep.r_tlen_le _ _ _ _ _ _ (proj1 HRep)) as Htx.
+  pose proof (Rep.r_tlen_le _ _ _ _ _ _ _ (proj1 HRep)) as Htx.
   assert (Hlen: PA.length pm = tlen x).
   { destruct Hinv as [Hcore _].
     destruct (core_trail _ _ _ (step_core _ _ _ Hcore)) as [Hl _].
@@ -760,7 +774,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold f_step. cbn [fn_body fn_return].
-    pose proof (r_tlen _ _ _ _ _ _ (proj1 HRep)) as Ftlen.
+    pose proof (r_tlen _ _ _ _ _ _ _ (proj1 HRep)) as Ftlen.
     (* int t0 = s->tlen; int c = check_shorts(s); *)
     run. clear Ftlen. call check_shorts_fun. eapply call_weaken.
     + apply (check_shorts_correct S N lss x lims). assumption.
@@ -775,9 +789,7 @@ Proof.
         -- tmp.
         -- assumption.
         -- assumption.
-        -- intros Hr. destruct r1 as [i|].
-           ++ reflexivity.
-           ++ contradiction.
+        -- intros i ->. reflexivity.
         -- intros -> HRep1.
            apply (step_propagate_correct S N lss pm pm1 f).
            ++ assumption.

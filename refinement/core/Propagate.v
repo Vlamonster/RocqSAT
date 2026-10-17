@@ -72,6 +72,14 @@ Definition Reordered (cm cm': ClauseMap): Prop :=
   exists (ls ls': list Lit), tget cm i = Some ls /\ tget cm' i = Some ls' /\
     Permutation ls ls'.
 
+(* Why a literal is on the trail: by no clause (a decision, or a literal asserted without
+   a stored clause), by input clause i, or by reason clause j, the clause a backjump
+   asserted it with. *)
+Inductive Reason: Type :=
+| no_reason
+| input (i: nat)
+| learnt (j: nat).
+
 (* The context of the solver. *)
 Record Ctx: Type := mkCtx {
   vals: Values;      (* the values of the trail *)
@@ -86,24 +94,30 @@ Record Ctx: Type := mkCtx {
   nlits: nat;        (* the number of literals to decide on *)
   cur: nat;          (* the literals to decide on before cur are assigned *)
   saved: list nat;   (* the cursor before each decision, newest first *)
-  rsn: Table nat;    (* hint: S i if clause i propagated the atom, 0 if nothing did *)
-  lvl: Table nat;    (* hint: the decision level at which the atom was assigned *)
-  dl: nat;           (* hint: the current decision level *)
+  rsn: Table Reason; (* the reason of each atom on the trail *)
+  lvl: Table nat;    (* the level at which each atom on the trail was assigned *)
+  dl: nat;           (* the current decision level: the number of decisions *)
   mrk: Table bool;   (* marks of literals by lit_key, used by the analysis and cleared after it *)
   phs: Values;       (* hint: the value each atom last had, used to decide *)
-  nvars: nat         (* a bound on the length of the trail, which bounds the propagation loop *)
+  nvars: nat;        (* a bound on the trail length, which bounds the propagation loop *)
+  rcl: Table (list Lit); (* the reason clauses, a stack *)
+  rps: Table nat;    (* reason clause j asserted the literal at trail position rps j *)
+  nr: nat;           (* the number of reason clauses *)
+  rcap: nat          (* the room for the literals of the reason clauses *)
 }.
 
 (* Assign l with reason r at the current level, appending it to the trail. *)
-Definition assign (x: Ctx) (l: Lit) (r: nat): Ctx :=
+Definition assign (x: Ctx) (l: Lit) (r: Reason): Ctx :=
 mkCtx (set_value (vals x) l) (cmap x) (wls x) (tset (tr x) (tlen x) l) (S (tlen x))
   (qhead x) (shorts x) (alls x) (nlits x) (cur x) (saved x) (tset (rsn x) (extract l) r)
-  (tset (lvl x) (extract l) (dl x)) (dl x) (mrk x) (set_value (phs x) l) (nvars x).
+  (tset (lvl x) (extract l) (dl x)) (dl x) (mrk x) (set_value (phs x) l) (nvars x)
+  (rcl x) (rps x) (nr x) (rcap x).
 
 (* Clause i now has the literals ls. *)
 Definition set_clause (x: Ctx) (i: nat) (ls: list Lit): Ctx :=
 mkCtx (vals x) (tset (cmap x) i (Some ls)) (wls x) (tr x) (tlen x) (qhead x) (shorts x)
-  (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x).
+  (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x)
+  (rcl x) (rps x) (nr x) (rcap x).
 
 (* Clause i now has the literals ls, and a watcher of it with blocker b is appended to the
    watch list of l. *)
@@ -111,17 +125,19 @@ Definition move_watch (x: Ctx) (i: nat) (ls: list Lit) (l b: Lit): Ctx :=
 mkCtx (vals x) (tset (cmap x) i (Some ls))
   (tset (wls x) (lit_key l) (watching (wls x) l ++ [(i, b)])) (tr x) (tlen x) (qhead x)
   (shorts x) (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x)
-  (nvars x).
+  (nvars x) (rcl x) (rps x) (nr x) (rcap x).
 
 (* The watch list of l becomes ws. *)
 Definition set_watching (x: Ctx) (l: Lit) (ws: list Watcher): Ctx :=
 mkCtx (vals x) (cmap x) (tset (wls x) (lit_key l) ws) (tr x) (tlen x) (qhead x) (shorts x)
-  (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x).
+  (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x)
+  (rcl x) (rps x) (nr x) (rcap x).
 
 (* The queue moves past one literal. *)
 Definition advance (x: Ctx): Ctx :=
 mkCtx (vals x) (cmap x) (wls x) (tr x) (tlen x) (S (qhead x)) (shorts x) (alls x)
-  (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x).
+  (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x)
+  (rcl x) (rps x) (nr x) (rcap x).
 
 (* The first literal of ls that is not false, and ls with p in its place. *)
 Fixpoint swap_watch (v: Values) (p: Lit) (ls: list Lit): option (Lit * list Lit) :=
@@ -160,7 +176,7 @@ match ws with
       | Some (r, ls') => visit p rest kept m (move_watch x1 i (o :: r :: ls') r o)
       | None          =>
         if lookup_undef (vals x1) o then visit p rest ((i, o) :: kept) ⟨m, o⟩
-          (assign x1 o (S i))
+          (assign x1 o (input i))
         else (m, set_watching x1 p (rev_append kept ws), Some i)
       end
     else visit p rest kept m x
@@ -192,21 +208,76 @@ match ss with
     match lookup (vals x) a with
     | Some true  => check_shorts ss' m x
     | Some false => (m, x, Some i)
-    | None       => check_shorts ss' ⟨m, a⟩ (assign x a (S i))
+    | None       => check_shorts ss' ⟨m, a⟩ (assign x a (input i))
     end
   | Some []       => (m, x, Some i)
   | None          => check_shorts ss' m x
   end
 end.
 
-(* What propagation keeps: the context agrees with the trail m, and its clauses are
-   clauses of f without duplicate literals. *)
+(* The number of decisions on m. *)
+Fixpoint decisions (m: PA): nat :=
+match m with
+| ⟨⟩     => 0
+| ⟨m, _⟩ => decisions m
+| ⟨m; _⟩ => S (decisions m)
+end.
+
+(* A trail without decisions has none. *)
+Lemma no_decisions_zero: forall (m: PA), NoDecisions m -> decisions m = 0.
+Proof.
+  intros m. induction m as [|m IH l|m IH l]; simpl.
+  - reflexivity.
+  - assumption.
+  - intros [].
+Qed.
+
+(* The decisions of two trails one after the other. *)
+Lemma decisions_app: forall (m n: PA), decisions ⟨m ++ n⟩ = decisions m + decisions n.
+Proof.
+  intros m n. induction n as [|n IH l|n IH l]; simpl.
+  - lia.
+  - assumption.
+  - rewrite IH. lia.
+Qed.
+
+(* The literals ls justify t after the trail m: t is one of them, and the others are
+   false in m. *)
+Definition Justifies (m: PA) (t: Lit) (ls: list Lit): Prop :=
+  In t ls /\ forall (y: Lit), In y ls -> y <> t -> l_eval m y = Some false.
+
+(* The reason r justifies t after the trail m, with the clauses cm and the reason clauses
+   rcl (nr of them, clause j for the literal at trail position rps j). *)
+Definition ReasonOk (cm: ClauseMap) (rcl: Table (list Lit)) (rps: Table nat) (nr: nat)
+  (m: PA) (t: Lit) (r: Reason): Prop :=
+match r with
+| no_reason => True
+| input i   => exists (ls: list Lit), tget cm i = Some ls /\ Justifies m t ls
+| learnt j  => j < nr /\ tget rps j = PA.length m /\ Justifies m t (tget rcl j)
+end.
+
+(* Every literal of m has as level the number of decisions up to it, and every
+   propagated literal a reason that justifies it. *)
+Fixpoint TraceOk (cm: ClauseMap) (rsn: Table Reason) (lv: Table nat)
+  (rcl: Table (list Lit)) (rps: Table nat) (nr: nat) (m: PA): Prop :=
+match m with
+| ⟨⟩      => True
+| ⟨m', t⟩ =>
+  tget lv (extract t) = decisions m' /\
+  ReasonOk cm rcl rps nr m' t (tget rsn (extract t)) /\ TraceOk cm rsn lv rcl rps nr m'
+| ⟨m'; t⟩ => tget lv (extract t) = S (decisions m') /\ TraceOk cm rsn lv rcl rps nr m'
+end.
+
+(* What propagation keeps: the context agrees with the trail m, its clauses are clauses
+   of f without duplicate literals, and its levels and reasons are those of m. *)
 Record Core (m: PA) (f: CNF) (x: Ctx): Prop := {
   core_vals: ValuesOf (vals x) m;
   core_fresh: Fresh m;
   core_trail: TrailOf (tr x) (tlen x) m;
   core_sound: forall (i: nat) (ls: list Lit), tget (cmap x) i = Some ls -> ClauseOf f ls;
-  core_nodup: forall (i: nat) (ls: list Lit), tget (cmap x) i = Some ls -> NoDup ls
+  core_nodup: forall (i: nat) (ls: list Lit), tget (cmap x) i = Some ls -> NoDup ls;
+  core_dl: dl x = decisions m;
+  core_traced: TraceOk (cmap x) (rsn x) (lvl x) (rcl x) (rps x) (nr x) m
 }.
 
 Section Trail.
@@ -271,6 +342,74 @@ Section Trail.
     - apply in_trail_lits, nth_In. lia.
     - assumption.
   Qed.
+  (* The literals of two trails one after the other. *)
+  Lemma trail_lits_app: forall (m n: PA),
+    trail_lits ⟨m ++ n⟩ = trail_lits m ++ trail_lits n.
+  Proof.
+    intros m n. induction n as [|n IH l|n IH l]; simpl.
+    - now rewrite app_nil_r.
+    - now rewrite IH, app_assoc.
+    - now rewrite IH, app_assoc.
+  Qed.
+
+  (* The trail table holds any prefix of its trail. *)
+  Lemma trail_of_prefix: forall (tr: Table Lit) (tlen: nat) (m n: PA),
+    TrailOf tr tlen ⟨m ++ n⟩ -> TrailOf tr (PA.length m) m.
+  Proof.
+    intros tr tlen m n [Hlen Hnth]. rewrite trail_lits_app, length_app in Hlen. split.
+    - now rewrite trail_lits_length.
+    - intros j Hj. rewrite Hnth.
+      + rewrite trail_lits_app, app_nth1.
+        * reflexivity.
+        * now rewrite trail_lits_length.
+      + rewrite trail_lits_length in Hlen. lia.
+  Qed.
+
+  (* The trail before the decision l of ⟨m; l ++ n⟩ is fresh, and l was unassigned in
+     it. *)
+  Lemma fresh_split: forall (m n: PA) (l: Lit),
+    Fresh ⟨m; l ++ n⟩ -> Fresh m /\ l_eval m l = None.
+  Proof.
+    intros m n l. induction n as [|n IH l'|n IH l']; simpl.
+    - intros Hfresh. assumption.
+    - intros [Hfresh _]. now apply IH.
+    - intros [Hfresh _]. now apply IH.
+  Qed.
+
+  (* The length of two trails one after the other. *)
+  Lemma pa_length_app: forall (m n: PA),
+    PA.length ⟨m ++ n⟩ = PA.length m + PA.length n.
+  Proof.
+    intros m n. induction n as [|n IH l|n IH l]; simpl.
+    - lia.
+    - rewrite IH. lia.
+    - rewrite IH. lia.
+  Qed.
+
+  (* The last literal of a trail is at the end of its table. *)
+  Lemma trail_of_snoc: forall (tr: Table Lit) (tlen: nat) (m m': PA) (t: Lit),
+    trail_lits m' = trail_lits m ++ [t] ->
+    TrailOf tr tlen m' ->
+    tlen = S (PA.length m) /\ tget tr (PA.length m) = t /\ TrailOf tr (PA.length m) m.
+  Proof.
+    intros tr tlen m m' t Hlits [Hlen Hnth].
+    rewrite Hlits, length_app, trail_lits_length in Hlen. simpl in Hlen.
+    split.
+    - lia.
+    - split.
+      + rewrite Hnth.
+        * rewrite Hlits, app_nth2.
+          -- now rewrite trail_lits_length, Nat.sub_diag.
+          -- rewrite trail_lits_length. lia.
+        * lia.
+      + split.
+        * now rewrite trail_lits_length.
+        * intros j Hj. rewrite Hnth.
+          -- rewrite Hlits, app_nth1.
+             ++ reflexivity.
+             ++ now rewrite trail_lits_length.
+          -- lia.
+  Qed.
 End Trail.
 
 (* At every decision of m, the watches are fine up to an empty queue with respect to the
@@ -289,7 +428,8 @@ Definition SameRest (x x': Ctx): Prop :=
     alls x' = alls x /\
   nlits x' = nlits x /\ cur x' = cur x /\ saved x' = saved x /\ dl x' = dl x /\
     mrk x' = mrk x /\
-  nvars x' = nvars x.
+  nvars x' = nvars x /\ rcl x' = rcl x /\ rps x' = rps x /\ nr x' = nr x /\
+    rcap x' = rcap x.
 
 Section Reorder.
   Lemma reordered_refl: forall (cm: ClauseMap), Reordered cm cm.
@@ -447,8 +587,9 @@ Qed.
 
 Lemma same_rest_trans: forall (x1 x2 x3: Ctx), SameRest x1 x2 -> SameRest x2 x3 -> SameRest x1 x3.
 Proof.
-  intros x1 x2 x3 (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10)
-    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9 & G10).
+  intros x1 x2 x3
+    (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13 & H14)
+    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9 & G10 & G11 & G12 & G13 & G14).
   split.
   - now apply reordered_trans with (cmap x2).
   - repeat split; congruence.
@@ -565,6 +706,175 @@ Proof.
   - assumption.
   - assumption.
   - rewrite <- Hhead. now apply (trail_of_in _ (tlen x)).
+Qed.
+
+Section Traces.
+  (* The atom of an unassigned literal is none of the atoms on the trail. *)
+  Lemma undef_atom: forall (m: PA) (l y: Lit),
+    Fresh m -> l_eval m l = None -> y ∈ m -> extract y <> extract l.
+  Proof.
+    intros m l y Hfresh Hl Hy Heq. symmetry in Heq.
+    apply Neg.extract_eq in Heq as [-> | ->].
+    - rewrite fresh_in_true in Hl by assumption. discriminate.
+    - apply l_eval_neg_none_iff in Hl. rewrite fresh_in_true in Hl by assumption.
+      discriminate.
+  Qed.
+
+  (* The levels and reasons of the atoms on the trail do not change when those of
+     another atom do. *)
+  Lemma trace_other: forall (cm: ClauseMap) (rsn: Table Reason) (lv: Table nat)
+    (rcl: Table (list Lit)) (rps: Table nat) (nr: nat) (m: PA) (a: nat) (r: Reason)
+    (k: nat),
+    (forall (y: Lit), y ∈ m -> extract y <> a) ->
+    TraceOk cm rsn lv rcl rps nr m ->
+    TraceOk cm (tset rsn a r) (tset lv a k) rcl rps nr m.
+  Proof.
+    intros cm rsn lv rcl rps nr m a r k.
+    induction m as [|m IH t|m IH t]; intros Hother Htrace.
+    - constructor.
+    - destruct Htrace as (Hlv & Hrsn & Htrace). cbn [TraceOk].
+      assert (Ht: a <> extract t).
+      { intros Heq. apply (Hother t).
+        - now left.
+        - now symmetry. }
+      rewrite !tget_tset_other by assumption. split.
+      + assumption.
+      + split.
+        * assumption.
+        * apply IH.
+          -- intros y Hy. apply Hother. now right.
+          -- assumption.
+    - destruct Htrace as (Hlv & Htrace). cbn [TraceOk].
+      assert (Ht: a <> extract t).
+      { intros Heq. apply (Hother t).
+        - now left.
+        - now symmetry. }
+      rewrite tget_tset_other by assumption. split.
+      + assumption.
+      + apply IH.
+        * intros y Hy. apply Hother. now right.
+        * assumption.
+  Qed.
+
+  (* Justification only depends on the literals, not on their order. *)
+  Lemma justifies_perm: forall (m: PA) (t: Lit) (ls ls': list Lit),
+    Permutation ls ls' -> Justifies m t ls -> Justifies m t ls'.
+  Proof.
+    intros m t ls ls' Hperm [Hin Hrest]. split.
+    - now apply (Permutation_in t Hperm).
+    - intros y Hy Hne. apply Hrest.
+      + apply (Permutation_in y (Permutation_sym Hperm)). assumption.
+      + assumption.
+  Qed.
+
+  (* Reordering the literals of a clause keeps the reasons. *)
+  Lemma trace_reorder: forall (cm: ClauseMap) (rsn: Table Reason) (lv: Table nat)
+    (rcl: Table (list Lit)) (rps: Table nat) (nr: nat) (m: PA) (i: nat)
+    (ls ls': list Lit),
+    tget cm i = Some ls -> Permutation ls ls' ->
+    TraceOk cm rsn lv rcl rps nr m -> TraceOk (tset cm i (Some ls')) rsn lv rcl rps nr m.
+  Proof.
+    intros cm rsn lv rcl rps nr m i ls ls' Hi Hperm.
+    induction m as [|m IH t|m IH t]; intros Htrace.
+    - constructor.
+    - destruct Htrace as (Hlv & Hrsn & Htrace). cbn [TraceOk]. split.
+      + assumption.
+      + split.
+        * destruct (tget rsn (extract t)) as [|j|j]; cbn [ReasonOk] in Hrsn |- *.
+          -- constructor.
+          -- destruct Hrsn as (ls0 & Hj & Hjust). rewrite tget_tset.
+             destruct (Nat.eq_dec i j) as [<- | Hne].
+             ++ exists ls'. split.
+                ** reflexivity.
+                ** rewrite Hi in Hj. injection Hj as <-.
+                   now apply (justifies_perm m t ls).
+             ++ now exists ls0.
+          -- assumption.
+        * now apply IH.
+    - destruct Htrace as (Hlv & Htrace). cbn [TraceOk]. split.
+      + assumption.
+      + now apply IH.
+  Qed.
+End Traces.
+
+(* Core only looks at the values, the trail, the clauses and the levels and reasons. *)
+Lemma core_ext: forall (m: PA) (f: CNF) (x x': Ctx),
+  Core m f x -> vals x' = vals x -> tr x' = tr x -> tlen x' = tlen x ->
+    cmap x' = cmap x -> rsn x' = rsn x -> lvl x' = lvl x -> dl x' = dl x ->
+    rcl x' = rcl x -> rps x' = rps x -> nr x' = nr x -> Core m f x'.
+Proof.
+  intros m f x x' [Hvals Hfresh Htrail Hsound Hnodup Hdl Htrace] Hv Htr Hlen Hcm Hrsn Hlv
+    Hd Hrcl Hrps Hnr. split.
+  - now rewrite Hv.
+  - assumption.
+  - now rewrite Htr, Hlen.
+  - now rewrite Hcm.
+  - now rewrite Hcm.
+  - now rewrite Hd.
+  - now rewrite Hcm, Hrsn, Hlv, Hrcl, Hrps, Hnr.
+Qed.
+
+(* Assigning an unassigned literal with a reason that justifies it appends it to the
+   trail. *)
+Lemma core_assign: forall (m: PA) (f: CNF) (x: Ctx) (l: Lit) (r: Reason),
+  Core m f x -> lookup (vals x) l = None ->
+  ReasonOk (cmap x) (rcl x) (rps x) (nr x) m l r -> Core ⟨m, l⟩ f (assign x l r).
+Proof.
+  intros m f x l r [Hvals Hfresh Htrail Hsound Hnodup Hdl Htrace] Hl Hr.
+  assert (Hundef: l_eval m l = None) by now rewrite <- Hvals.
+  split.
+  - intros y. simpl. now rewrite lookup_add, Hvals.
+  - split.
+    + assumption.
+    + assumption.
+  - now apply trail_of_cons.
+  - assumption.
+  - assumption.
+  - assumption.
+  - cbn [assign cmap rsn lvl rcl rps nr dl TraceOk]. rewrite !tget_tset_same. split.
+    + assumption.
+    + split.
+      * assumption.
+      * apply trace_other.
+        -- intros y Hy. now apply (undef_atom m l y).
+        -- assumption.
+Qed.
+
+(* An input clause whose other literals are false justifies l. *)
+Lemma reason_input: forall (m: PA) (f: CNF) (x: Ctx) (i: nat) (ls: list Lit) (l: Lit),
+  Core m f x -> tget (cmap x) i = Some ls -> In l ls ->
+  (forall (y: Lit), In y ls -> y <> l -> lookup (vals x) y = Some false) ->
+  ReasonOk (cmap x) (rcl x) (rps x) (nr x) m l (input i).
+Proof.
+  intros m f x i ls l Hcore Hi Hl Hothers. exists ls. split.
+  - assumption.
+  - split.
+    + assumption.
+    + intros y Hy Hne. rewrite <- (core_vals m f x Hcore). now apply Hothers.
+Qed.
+
+(* Reordering the literals of a clause keeps it a clause of f without duplicates. *)
+Lemma core_reorder: forall (m: PA) (f: CNF) (x: Ctx) (i: nat) (ls ls': list Lit),
+  Core m f x -> tget (cmap x) i = Some ls -> Permutation ls ls' ->
+    Core m f (set_clause x i ls').
+Proof.
+  intros m f x i ls ls' [Hvals Hfresh Htrail Hsound Hnodup Hdl Htrace] Hi Hperm.
+  split; simpl.
+  - assumption.
+  - assumption.
+  - assumption.
+  - intros j ls'' Hj. rewrite tget_tset in Hj. destruct (Nat.eq_dec i j) as [<-|Hne].
+    + injection Hj as <-. apply clause_of_perm with ls.
+      * now apply (Hsound i).
+      * assumption.
+    + now apply (Hsound j).
+  - intros j ls'' Hj. rewrite tget_tset in Hj. destruct (Nat.eq_dec i j) as [<-|Hne].
+    + injection Hj as <-. apply Permutation_NoDup with ls.
+      * assumption.
+      * now apply (Hnodup i).
+    + now apply (Hnodup j).
+  - assumption.
+  - now apply (trace_reorder (cmap x) _ _ _ _ _ m i ls).
 Qed.
 
 Section VisitSteps.
@@ -695,8 +1005,8 @@ Section VisitSteps.
     VisitInv p kept ws m f (set_clause x i ls').
   Proof.
     intros p i ws kept m f x ls ls'
-      [[Hvals Hfresh Htrail Hsound Hnodup] Hq Hhead Hwatch Hsaved Hlisted Hblocked
-      Hblockers Hkept] Hi Hperm Hsame.
+      [Hcore Hq Hhead Hwatch Hsaved Hlisted Hblocked Hblockers Hkept] Hi Hperm Hsame.
+    pose proof Hcore as [Hvals Hfresh Htrail Hsound Hnodup Hdl Htrace].
     assert (Hclause: forall (j: nat) (ls'': list Lit), tget
       (tset (cmap x) i (Some ls')) j = Some ls'' ->
       (j = i /\ ls'' = ls') \/ (j <> i /\ tget (cmap x) j = Some ls'')).
@@ -704,20 +1014,7 @@ Section VisitSteps.
       + left. now injection Hj as <-.
       + right. now split.
     - split; simpl.
-      + split.
-        * assumption.
-        * assumption.
-        * assumption.
-        * intros j ls'' Hj. destruct (Hclause j ls'' Hj) as [[-> ->]|[_ Hj']].
-          -- apply clause_of_perm with ls.
-             ++ now apply (Hsound i).
-             ++ assumption.
-          -- now apply (Hsound j).
-        * intros j ls'' Hj. destruct (Hclause j ls'' Hj) as [[-> ->]|[_ Hj']].
-          -- apply Permutation_NoDup with ls.
-             ++ assumption.
-             ++ now apply (Hnodup i).
-          -- now apply (Hnodup j).
+      + now apply (core_reorder m f x i ls).
       + assumption.
       + assumption.
       + apply (all_watch_q_reorder _ _ _ i ls).
@@ -753,53 +1050,7 @@ Section VisitSteps.
   Qed.
 End VisitSteps.
 
-(* Core only looks at the values, the trail and the clauses. *)
-Lemma core_ext: forall (m: PA) (f: CNF) (x x': Ctx),
-  Core m f x -> vals x' = vals x -> tr x' = tr x -> tlen x' = tlen x ->
-    cmap x' = cmap x -> Core m f x'.
-Proof.
-  intros m f x x' [Hvals Hfresh Htrail Hsound Hnodup] Hv Htr Hlen Hcm. split.
-  - now rewrite Hv.
-  - assumption.
-  - now rewrite Htr, Hlen.
-  - now rewrite Hcm.
-  - now rewrite Hcm.
-Qed.
 
-(* Assigning an unassigned literal appends it to the trail. *)
-Lemma core_assign: forall (m: PA) (f: CNF) (x: Ctx) (l: Lit) (r: nat),
-  Core m f x -> lookup (vals x) l = None -> Core ⟨m, l⟩ f (assign x l r).
-Proof.
-  intros m f x l r [Hvals Hfresh Htrail Hsound Hnodup] Hl. split.
-  - intros y. simpl. now rewrite lookup_add, Hvals.
-  - split.
-    + assumption.
-    + now rewrite <- Hvals.
-  - now apply trail_of_cons.
-  - assumption.
-  - assumption.
-Qed.
-
-(* Reordering the literals of a clause keeps it a clause of f without duplicates. *)
-Lemma core_reorder: forall (m: PA) (f: CNF) (x: Ctx) (i: nat) (ls ls': list Lit),
-  Core m f x -> tget (cmap x) i = Some ls -> Permutation ls ls' ->
-    Core m f (set_clause x i ls').
-Proof.
-  intros m f x i ls ls' [Hvals Hfresh Htrail Hsound Hnodup] Hi Hperm. split; simpl.
-  - assumption.
-  - assumption.
-  - assumption.
-  - intros j ls'' Hj. rewrite tget_tset in Hj. destruct (Nat.eq_dec i j) as [<-|Hne].
-    + injection Hj as <-. apply clause_of_perm with ls.
-      * now apply (Hsound i).
-      * assumption.
-    + now apply (Hsound j).
-  - intros j ls'' Hj. rewrite tget_tset in Hj. destruct (Nat.eq_dec i j) as [<-|Hne].
-    + injection Hj as <-. apply Permutation_NoDup with ls.
-      * assumption.
-      * now apply (Hnodup i).
-    + now apply (Hnodup j).
-Qed.
 
 Section Swap.
   (* swap_watch finds a literal of ls that is not false, and replaces it by p. *)
@@ -886,6 +1137,12 @@ Section VisitSteps2.
     intros m f x i ls ls' l b Hcore Hi Hperm.
     apply (core_ext m f (set_clause x i ls')).
     - now apply (core_reorder m f x i ls).
+    - reflexivity.
+    - reflexivity.
+    - reflexivity.
+    - reflexivity.
+    - reflexivity.
+    - reflexivity.
     - reflexivity.
     - reflexivity.
     - reflexivity.
@@ -984,12 +1241,14 @@ Section VisitSteps2.
 
   (* Assigning an unassigned literal, which is queued. *)
   Lemma visit_inv_assign: forall (p: Lit) (ws kept: list Watcher) (m: PA) (f: CNF)
-    (x: Ctx) (l: Lit) (r: nat),
+    (x: Ctx) (l: Lit) (r: Reason),
     VisitInv p kept ws m f x -> lookup (vals x) l = None ->
+    ReasonOk (cmap x) (rcl x) (rps x) (nr x) m l r ->
       VisitInv p kept ws ⟨m, l⟩ f (assign x l r).
   Proof.
     intros p ws kept m f x l r
-      [Hcore Hq Hhead Hwatch Hsaved Hlisted Hblocked Hblockers Hkept] Hl. split; simpl.
+      [Hcore Hq Hhead Hwatch Hsaved Hlisted Hblocked Hblockers Hkept] Hl Hr.
+    split; simpl.
     - now apply core_assign.
     - lia.
     - rewrite tget_tset_other.
@@ -1141,7 +1400,8 @@ Proof.
   - now repeat split.
 Qed.
 
-Lemma same_rest_assign: forall (x: Ctx) (l: Lit) (r: nat), SameRest x (assign x l r).
+(* Assigning a literal keeps the rest of the context. *)
+Lemma same_rest_assign: forall (x: Ctx) (l: Lit) (r: Reason), SameRest x (assign x l r).
 Proof.
   intros x l r. split.
   - apply reordered_refl.
@@ -1184,7 +1444,8 @@ Lemma visit_watched_spec: forall (p: Lit) (i: nat) (b: Lit) (rest kept: list Wat
    match swap_watch (vals x1) p ls with
    | Some (r', ls') => visit p rest kept m (move_watch x1 i (o :: r' :: ls') r' o)
    | None           =>
-     if lookup_undef (vals x1) o then visit p rest ((i, o) :: kept) ⟨m, o⟩ (assign x1 o (S i))
+     if lookup_undef (vals x1) o then
+       visit p rest ((i, o) :: kept) ⟨m, o⟩ (assign x1 o (input i))
      else (m, set_watching x1 p (rev_append kept ((i, b) :: rest)), Some i)
    end) = (m', x', r) ->
   VisitOut p m f x1 m' x' r.
@@ -1216,15 +1477,18 @@ Proof.
       (* Unit: propagate o *)
       * assert (Hu': lookup (vals x1) o = None)
           by (unfold lookup_undef in Hu; destruct (lookup (vals x1) o); easy).
-        apply (visit_out_before p m ⟨m, o⟩ m' f x1 (assign x1 o (S i)) x' r).
+        assert (Hothers: forall (y: Lit), In y (o :: p :: ls) -> y <> o ->
+                           lookup (vals x1) y = Some false).
+        { intros y [<-|[<-|Hy]] Hyo.
+          - contradiction.
+          - assumption.
+          - now apply Hfalse. }
+        apply (visit_out_before p m ⟨m, o⟩ m' f x1 (assign x1 o (input i)) x' r).
         -- apply rt_step. apply (visit_unit_step m f x1 i (o :: p :: ls) o).
            ++ apply Hinv.
            ++ assumption.
            ++ now left.
-           ++ intros y [<-|[<-|Hy]] Hyo.
-              ** contradiction.
-              ** assumption.
-              ** now apply Hfalse.
+           ++ assumption.
            ++ assumption.
         -- apply same_rest_assign.
         -- apply incl_set_value.
@@ -1232,7 +1496,14 @@ Proof.
            ++ assumption.
         -- apply (IH ((i, o) :: kept) ⟨m, o⟩ m' _ x' r).
            ++ apply visit_inv_keep with b.
-              ** now apply visit_inv_assign.
+              ** apply visit_inv_assign.
+                 --- assumption.
+                 --- assumption.
+                 --- apply (reason_input m f x1 i (o :: p :: ls) o).
+                     +++ apply Hinv.
+                     +++ assumption.
+                     +++ now left.
+                     +++ assumption.
               ** intros ls' Hi'. simpl in Hi'. rewrite Hi in Hi'. injection Hi' as <-.
                  now left.
               ** apply lookup_add_self.
@@ -1348,25 +1619,30 @@ Definition SameFixed (x x': Ctx): Prop :=
   Reordered (cmap x) (cmap x') /\ shorts x' = shorts x /\ alls x' = alls x /\
     nlits x' = nlits x /\
   cur x' = cur x /\ saved x' = saved x /\ dl x' = dl x /\ mrk x' = mrk x /\
-    nvars x' = nvars x.
+    nvars x' = nvars x /\ rcl x' = rcl x /\ rps x' = rps x /\ nr x' = nr x /\
+  rcap x' = rcap x.
 
 Lemma same_fixed_trans: forall (x1 x2 x3: Ctx), SameFixed x1 x2 -> SameFixed x2 x3 -> SameFixed x1 x3.
 Proof.
-  intros x1 x2 x3 (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9)
-    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9).
+  intros x1 x2 x3 (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13)
+    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9 & G10 & G11 & G12 & G13).
   split.
   - now apply reordered_trans with (cmap x2).
   - repeat split; congruence.
 Qed.
 
 Lemma same_rest_fixed: forall (x x': Ctx), SameRest x x' -> SameFixed x x'.
-Proof. intros x x' (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10). now repeat split. Qed.
+Proof.
+  intros x x' (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13 & H14).
+  now repeat split.
+Qed.
 
 (* The trail of a context is at most nvars long. *)
 Lemma trail_bound: forall (m: PA) (f: CNF) (x: Ctx),
   Core m f x -> WellFormed (state m f) -> S (max_atom_f f) <= nvars x -> tlen x <= nvars x.
 Proof.
-  intros m f x [_ _ [Hlen _] _ _] Hwf Hbound. rewrite Hlen, trail_lits_length. apply well_formed_length_le in Hwf.
+  intros m f x [_ _ [Hlen _] _ _ _ _] Hwf Hbound. rewrite Hlen, trail_lits_length.
+  apply well_formed_length_le in Hwf.
   lia.
 Qed.
 
@@ -1457,7 +1733,7 @@ Proof.
                          *** apply Hout.
         (* The watchers of p are done: move on *)
         -- pose proof (vo_rest _ _ _ _ _ _ _ Hout) as
-             (_ & Hqh & _ & _ & _ & _ & _ & _ & _ & Hnv).
+             (_ & Hqh & _ & _ & _ & _ & _ & _ & _ & Hnv & _).
            assert (Hwf1: WellFormed (state m1 f)).
            ++ apply (derivation_well_formed DPLL_BJ m m1 f f).
               ** apply Hout.
@@ -1505,10 +1781,11 @@ Proof.
 Qed.
 
 (* Assigning an unassigned literal keeps propagation consistent: it is queued. *)
-Lemma prop_inv_assign: forall (m: PA) (f: CNF) (x: Ctx) (l: Lit) (r: nat),
-  PropInv m f x -> lookup (vals x) l = None -> PropInv ⟨m, l⟩ f (assign x l r).
+Lemma prop_inv_assign: forall (m: PA) (f: CNF) (x: Ctx) (l: Lit) (r: Reason),
+  PropInv m f x -> lookup (vals x) l = None ->
+  ReasonOk (cmap x) (rcl x) (rps x) (nr x) m l r -> PropInv ⟨m, l⟩ f (assign x l r).
 Proof.
-  intros m f x l r [Hcore Hq Hwatch Hsaved Hlisted Hblocked] Hl. split.
+  intros m f x l r [Hcore Hq Hwatch Hsaved Hlisted Hblocked] Hl Hr. split.
   - now apply core_assign.
   - simpl. lia.
   - intros j ls Hj. simpl in Hj |- *.
@@ -1600,8 +1877,16 @@ Proof.
                              ---- assumption.
                              ---- intros y [<-|[]]. assumption.
         (* Unassigned: propagate it *)
-        -- destruct (IH ⟨m, a⟩ m' f (assign x a (S i)) x' r) as (Hder & Hrest & Hincl & Hinv' & Hnone & Hsome).
-           ++ now apply prop_inv_assign.
+        -- destruct (IH ⟨m, a⟩ m' f (assign x a (input i)) x' r)
+             as (Hder & Hrest & Hincl & Hinv' & Hnone & Hsome).
+           ++ apply prop_inv_assign.
+              ** assumption.
+              ** assumption.
+              ** apply (reason_input m f x i [a] a).
+                 --- apply Hinv.
+                 --- assumption.
+                 --- now left.
+                 --- intros y [<-|[]] Hne. contradiction.
            ++ intros j ls Hj. apply Hshort. now right.
            ++ assumption.
            ++ split.
@@ -1614,19 +1899,19 @@ Proof.
                      +++ assumption.
                  --- assumption.
               ** split.
-                 --- apply (same_rest_trans _ (assign x a (S i))).
+                 --- apply (same_rest_trans _ (assign x a (input i))).
                      +++ split.
                          *** apply reordered_refl.
                          *** now repeat split.
                      +++ assumption.
                  --- split.
-                     +++ apply incl_trans with (vals (assign x a (S i))).
+                     +++ apply incl_trans with (vals (assign x a (input i))).
                          *** apply incl_set_value.
                              ---- apply incl_refl.
                              ---- assumption.
                          *** assumption.
                      +++ repeat (split; try assumption). intros Hr j ls [<-|Hj] Hj'.
-                         *** apply (reordered_not_empty (cmap (assign x a (S i)))
+                         *** apply (reordered_not_empty (cmap (assign x a (input i)))
                                (cmap x') i [a] ls).
                              ---- apply Hrest.
                              ---- assumption.

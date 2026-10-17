@@ -85,27 +85,27 @@ Definition AtomsBelow (N: nat) (ls: list Lit): Prop :=
   forall (l: Lit), In l ls -> (extract l < N)%nat.
 
 (* The memory m1 during check_clauses, from the memory m of the call: the fields and
-   arrays it reads are in place, and only the marks bm changed since m. *)
-Record ClauseMem (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
+   arrays it reads are in place, and only the marks (b_mrk S) changed since m. *)
+Record ClauseMem (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
   (m1: mem): Prop := {
   cm_nv: Fld m1 (b_s S) 0 Mint32 (vint (Z.of_nat N));
   cm_ncl: Fld m1 (b_s S) 4 Mint32 (vint (Z.of_nat (length lss)));
   cm_cstart: Fld m1 (b_s S) 8 Mptr (Vptr (b_cstart S) Ptrofs.zero);
   cm_clits: Fld m1 (b_s S) 16 Mptr (Vptr (b_clits S) Ptrofs.zero);
-  cm_mrk: Fld m1 (b_s S) 152 Mptr (Vptr bm Ptrofs.zero);
+  cm_mrk: Fld m1 (b_s S) 152 Mptr (Vptr (b_mrk S) Ptrofs.zero);
   cm_starts: Arr m1 (b_cstart S) (Datatypes.S (length lss))
     (fun (i: nat) => Z.of_nat (starts S i));
   cm_lits: Arr m1 (b_clits S) (nclits S) (fun (q: nat) => key (lits S q));
-  cm_frame: Mem.unchanged_on (fun (b: block) (_: Z) => b <> bm) m m1;
+  cm_frame: Mem.unchanged_on (fun (b: block) (_: Z) => b <> (b_mrk S)) m m1;
 }.
 
 (* A store to the marks keeps the memory facts of check_clauses. *)
-Lemma clause_mem_store: forall (m m1 m2: mem) (S: Shape) (bm: block) (N: nat)
+Lemma clause_mem_store: forall (m m1 m2: mem) (S: Shape) (N: nat)
   (lss: list (list Lit)) (ofs: Z) (v: val),
-  NoDup (iblocks S bm) -> ClauseMem m S bm N lss m1 ->
-  Mem.store Mint32 m1 bm ofs v = Some m2 -> ClauseMem m S bm N lss m2.
+  NoDup (iblocks S) -> ClauseMem m S N lss m1 ->
+  Mem.store Mint32 m1 (b_mrk S) ofs v = Some m2 -> ClauseMem m S N lss m2.
 Proof.
-  intros m m1 m2 S bm N lss ofs v Hnd HM Hst. unfold iblocks in Hnd.
+  intros m m1 m2 S N lss ofs v Hnd HM Hst. unfold iblocks in Hnd.
   destruct HM as [Fnv Fncl Fcs Fcl Fm As Al Hun]. constructor.
   - apply (fld_store_other _ _ _ _ _ _ _ _ _ _ Fnv Hst). left. neq Hnd.
   - apply (fld_store_other _ _ _ _ _ _ _ _ _ _ Fncl Hst). left. neq Hnd.
@@ -114,12 +114,13 @@ Proof.
   - apply (fld_store_other _ _ _ _ _ _ _ _ _ _ Fm Hst). left. neq Hnd.
   - apply (arr_store_other _ _ _ _ _ _ _ _ _ As Hst). neq Hnd.
   - apply (arr_store_other _ _ _ _ _ _ _ _ _ Al Hst). neq Hnd.
-  - apply (store_unchanged _ m m1 m2 Mint32 bm ofs v Hun Hst). intros i Hi. now apply Hi.
+  - apply (store_unchanged _ m m1 m2 Mint32 (b_mrk S) ofs v Hun Hst). intros i Hi. now
+    apply Hi.
 Qed.
 
 (* The invariant of the loop over the clauses at i: the temporaries hold s, n = 2 N and
    i; the clauses before i have atoms below N and no literal twice; nothing is marked. *)
-Record ClausesInv (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
+Record ClausesInv (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
   (i: nat) (le: temp_env) (m1: mem): Prop := {
   ki_s: le ! _s = Some (sptr S);
   ki_n: le ! _n = Some (vint (Z.of_nat (2 * N)));
@@ -127,14 +128,14 @@ Record ClausesInv (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit)
   ki_le: (i <= length lss)%nat;
   ki_atoms: forall (i': nat), (i' < i)%nat -> AtomsBelow N (nth i' lss []);
   ki_nodup: forall (i': nat), (i' < i)%nat -> NoDup (nth i' lss []);
-  ki_mem: ClauseMem m S bm N lss m1;
-  ki_marks: exists (tm: nat -> Z), Arr m1 bm (2 * N) tm /\ Marks N tm [];
+  ki_mem: ClauseMem m S N lss m1;
+  ki_marks: exists (tm: nat -> Z), Arr m1 (b_mrk S) (2 * N) tm /\ Marks N tm [];
 }.
 
 (* The invariant of the marking loop of clause i at q: also b and e hold the bounds of
    the clause and q; the literals of the clause before q have atoms below N, are
    distinct, and are the marked ones. *)
-Record MarkInv (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit)) (i q: nat)
+Record MarkInv (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (i q: nat)
   (le: temp_env) (m2: mem): Prop := {
   mi_s: le ! _s = Some (sptr S);
   mi_n: le ! _n = Some (vint (Z.of_nat (2 * N)));
@@ -145,14 +146,14 @@ Record MarkInv (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit)) (
   mi_range: (starts S i <= q <= starts S (Datatypes.S i))%nat;
   mi_atoms: AtomsBelow N (span S (starts S i) q);
   mi_nodup: NoDup (span S (starts S i) q);
-  mi_mem: ClauseMem m S bm N lss m2;
-  mi_marks: exists (tm: nat -> Z), Arr m2 bm (2 * N) tm /\
+  mi_mem: ClauseMem m S N lss m2;
+  mi_marks: exists (tm: nat -> Z), Arr m2 (b_mrk S) (2 * N) tm /\
     Marks N tm (span S (starts S i) q);
 }.
 
 (* After the marking loop: clause i has atoms below N, is without duplicates, and is
    marked. *)
-Record MarkedAll (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit)) (i: nat)
+Record MarkedAll (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (i: nat)
   (le: temp_env) (m2: mem): Prop := {
   ma_s: le ! _s = Some (sptr S);
   ma_n: le ! _n = Some (vint (Z.of_nat (2 * N)));
@@ -161,13 +162,14 @@ Record MarkedAll (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
   ma_e: le ! _e = Some (vint (Z.of_nat (starts S (Datatypes.S i))));
   ma_atoms: AtomsBelow N (nth i lss []);
   ma_nodup: NoDup (nth i lss []);
-  ma_mem: ClauseMem m S bm N lss m2;
-  ma_marks: exists (tm: nat -> Z), Arr m2 bm (2 * N) tm /\ Marks N tm (nth i lss []);
+  ma_mem: ClauseMem m S N lss m2;
+  ma_marks: exists (tm: nat -> Z), Arr m2 (b_mrk S) (2 * N) tm /\ Marks N tm
+    (nth i lss []);
 }.
 
 (* The invariant of the unmarking loop of clause i at q: the literals of the clause from
    q on are the marked ones. *)
-Record UnmarkInv (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
+Record UnmarkInv (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
   (i q: nat) (le: temp_env) (m3: mem): Prop := {
   ui_s: le ! _s = Some (sptr S);
   ui_n: le ! _n = Some (vint (Z.of_nat (2 * N)));
@@ -175,19 +177,19 @@ Record UnmarkInv (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
   ui_e: le ! _e = Some (vint (Z.of_nat (starts S (Datatypes.S i))));
   ui_q: le ! _q = Some (vint (Z.of_nat q));
   ui_range: (starts S i <= q <= starts S (Datatypes.S i))%nat;
-  ui_mem: ClauseMem m S bm N lss m3;
-  ui_marks: exists (tm: nat -> Z), Arr m3 bm (2 * N) tm /\
+  ui_mem: ClauseMem m S N lss m3;
+  ui_marks: exists (tm: nat -> Z), Arr m3 (b_mrk S) (2 * N) tm /\
     Marks N tm (span S q (starts S (Datatypes.S i)));
 }.
 
 (* After the unmarking loop: nothing is marked. *)
-Record ClearedAll (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
+Record ClearedAll (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
   (i: nat) (le: temp_env) (m3: mem): Prop := {
   ca_s: le ! _s = Some (sptr S);
   ca_n: le ! _n = Some (vint (Z.of_nat (2 * N)));
   ca_i: le ! _i = Some (vint (Z.of_nat i));
-  ca_mem: ClauseMem m S bm N lss m3;
-  ca_marks: exists (tm: nat -> Z), Arr m3 bm (2 * N) tm /\ Marks N tm [];
+  ca_mem: ClauseMem m S N lss m3;
+  ca_marks: exists (tm: nat -> Z), Arr m3 (b_mrk S) (2 * N) tm /\ Marks N tm [];
 }.
 
 (* The parts of check_clauses proved in lemmas of their own: the loop over the clauses,
@@ -201,9 +203,9 @@ Definition mark_body: statement := drop_stmts 1 (loop_body mark_loop).
 Definition unmark_loop: statement := first_stmt (drop_stmts 5 clause_part).
 
 (* What the marking loop of clause i ends in: all of it marked, or a return of 0. *)
-Definition MarkPost (m: mem) (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
+Definition MarkPost (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
   (i: nat) (le: temp_env) (m2: mem) (out: outcome): Prop :=
-  (out = Out_normal /\ MarkedAll m S bm N lss i le m2) \/
+  (out = Out_normal /\ MarkedAll m S N lss i le m2) \/
   out = Out_return (Some (vint 0, Ctypesdefs.tint)).
 
 (* The variant of the marking and unmarking loops of clause i. *)
@@ -222,16 +224,16 @@ Definition clause_variant (S: Shape) (i: nat): nat -> nat -> Prop :=
        s->mrk[y] = 1;
        q++;
      {{ MarkInv i (q + 1) }}                                                          *)
-Lemma mark_body_correct: forall (m m2: mem) (S: Shape) (bm: block) (N: nat)
+Lemma mark_body_correct: forall (m m2: mem) (S: Shape) (N: nat)
   (lss: list (list Lit)) (i q: nat) (le: temp_env),
-  NoDup (iblocks S bm) -> Z.of_nat N < 268435456 -> Z.of_nat (nclits S) < 1073741824 ->
+  NoDup (iblocks S) -> Z.of_nat N < 268435456 -> Z.of_nat (nclits S) < 1073741824 ->
   (starts S (Datatypes.S i) <= nclits S)%nat ->
   (forall (q: nat), (q < nclits S)%nat -> key (lits S q) < 1073741824) ->
-  MarkInv m S bm N lss i q le m2 -> (q < starts S (Datatypes.S i))%nat ->
+  MarkInv m S N lss i q le m2 -> (q < starts S (Datatypes.S i))%nat ->
   Exec ge le m2 mark_body
-    (LoopK (clause_variant S i) (MarkInv m S bm N lss i) (MarkPost m S bm N lss i) q).
+    (LoopK (clause_variant S i) (MarkInv m S N lss i) (MarkPost m S N lss i) q).
 Proof.
-  intros m m2 S bm N lss i q le Hnd HN Hncl Hend Hkeys HI Hqlt.
+  intros m m2 S N lss i q le Hnd HN Hncl Hend Hkeys HI Hqlt.
   destruct HI as [Hs2 Hn2 Hi2 Hb2 He2 Hq2 Hqr Hat2 Hnd2 HM2 (tm2 & Am2 & Hm2)].
   pose proof HM2 as HM2'. destruct HM2' as [Fnv2 Fncl2 Fcs2 Fcl2 Fm2 As2 Al2 Hun2].
   unfold mark_body, mark_loop, clause_part, clauses_loop, f_check_clauses.
@@ -290,7 +292,8 @@ Proof.
               ** reflexivity.
               ** ofs. bound.
               ** ofs. cbn [cast_int_int].
-                 destruct (arr_storable m2 bm (2 * N) (lit_key (lits S q)) tm2 1 Am2 Hky)
+                 destruct (arr_storable m2 (b_mrk S) (2 * N) (lit_key (lits S q)) tm2 1
+                   Am2 Hky)
                    as [m3 Hst].
                  exists m3. split.
                  --- apply Hst.
@@ -315,9 +318,10 @@ Proof.
                                   ++++ constructor.
                              ---- intros l Hl [<- | []]. apply existsb_key in Hl.
                                   congruence.
-                         *** apply (clause_mem_store m m2 m3 S bm N lss _ _ Hnd HM2 Hst).
+                         *** apply (clause_mem_store m m2 m3 S N lss _ _ Hnd HM2 Hst).
                          *** eexists. split.
-                             ---- apply (arr_store m2 m3 bm (2 * N) _ tm2 1 Am2 Hky Hst).
+                             ---- apply (arr_store m2 m3 (b_mrk S) (2 * N) _ tm2 1 Am2
+                               Hky Hst).
                              ---- rewrite span_snoc by lia. apply marks_add. assumption.
       * (* the atom is not below N: return 0; *)
         replace (zcmp Cge (key (lits S q)) (Z.of_nat (2 * N))) with true
@@ -336,19 +340,19 @@ Qed.
      {{ MarkedAll i }}
 
    The loop ends: e - q decreases. *)
-Lemma mark_loop_correct: forall (m m1: mem) (S: Shape) (bm: block) (N: nat)
+Lemma mark_loop_correct: forall (m m1: mem) (S: Shape) (N: nat)
   (lss: list (list Lit)) (i: nat) (le: temp_env),
-  NoDup (iblocks S bm) -> Z.of_nat N < 268435456 -> Z.of_nat (nclits S) < 1073741824 ->
+  NoDup (iblocks S) -> Z.of_nat N < 268435456 -> Z.of_nat (nclits S) < 1073741824 ->
   (starts S i <= starts S (Datatypes.S i) <= nclits S)%nat ->
   nth i lss [] = span S (starts S i) (starts S (Datatypes.S i)) ->
   (forall (q: nat), (q < nclits S)%nat -> key (lits S q) < 1073741824) ->
-  MarkInv m S bm N lss i (starts S i) le m1 ->
-  Exec ge le m1 mark_loop (MarkPost m S bm N lss i).
+  MarkInv m S N lss i (starts S i) le m1 ->
+  Exec ge le m1 mark_loop (MarkPost m S N lss i).
 Proof.
-  intros m m1 S bm N lss i le Hnd HN Hncl Hrange Hclause Hkeys HI0.
+  intros m m1 S N lss i le Hnd HN Hncl Hrange Hclause Hkeys HI0.
   unfold mark_loop, clause_part, clauses_loop, f_check_clauses.
   cbn [fn_body drop_stmts first_stmt loop_body]. unfold Swhile.
-  apply exec_loop with (R := clause_variant S i) (I := MarkInv m S bm N lss i)
+  apply exec_loop with (R := clause_variant S i) (I := MarkInv m S N lss i)
     (a := starts S i).
   - apply well_founded_ltof.
   - intros q le2 m2 HI. pose proof HI as HI'.
@@ -368,7 +372,7 @@ Proof.
         replace (zcmp Clt (Z.of_nat q) (Z.of_nat (starts S (Datatypes.S i)))) with true
           by (symmetry; cbn [zcmp]; apply Z.ltb_lt; lia).
         cbv beta iota. apply exec_skip. normal.
-        apply (mark_body_correct m m2 S bm N lss i q le2).
+        apply (mark_body_correct m m2 S N lss i q le2).
         -- assumption.
         -- assumption.
         -- assumption.
@@ -409,21 +413,21 @@ Qed.
      {{ ClearedAll i }}
 
    The loop ends: e - q decreases. *)
-Lemma unmark_loop_correct: forall (m m1: mem) (S: Shape) (bm: block) (N: nat)
+Lemma unmark_loop_correct: forall (m m1: mem) (S: Shape) (N: nat)
   (lss: list (list Lit)) (i: nat) (le: temp_env),
-  NoDup (iblocks S bm) -> Z.of_nat N < 268435456 -> Z.of_nat (nclits S) < 1073741824 ->
+  NoDup (iblocks S) -> Z.of_nat N < 268435456 -> Z.of_nat (nclits S) < 1073741824 ->
   (starts S i <= starts S (Datatypes.S i) <= nclits S)%nat ->
   nth i lss [] = span S (starts S i) (starts S (Datatypes.S i)) ->
   (forall (q: nat), (q < nclits S)%nat -> key (lits S q) < 1073741824) ->
   AtomsBelow N (nth i lss []) -> NoDup (nth i lss []) ->
-  UnmarkInv m S bm N lss i (starts S i) le m1 ->
+  UnmarkInv m S N lss i (starts S i) le m1 ->
   Exec ge le m1 unmark_loop (fun (le': temp_env) (m': mem) (out: outcome) =>
-    out = Out_normal /\ ClearedAll m S bm N lss i le' m').
+    out = Out_normal /\ ClearedAll m S N lss i le' m').
 Proof.
-  intros m m1 S bm N lss i le Hnd HN Hncl Hrange Hclause Hkeys Hat Hndc HI0.
+  intros m m1 S N lss i le Hnd HN Hncl Hrange Hclause Hkeys Hat Hndc HI0.
   unfold unmark_loop, clause_part, clauses_loop, f_check_clauses.
   cbn [fn_body drop_stmts first_stmt loop_body]. unfold Swhile.
-  apply exec_loop with (R := clause_variant S i) (I := UnmarkInv m S bm N lss i)
+  apply exec_loop with (R := clause_variant S i) (I := UnmarkInv m S N lss i)
     (a := starts S i).
   - apply well_founded_ltof.
   - intros q le3 m3 HI. destruct HI as [Hs3 Hn3 Hi3 He3 Hq3 Hqr HM3 (tm3 & Am3 & Hm3)].
@@ -463,7 +467,8 @@ Proof.
         -- reflexivity.
         -- ofs. bound.
         -- ofs. cbn [cast_int_int].
-           destruct (arr_storable m3 bm (2 * N) (lit_key (lits S q)) tm3 0 Am3 Hky)
+           destruct (arr_storable m3 (b_mrk S) (2 * N) (lit_key (lits S q)) tm3 0 Am3
+             Hky)
              as [m4 Hst].
            exists m4. split.
            ++ apply Hst.
@@ -476,9 +481,9 @@ Proof.
                  --- tmp.
                  --- tmp.
                  --- lia.
-                 --- apply (clause_mem_store m m3 m4 S bm N lss _ _ Hnd HM3 Hst).
+                 --- apply (clause_mem_store m m3 m4 S N lss _ _ Hnd HM3 Hst).
                  --- eexists. split.
-                     +++ apply (arr_store m3 m4 bm (2 * N) _ tm3 0 Am3 Hky Hst).
+                     +++ apply (arr_store m3 m4 (b_mrk S) (2 * N) _ tm3 0 Am3 Hky Hst).
                      +++ apply marks_remove.
                          *** rewrite <- span_cons by lia. assumption.
                          *** inversion Hnd3. assumption.
@@ -541,18 +546,18 @@ Qed.
      {{ result = 1 /\ every clause has atoms below N and no literal twice }}
 
    The loops end: length lss - i and starts S (i + 1) - q decrease. *)
-Lemma check_clauses_correct: forall (S: Shape) (bm: block) (N: nat)
+Lemma check_clauses_correct: forall (S: Shape) (N: nat)
   (lss: list (list Lit)) (tm: nat -> Z),
-  {{ m | NoDup (iblocks S bm) /\
+  {{ m | NoDup (iblocks S) /\
          Fld m (b_s S) 0 Mint32 (vint (Z.of_nat N)) /\
          Fld m (b_s S) 4 Mint32 (vint (Z.of_nat (length lss))) /\
          Fld m (b_s S) 8 Mptr (Vptr (b_cstart S) Ptrofs.zero) /\
          Fld m (b_s S) 16 Mptr (Vptr (b_clits S) Ptrofs.zero) /\
-         Fld m (b_s S) 152 Mptr (Vptr bm Ptrofs.zero) /\
+         Fld m (b_s S) 152 Mptr (Vptr (b_mrk S) Ptrofs.zero) /\
          Arr m (b_cstart S) (Datatypes.S (length lss))
            (fun (i: nat) => Z.of_nat (starts S i)) /\
          Arr m (b_clits S) (nclits S) (fun (q: nat) => key (lits S q)) /\
-         Arr m bm (2 * N) tm /\
+         Arr m (b_mrk S) (2 * N) tm /\
          (forall (i: nat), (i < length lss)%nat ->
             (starts S i <= starts S (Datatypes.S i) <= nclits S)%nat /\
             nth i lss [] = span S (starts S i) (starts S (Datatypes.S i))) /\
@@ -566,10 +571,10 @@ Lemma check_clauses_correct: forall (S: Shape) (bm: block) (N: nat)
               (forall (i: nat) (l: Lit), (i < length lss)%nat -> In l (nth i lss []) ->
                  (extract l < N)%nat) /\
               (forall (i: nat), (i < length lss)%nat -> NoDup (nth i lss [])) /\
-              (exists (tm': nat -> Z), Arr m' bm (2 * N) tm' /\ Marks N tm' []) /\
-              Mem.unchanged_on (fun (b: block) (_: Z) => b <> bm) m m') }}.
+              (exists (tm': nat -> Z), Arr m' (b_mrk S) (2 * N) tm' /\ Marks N tm' []) /\
+              Mem.unchanged_on (fun (b: block) (_: Z) => b <> (b_mrk S)) m m') }}.
 Proof.
-  intros S bm N lss tm m (Hnd & Fnv & Fncl & Fcstart & Fclits & Fmrk & Astarts & Alits
+  intros S N lss tm m (Hnd & Fnv & Fncl & Fcstart & Fclits & Fmrk & Astarts & Alits
     & Amrk & Hclauses & HN & Hncl & Hlss & Hkeys & Hm0).
   eapply call_simple.
   - reflexivity.
@@ -581,7 +586,7 @@ Proof.
     (* int n = 2 * s->nv; int i = 0; *)
     run. ints.
     apply exec_loop with (R := ltof nat (fun (i: nat) => length lss - i)%nat)
-      (I := ClausesInv m S bm N lss) (a := 0%nat).
+      (I := ClausesInv m S N lss) (a := 0%nat).
     + apply well_founded_ltof.
     + intros i le1 m1 HI. destruct HI as [Hs Hn Hi Hile Hat Hnd' HM1 (tm1 & Am1 & Hm1)].
       pose proof HM1 as HM1'. destruct HM1' as [Fnv1 Fncl1 Fcs1 Fcl1 Fm1 As1 Al1 Hun1].
@@ -604,8 +609,8 @@ Proof.
            { rewrite add_repr by lia. f_equal. lia. }
            cbv beta iota. run.
            (* The marking loop: all of clause i marked, or a return of 0. *)
-           apply exec_weaken with (Q := MarkPost m S bm N lss i).
-           ++ apply (mark_loop_correct m m1 S bm N lss i).
+           apply exec_weaken with (Q := MarkPost m S N lss i).
+           ++ apply (mark_loop_correct m m1 S N lss i).
               ** assumption.
               ** assumption.
               ** assumption.
@@ -633,8 +638,8 @@ Proof.
                  clear Fnv1 Fncl1 Fcs1 Fcl1 Fm1 As1 Al1 Am1. normal. run.
                  apply exec_weaken
                    with (Q := fun (le: temp_env) (m3: mem) (out: outcome) =>
-                                out = Out_normal /\ ClearedAll m S bm N lss i le m3).
-                 --- apply (unmark_loop_correct m m2 S bm N lss i).
+                                out = Out_normal /\ ClearedAll m S N lss i le m3).
+                 --- apply (unmark_loop_correct m m2 S N lss i).
                      +++ assumption.
                      +++ assumption.
                      +++ assumption.

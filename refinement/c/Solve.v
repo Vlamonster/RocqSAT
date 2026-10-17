@@ -8,21 +8,43 @@ From RocqSAT Require Import Lit Clause CNF Assignment Evaluation State Satisfiab
 From RocqSAT Require Import Strategy.
 From RocqSAT.systems Require Basic DPLL_BJ.
 From RocqSAT Require Import Model.
-From RocqSAT.refinement Require Import Table Lookup Watches Search Propagate Step CStep
-  SolverStep.
+From RocqSAT.refinement Require Import Table Lookup Watches Search Propagate
+  Analysis Step CStep SolverStep.
 From RocqSAT.refinement.c Require Import solver.
 From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Resolve Step.
 Import ListNotations.
 
-(* Resolving a conflict keeps the formula. *)
-Lemma resolve_formula: forall (pm pm': PA) (f f': CNF) (x x': Ctx),
-  resolve pm f x = Some (state pm' f', x') -> f' = f.
+(* Flipping the last decision keeps the formula. *)
+Lemma flip_formula: forall (m' m pm': PA) (f f': CNF) (x x': Ctx) (l: Lit)
+  (mk: Table bool),
+  flip m' m f x l mk = Some (state pm' f', x') -> f' = f.
 Proof.
-  intros pm pm' f f' x x'. unfold resolve.
+  intros m' m pm' f f' x x' l mk. unfold flip.
+  destruct (saved x); intros H.
+  - discriminate.
+  - injection H. congruence.
+Qed.
+
+(* Resolving a conflict keeps the formula: it backjumps or flips the last decision. *)
+Lemma resolve_formula: forall (pm pm': PA) (f f': CNF) (x x': Ctx) (i: nat),
+  resolve pm f x i = Some (state pm' f', x') -> f' = f.
+Proof.
+  intros pm pm' f f' x x' i. unfold resolve.
   destruct (split_last_decision pm) as [[m l]|].
-  - destruct (saved x); intros H.
-    + discriminate.
-    + injection H. congruence.
+  - destruct (analyze x i (dl x) (PA.length m)) as [[ou mk] lt].
+    destruct (clear_marks (lvl x) mk lt ou) as [mk2 mx].
+    destruct ou as [u|].
+    + destruct (mx <? dl x)%nat.
+      * destruct (split_levels (dl x - Datatypes.S mx) pm) as [[[mt d] n]|].
+        -- destruct (skipn (dl x - Datatypes.S mx) (saved x)) as [|c0 st].
+           ++ apply flip_formula.
+           ++ (* the backjump asserts u *)
+              destruct (push_reason (jump x (unassign_segment (vals x) d n)
+                          (PA.length mt) c0 st mx mk2) u lt) as [x1 r].
+              intros H. injection H. congruence.
+        -- apply flip_formula.
+      * apply flip_formula.
+    + apply flip_formula.
   - intros H. discriminate.
 Qed.
 

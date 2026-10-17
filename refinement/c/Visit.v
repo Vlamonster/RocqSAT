@@ -16,12 +16,18 @@ From RocqSAT.refinement.c Require Import Logic Arrays Common Rep LitValue Wpush 
   FindWatch KeepRest.
 Import ListNotations.
 
-(* Whether a visit found a conflict, as C returns it. *)
+(* Whether a visit found a conflict, as C returns it: i + 1 for a conflict on clause i,
+   0 for none. *)
 Definition enc_conf (r: option nat): Z :=
 match r with
-| Some _ => 1
+| Some i => Z.of_nat i + 1
 | None   => 0
 end.
+
+(* C computes the result i + 1 of a conflict on clause i. *)
+Lemma enc_conf_some: forall (i: nat),
+  Int.add (Int.repr (Z.of_nat i)) (Int.repr 1) = Int.repr (enc_conf (Some i)).
+Proof. intros i. apply add_repr. Qed.
 
 (* Moving a watch is setting the clause, then appending to the watch list of the new
    watch. *)
@@ -70,12 +76,15 @@ Section Lists.
 End Lists.
 
 (* What visit returns: -1 when out of room, or what visit_t computes on the watch list
-   of p, 1 on a conflict or 0, with the memory representing the context it reaches. *)
+   of p, i + 1 on a conflict on clause i or 0, with the memory representing the context
+   it reaches; a conflict is on one of the clauses lss. *)
 Definition VisitPost (S: Shape) (N: nat) (lss: list (list Lit)) (lims: list nat)
   (x: Ctx) (p: Lit) (m': mem) (v: val): Prop :=
   v = vint (-1) \/
   (v = vint (enc_conf (snd (visit_t p (watching (wls x) p) [] x))) /\
-   Rep m' S N lss (fst (visit_t p (watching (wls x) p) [] x)) lims).
+   Rep m' S N lss (fst (visit_t p (watching (wls x) p) [] x)) lims /\
+   forall (i: nat), snd (visit_t p (watching (wls x) p) [] x) = Some i ->
+     (i < length lss)%nat).
 
 (* The invariant of the loop at position k: the watchers before k are visited, and what
    remains of visit_t is the visit of those from k on. After the body for position k,
@@ -206,7 +215,7 @@ Lemma visit_keep_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
   (lims: list nat) (x: Ctx) (p: Lit) (k: nat) (kept: list Watcher) (xc: Ctx) (t: nat -> Z)
   (i: nat) (b: Lit) (tw1 tw2: ident) (rest: statement) (le: temp_env) (m: mem)
   (Q: temp_env -> mem -> outcome -> Prop),
-  (tw1 = _t'26 /\ tw2 = _t'25) \/ (tw1 = _t'11 /\ tw2 = _t'10) ->
+  (tw1 = _t'24 /\ tw2 = _t'23) \/ (tw1 = _t'9 /\ tw2 = _t'8) ->
   VisitTemps S x p (length kept) k le -> le ! _i = Some (vint (Z.of_nat i)) ->
   le ! _kb = Some (vint (key b)) -> VisitMem S N lss lims x p k kept xc t m ->
   (k < length (watching (wls x) p))%nat -> (i < length lss)%nat -> (extract b < N)%nat ->
@@ -222,8 +231,8 @@ Proof.
     Hb Hrest.
   pose proof (visit_room S N lss lims x p k kept xc t m HM) as (Hcap & Hroom & Hsmall).
   pose proof HM as [_ Hle HRep Apool _ _ _ _ _].
-  pose proof (key_small b N Hb (r_n _ _ _ _ _ _ HRep)) as Hkey.
-  pose proof (r_wpool _ _ _ _ _ _ HRep) as Fwpool.
+  pose proof (key_small b N Hb (r_n _ _ _ _ _ _ _ HRep)) as Hkey.
+  pose proof (r_wpool _ _ _ _ _ _ _ HRep) as Fwpool.
   destruct (watcher_entry (offs S (lit_key p)) (length kept) ltac:(lia)) as [Hej Hej1].
   assert (Hlt: (2 * (offs S (lit_key p) + length kept) + 1 < 2 * npool S)%nat) by lia.
   unfold keep_stmt. pose proof HT as [Hs Hpk Hbase Hn Hj Hk].
@@ -262,7 +271,7 @@ Proof.
       pose proof (arr_store _ _ _ _ (2 * (offs S (lit_key p) + length kept)) _ _ Apool
                     ltac:(lia) Hst1) as Apool1.
       pose proof (rep_store_pool m m1 S N lss xc lims _ _ HRep Hst1) as HRep1.
-      pose proof (Rep.r_wpool _ _ _ _ _ _ HRep1) as Fwpool1.
+      pose proof (Rep.r_wpool _ _ _ _ _ _ _ HRep1) as Fwpool1.
       pose proof HT2 as [Hs2 Hpk2 Hbase2 Hn2 Hj2 Hk2].
       (* s->wpool[base + 2 * j + 1] = kb; *)
       run. fold le2. eapply exec_store.
@@ -313,7 +322,7 @@ Proof.
   destruct ob as [b|].
   - (* keep the watcher with blocker b *)
     pose proof (Hob b eq_refl) as Hb.
-    pose proof (key_small b N Hb (r_n _ _ _ _ _ _ HRep)) as Hkey.
+    pose proof (key_small b N Hb (r_n _ _ _ _ _ _ _ HRep)) as Hkey.
     eapply (exec_if_cmp _ _ _ Cge _ _ (key b) 0).
     + ev.
     + ev.
@@ -324,7 +333,7 @@ Proof.
     + replace (zcmp Cge (key b) 0) with true by
         (symmetry; cbn [zcmp]; apply Z.leb_le; lia).
       cbv beta iota.
-      apply (visit_keep_correct S N lss lims x p k kept xc t i b _t'11 _t'10).
+      apply (visit_keep_correct S N lss lims x p k kept xc t i b _t'9 _t'8).
       * right. split.
         -- reflexivity.
         -- reflexivity.
@@ -393,7 +402,7 @@ Definition visit_rest (p: Lit) (ws: list Watcher) (k: nat) (kept: list Watcher) 
   | None          =>
     if lookup_undef (vals x1) o
     then visit_t p (skipn (Datatypes.S k) ws) ((i, o) :: kept)
-      (assign x1 o (Datatypes.S i))
+      (assign x1 o (input i))
     else (set_watching x1 p (rev_append kept (skipn k ws)), Some i)
   end.
 
@@ -402,12 +411,15 @@ Definition visit_rest (p: Lit) (ws: list Watcher) (k: nat) (kept: list Watcher) 
 
      {{ ClauseAt k kept x1 /\ o in the temporaries }}
        if (lit_value(s, o) == 0) {                                (lit_value_correct)
-         if (!assign(s, o)) return -1;                               (assign_correct)
+         if (!assign(s, o, i + 1)) return -1;                        (assign_correct)
      {{ result = -1 (out of room) }}
          kb = o;
-     {{ visit_chosen k with assign x1 o (i + 1), kb = o }}
-       } else return keep_rest(s, p, j, k, n);                    (keep_rest_correct)
-     {{ result = 1 /\ VisitPost }}                                                   *)
+     {{ visit_chosen k with assign x1 o (input i), kb = o }}
+       } else {
+         keep_rest(s, p, j, k, n);                                (keep_rest_correct)
+         return i + 1;
+     {{ result = i + 1 /\ VisitPost }}
+       }                                                   *)
 Lemma visit_unit_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
   (lims: list nat) (x: Ctx) (p: Lit) (k: nat) (kept: list Watcher) (x1: Ctx) (t: nat -> Z)
   (i: nat) (o: Lit) (le: temp_env) (m: mem),
@@ -416,14 +428,14 @@ Lemma visit_unit_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
   visit_t p (watching (wls x) p) [] x =
     (if lookup_undef (vals x1) o
      then visit_t p (skipn (Datatypes.S k) (watching (wls x) p)) ((i, o) :: kept)
-            (assign x1 o (Datatypes.S i))
+            (assign x1 o (input i))
      else (set_watching x1 p (rev_append kept (skipn k (watching (wls x) p))), Some i)) ->
   Exec ge le m visit_unit (SeqK ge visit_tail (VisitK S N lss lims x p k)).
 Proof.
   intros S N lss lims x p k kept x1 t i o le m [HT Hi Hkb Hb He HM Hkn Hi_lt] Ho Ho_lt
     Hvisit.
   pose proof HM as [_ _ HRep Apool _ _ _ _ _].
-  pose proof (key_small o N Ho_lt (r_n _ _ _ _ _ _ HRep)) as Hko.
+  pose proof (key_small o N Ho_lt (r_n _ _ _ _ _ _ _ HRep)) as Hko.
   pose proof HT as [Hs Hpk Hbase Hn Hj Hk].
   unfold visit_unit, visit_search, visit_test, visit_watch, visit_len, visit_slow,
     visit_body, visit_loop, f_visit.
@@ -441,13 +453,17 @@ Proof.
     + apply enc_small.
     + unfold Small. lia.
     + cbn [zcmp]. rewrite enc_undef. destruct (lookup_undef (vals x1) o) eqn:Hundef.
-      * (* o is unassigned: if (!assign(s, o)) return -1; *)
-        cbv beta iota. run. call assign_fun. eapply call_weaken.
-        -- apply (assign_correct S N lss x1 lims o (Datatypes.S i) t m). split.
+      * (* o is unassigned: if (!assign(s, o, i + 1)) return -1; *)
+        cbv beta iota. run. call assign_fun. cbn [cast_int_int].
+        rewrite (add_repr (Z.of_nat i) 1).
+        eapply call_weaken.
+        -- apply (assign_correct S N lss x1 lims o (input i) t m). split.
            ++ assumption.
            ++ split.
               ** assumption.
-              ** assumption.
+              ** split.
+                 --- assumption.
+                 --- assumption.
         -- intros m1 v Hv. normal. destruct Hv as [-> | (-> & HRep1 & Apool1)].
            ++ (* out of room *)
               eapply (exec_if_int _ _ _ _ 1).
@@ -466,7 +482,7 @@ Proof.
               ** unfold Small. lia.
               ** change (negb (Z.eqb 0 0)) with false. cbv beta iota. apply exec_skip.
                  normal. run. apply visit_tail_correct.
-                 exists kept, (assign x1 o (Datatypes.S i)), t, i, (Some o). split.
+                 exists kept, (assign x1 o (input i)), t, i, (Some o). split.
                  --- constructor; tmp.
                  --- split.
                      +++ tmp.
@@ -487,16 +503,19 @@ Proof.
                                             ----- intros b' Heq. injection Heq as <-.
                                                   assumption.
                                             ----- assumption.
-      * (* o is false: a conflict, return keep_rest(s, p, j, k, n); *)
+      * (* o is false: a conflict, keep_rest(s, p, j, k, n); return i + 1; *)
         cbv beta iota. run. call keep_rest_fun. eapply call_weaken.
         -- apply (keep_rest_correct S N lss lims x p k kept x1 t m). assumption.
-        -- intros m' v [-> HRep']. normal. eapply exec_return.
+        -- intros m' v HRep'. normal. eapply exec_return.
            ++ ev.
-           ++ ret. exists (vint 1). split.
+           ++ ret. cbn [cast_int_int]. rewrite enc_conf_some.
+              exists (vint (enc_conf (Some i))). split.
               ** apply result_int.
-              ** right. rewrite Hvisit. cbn [fst snd enc_conf]. split.
+              ** right. rewrite Hvisit. cbn [fst snd]. split.
                  --- reflexivity.
-                 --- assumption.
+                 --- split.
+                     +++ assumption.
+                     +++ intros i' Heq. injection Heq as <-. assumption.
 Qed.
 
 (* The new clause after the watch moves from p, second, to r, at position d >= 2. *)
@@ -537,14 +556,14 @@ Proof.
   intros S N lss lims x p k kept x1 t i o ls d le m [HT Hi Hkb Hb He HM Hkn Hi_lt] Ho Hq
     Hcls Hd Ho_lt Hvisit.
   pose proof HM as [Hp _ HRep Apool Hpool _ _ [extra Hext] _].
-  pose proof (r_n _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_nodup _ _ _ _ _ _ HRep) as Hnd.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
   pose proof (key_small p N Hp HN) as Hkp.
   pose proof (key_small o N Ho_lt HN) as Hko.
-  pose proof (r_clits _ _ _ _ _ _ HRep) as Fclits.
-  pose proof (r_nclits_small _ _ _ _ _ _ HRep) as Hnclits.
-  pose proof (a_lits _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
-  destruct (r_starts _ _ _ _ _ _ HRep i Hi_lt) as [Hsi Hsn].
+  pose proof (r_clits _ _ _ _ _ _ _ HRep) as Fclits.
+  pose proof (r_nclits_small _ _ _ _ _ _ _ HRep) as Hnclits.
+  pose proof (a_lits _ _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
+  destruct (r_starts _ _ _ _ _ _ _ HRep i Hi_lt) as [Hsi Hsn].
   (* r, literal d of the clause, is literal d - 2 of ls *)
   set (r := nth (d - 2) ls (Pos 0%nat)) in *.
   assert (Hr_nth: nth d (o :: p :: ls) (Pos 0%nat) = r).
@@ -583,8 +602,8 @@ Proof.
                     ltac:(cbn [length]; lia) Hr_lt Hst1) as HRep1.
       cbn [set_nth firstn skipn app] in HRep1.
       pose proof (arr_store_other _ _ _ _ _ _ _ _ _ Apool Hst1 ltac:(neq Hnd)) as Apool1.
-      pose proof (Rep.r_clits _ _ _ _ _ _ HRep1) as Fclits1.
-      pose proof (Rep.a_lits _ _ _ _ _ _ HRep1) as (tl1 & Alits1 & _).
+      pose proof (Rep.r_clits _ _ _ _ _ _ _ HRep1) as Fclits1.
+      pose proof (Rep.a_lits _ _ _ _ _ _ _ HRep1) as (tl1 & Alits1 & _).
       keep_mem m1.
       (* s->clits[q] = p; *)
       run. eapply exec_store.
@@ -703,9 +722,9 @@ Proof.
   intros S N lss lims x p k kept x1 t i o ls le m HC Ho Hcls Ho_lt Hnt Hvisit.
   pose proof HC as [HT Hi Hkb Hb He HM Hkn Hi_lt].
   pose proof HM as [_ _ HRep _ _ _ _ _ _].
-  pose proof (r_nclits_small _ _ _ _ _ _ HRep) as Hnclits.
-  destruct (r_starts _ _ _ _ _ _ HRep i Hi_lt) as [Hsi Hsn].
-  pose proof (a_lits _ _ _ _ _ _ HRep) as (tl & _ & Hclauses).
+  pose proof (r_nclits_small _ _ _ _ _ _ _ HRep) as Hnclits.
+  destruct (r_starts _ _ _ _ _ _ _ HRep i Hi_lt) as [Hsi Hsn].
+  pose proof (a_lits _ _ _ _ _ _ _ HRep) as (tl & _ & Hclauses).
   pose proof
     (clause_length m S N lss x1 lims tl i (o :: p :: ls) Hclauses Hi_lt Hcls) as Hlen.
   pose proof HT as [Hs Hpk Hbase Hn Hj Hk].
@@ -804,7 +823,7 @@ Proof.
   intros S N lss lims x p k kept x1 t i o ls le m HC Ho Hcls Ho_lt Hvisit.
   pose proof HC as [HT Hi Hkb Hb He HM Hkn Hi_lt].
   pose proof HM as [_ _ HRep _ _ _ _ _ _].
-  pose proof (key_small o N Ho_lt (r_n _ _ _ _ _ _ HRep)) as Hko.
+  pose proof (key_small o N Ho_lt (r_n _ _ _ _ _ _ _ HRep)) as Hko.
   pose proof HT as [Hs Hpk Hbase Hn Hj Hk].
   unfold visit_test, visit_watch, visit_len, visit_slow, visit_body, visit_loop, f_visit.
   cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
@@ -880,12 +899,12 @@ Proof.
   intros S N lss lims x p k kept xc t i c0 c1 ls le m HC Hcls Hvisit.
   pose proof HC as [HT Hi Hkb Hb He HM Hkn Hi_lt].
   pose proof HM as [Hp _ HRep Apool _ _ _ _ _].
-  pose proof (r_n _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_nodup _ _ _ _ _ _ HRep) as Hnd.
-  pose proof (r_nclits_small _ _ _ _ _ _ HRep) as Hnclits.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
+  pose proof (r_nclits_small _ _ _ _ _ _ _ HRep) as Hnclits.
   pose proof (key_small p N Hp HN) as Hkp.
-  pose proof (r_clits _ _ _ _ _ _ HRep) as Fclits.
-  pose proof (a_lits _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
+  pose proof (r_clits _ _ _ _ _ _ _ HRep) as Fclits.
+  pose proof (a_lits _ _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
   (* The first two literals of the clause, at b and b + 1 *)
   destruct (clause_lit m S N lss xc lims tl i 0 (c0 :: c1 :: ls) HRep Hclauses Hi_lt Hcls)
     as (Hpos0 & Htl0 & Hc0).
@@ -933,8 +952,8 @@ Proof.
            cbn [set_nth firstn skipn app] in HRep1.
            pose proof
              (arr_store_other _ _ _ _ _ _ _ _ _ Apool Hst1 ltac:(neq Hnd)) as Apool1.
-           pose proof (Rep.r_clits _ _ _ _ _ _ HRep1) as Fclits1.
-           pose proof (Rep.a_lits _ _ _ _ _ _ HRep1) as (tl1 & Alits1 & _).
+           pose proof (Rep.r_clits _ _ _ _ _ _ _ HRep1) as Fclits1.
+           pose proof (Rep.a_lits _ _ _ _ _ _ _ HRep1) as (tl1 & Alits1 & _).
            keep_mem m1.
            run. eapply exec_store.
            ++ evl.
@@ -966,8 +985,9 @@ Proof.
                    - reflexivity. }
                  assert (Hcls2: tget (cmap x1) i = Some (c1 :: p :: ls)) by apply
                    tget_tset_same.
-                 pose proof (Rep.r_clits _ _ _ _ _ _ HRep2) as Fclits2.
-                 pose proof (Rep.a_lits _ _ _ _ _ _ HRep2) as (tl2 & Alits2 & Hclauses2).
+                 pose proof (Rep.r_clits _ _ _ _ _ _ _ HRep2) as Fclits2.
+                 pose proof (Rep.a_lits _ _ _ _ _ _ _ HRep2)
+                   as (tl2 & Alits2 & Hclauses2).
                  destruct (clause_lit m2 S N lss x1 lims tl2 i 1
                    (c1 :: p :: ls) HRep2 Hclauses2
                              Hi_lt Hcls2) as (_ & Htl2 & _).
@@ -1064,8 +1084,11 @@ Qed.
        kb = -1; int b = s->cstart[i]; int e = s->cstart[i + 1];
      {{ ClauseAt k kept xc }}
        if (e - b == 1) {
-         if (s->clits[b] == p) return keep_rest(s, p, j, k, n);   (keep_rest_correct)
-     {{ result = 1 /\ VisitPost: the unit clause [p] is false }}
+         if (s->clits[b] == p) {
+           keep_rest(s, p, j, k, n);                              (keep_rest_correct)
+           return i + 1;
+     {{ result = i + 1 /\ VisitPost: the unit clause [p] is false }}
+         }
        } else if (e - b >= 2) ...                                (visit_watch_correct)
      {{ visit_chosen k, dropped: a short clause that does not watch p }}
        if (kb >= 0) ...; k++;                                    (visit_tail_correct) *)
@@ -1082,14 +1105,14 @@ Lemma visit_slow_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
 Proof.
   intros S N lss lims x p k kept xc t i b le m HT Hi HM Hkn Hnth Hnt Hi_lt Hvisit.
   pose proof HM as [Hp _ HRep _ _ _ _ _ _].
-  pose proof (r_n _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_lss_small _ _ _ _ _ _ HRep) as Hlss.
-  pose proof (r_nclits_small _ _ _ _ _ _ HRep) as Hnclits.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_lss_small _ _ _ _ _ _ _ HRep) as Hlss.
+  pose proof (r_nclits_small _ _ _ _ _ _ _ HRep) as Hnclits.
   pose proof (key_small p N Hp HN) as Hkp.
-  pose proof (r_cstart _ _ _ _ _ _ HRep) as Fcstart.
-  pose proof (a_starts _ _ _ _ _ _ HRep) as Astarts.
-  pose proof (a_lits _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
-  destruct (r_starts _ _ _ _ _ _ HRep i Hi_lt) as [Hsi Hsn].
+  pose proof (r_cstart _ _ _ _ _ _ _ HRep) as Fcstart.
+  pose proof (a_starts _ _ _ _ _ _ _ HRep) as Astarts.
+  pose proof (a_lits _ _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
+  destruct (r_starts _ _ _ _ _ _ _ HRep i Hi_lt) as [Hsi Hsn].
   pose proof (proj2 Hclauses i Hi_lt) as Hcls.
   set (cls := map (fun (q: nat) => lit_of (tl q))
                 (seq (starts S i) (starts S (Datatypes.S i) - starts S i))) in Hcls.
@@ -1177,7 +1200,7 @@ Proof.
       { cbn [length]. lia. }
       cbn [nth] in Htl0, Hc0. rewrite Nat.add_0_r in Htl0, Hpos0.
       pose proof (key_small c0 N Hc0 HN) as Hkc0.
-      pose proof (r_clits _ _ _ _ _ _ HRep) as Fclits.
+      pose proof (r_clits _ _ _ _ _ _ _ HRep) as Fclits.
       run. rewrite Htl0. eapply (exec_if_cmp _ _ _ Ceq).
       * ev.
       * ev.
@@ -1186,16 +1209,19 @@ Proof.
       * unfold Small. lia.
       * unfold Small. lia.
       * cbn [zcmp]. rewrite key_eqb. destruct (c0 =? p) eqn:Hc0p.
-        -- (* a conflict: return keep_rest(s, p, j, k, n); *)
+        -- (* a conflict: keep_rest(s, p, j, k, n); return i + 1; *)
            cbv beta iota. run. call keep_rest_fun. eapply call_weaken.
            ++ apply (keep_rest_correct S N lss lims x p k kept xc t m). assumption.
-           ++ intros m' v [-> HRep']. normal. eapply exec_return.
+           ++ intros m' v HRep'. normal. eapply exec_return.
               ** ev.
-              ** ret. exists (vint 1). split.
+              ** ret. cbn [cast_int_int]. rewrite enc_conf_some.
+                 exists (vint (enc_conf (Some i))). split.
                  --- apply result_int.
-                 --- right. rewrite Hvisit. cbn [fst snd enc_conf]. split.
+                 --- right. rewrite Hvisit. cbn [fst snd]. split.
                      +++ reflexivity.
-                     +++ assumption.
+                     +++ split.
+                         *** assumption.
+                         *** intros i' Heq. injection Heq as <-. assumption.
         -- (* [c0] does not watch p: dropped *)
            cbv beta iota. apply exec_skip. normal. apply visit_tail_correct.
            exists kept, xc, t, i, None. split.
@@ -1257,8 +1283,8 @@ Proof.
   pose proof (visit_room S N lss lims x p k kept xc t m HM) as (Hcap & Hroom & Hsmall).
   pose proof (vm_le _ _ _ _ _ _ _ _ _ _ _ HM) as Hle.
   pose proof HM as [Hp _ HRep Apool _ _ Hback _ _].
-  pose proof (r_n _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_wpool _ _ _ _ _ _ HRep) as Fwpool.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_wpool _ _ _ _ _ _ _ HRep) as Fwpool.
   destruct (visit_watcher S N lss lims x p k kept xc t m k HM Hkn) as [Hi_lt Hb_lt].
   destruct (Hback k) as [Hk1 Hk2].
   { lia. }
@@ -1286,7 +1312,7 @@ Proof.
     + cbn [zcmp]. rewrite enc_true. destruct (lookup_true (vals xc) b) eqn:Htrue.
       * (* the blocker is true: keep the watcher; j++; k++; continue; *)
         cbv beta iota.
-        apply (visit_keep_correct S N lss lims x p k kept xc t i b _t'26 _t'25).
+        apply (visit_keep_correct S N lss lims x p k kept xc t i b _t'24 _t'23).
         -- left. split.
            ++ reflexivity.
            ++ reflexivity.
@@ -1375,10 +1401,10 @@ Proof.
         cbv beta iota. apply exec_break. abrupt. apply loopk_break. normal.
         pose proof HM as [Hp _ HRep _ _ _ _ _ _].
         pose proof (lit_key_lt p N Hp) as HP.
-        pose proof (key_small p N Hp (r_n _ _ _ _ _ _ HRep)) as Hkp.
+        pose proof (key_small p N Hp (r_n _ _ _ _ _ _ _ HRep)) as Hkp.
         pose proof Hkp as Hkp'. unfold key in Hkp'.
-        pose proof (r_wlen _ _ _ _ _ _ HRep) as Fwlen.
-        pose proof (a_wlen _ _ _ _ _ _ HRep) as Awlen.
+        pose proof (r_wlen _ _ _ _ _ _ _ HRep) as Fwlen.
+        pose proof (a_wlen _ _ _ _ _ _ _ HRep) as Awlen.
         unfold visit_end, f_visit. cbn [fn_body drop_stmts].
         run. eapply exec_store.
         -- evl.
@@ -1399,9 +1425,11 @@ Proof.
                      cbn [visit_t fst snd enc_conf].
                      split.
                      +++ reflexivity.
-                     +++ apply (visit_mem_finish S N lss lims x p k kept xc t m1 m2).
-                         *** assumption.
-                         *** assumption.
+                     +++ split.
+                         *** apply (visit_mem_finish S N lss lims x p k kept xc t m1 m2).
+                             ---- assumption.
+                             ---- assumption.
+                         *** intros i Heq. discriminate.
   - assumption.
 Qed.
 
@@ -1413,26 +1441,29 @@ Qed.
        while (k < n) { ... }                                     (visit_loop_correct)
        s->wlen[p] = j; return 0;
      {{ result = -1 (out of room) \/
-        result = enc_conf r /\ Rep x' lims, where visit_t gives (x', r) }}         *)
+        result = enc_conf r /\ Rep x' lims /\ (r = Some i -> i < length lss),
+        where visit_t gives (x', r) }}         *)
 Lemma visit_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
   (lims: list nat) (p: Lit),
   {{ m | Rep m S N lss x lims /\ (extract p < N)%nat }}
     f_visit(sptr S, vint (key p))
   {{ m', v | v = vint (-1) \/
              (v = vint (enc_conf (snd (visit_t p (watching (wls x) p) [] x))) /\
-              Rep m' S N lss (fst (visit_t p (watching (wls x) p) [] x)) lims) }}.
+              Rep m' S N lss (fst (visit_t p (watching (wls x) p) [] x)) lims /\
+              forall (i: nat), snd (visit_t p (watching (wls x) p) [] x) = Some i ->
+                (i < length lss)%nat) }}.
 Proof.
   intros S N lss x lims p m [[HRep (t0 & Apool0 & Hpool0)] Hp].
-  pose proof (key_small p N Hp (r_n _ _ _ _ _ _ HRep)) as Hkp.
+  pose proof (key_small p N Hp (r_n _ _ _ _ _ _ _ HRep)) as Hkp.
   pose proof (lit_key_lt p N Hp) as HP.
   eapply call_simple.
   - reflexivity.
   - reflexivity.
   - unfold f_visit. cbn [fn_body fn_return].
-    pose proof (r_woff _ _ _ _ _ _ HRep) as Fwoff.
-    pose proof (r_wlen _ _ _ _ _ _ HRep) as Fwlen.
-    pose proof (a_woff _ _ _ _ _ _ HRep) as Awoff.
-    pose proof (a_wlen _ _ _ _ _ _ HRep) as Awlen.
+    pose proof (r_woff _ _ _ _ _ _ _ HRep) as Fwoff.
+    pose proof (r_wlen _ _ _ _ _ _ _ HRep) as Fwlen.
+    pose proof (a_woff _ _ _ _ _ _ _ HRep) as Awoff.
+    pose proof (a_wlen _ _ _ _ _ _ _ HRep) as Awlen.
     assert (Hbase: Int.mul (Int.repr 2) (Int.repr (Z.of_nat (offs S (lit_key p))))
                    = Int.repr (Z.of_nat (2 * offs S (lit_key p)))).
     { rewrite mul_repr. f_equal. lia. }

@@ -6,7 +6,7 @@ From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
 From RocqSAT Require Import Lit.
 From RocqSAT.refinement Require Import Table Lookup Watches Propagate Step CStep.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Wpush Visit.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Wpush.
 Import ListNotations.
 Local Open Scope nat_scope.
 
@@ -121,9 +121,10 @@ end.
 
 (* The context while indexing clause k: all clauses known, the first k watched, nothing
    assigned. *)
-Definition ictx (lss: list (list Lit)) (alls: Table Lit) (nl N k: nat): Ctx :=
+Definition ictx (lss: list (list Lit)) (alls: Table Lit) (nl N rc k: nat): Ctx :=
 mkCtx (tmake None) (icm (idx lss (length lss))) (iwl (idx lss k)) (tmake (Pos 0)) 0 0 []
-  alls nl 0 [] (tmake 0) (tmake 0) 0 (tmake false) (tmake None) N.
+  alls nl 0 [] (tmake no_reason) (tmake 0) 0 (tmake false) (tmake None) N (tmake [])
+  (tmake 0) 0 rc.
 
 Section Facts.
   Context (lss: list (list Lit)).
@@ -188,14 +189,14 @@ Section Facts.
 End Facts.
 
 (* Indexing clause k: its first literals watch it. *)
-Lemma ictx_step: forall (lss: list (list Lit)) (alls: Table Lit) (nl N k: nat),
+Lemma ictx_step: forall (lss: list (list Lit)) (alls: Table Lit) (nl N rc k: nat),
   (k < length lss)%nat ->
-  ictx lss alls nl N (Datatypes.S k) =
+  ictx lss alls nl N rc (Datatypes.S k) =
   mkCtx (tmake None) (icm (idx lss (length lss)))
     (watch_first (iwl (idx lss k)) k (nth k lss [])) (tmake (Pos 0)) 0 0 [] alls nl 0 []
-    (tmake 0) (tmake 0) 0 (tmake false) (tmake None) N.
+    (tmake no_reason) (tmake 0) 0 (tmake false) (tmake None) N (tmake []) (tmake 0) 0 rc.
 Proof.
-  intros lss alls nl N k Hk. unfold ictx. rewrite (idx_snoc lss k Hk). reflexivity.
+  intros lss alls nl N rc k Hk. unfold ictx. rewrite (idx_snoc lss k Hk). reflexivity.
 Qed.
 
 (* The parts of index_clauses proved in lemmas of their own: the loop, its body after the
@@ -222,36 +223,36 @@ Definition push_stmt (tr ta tb: ident): statement :=
 (* The invariant of the loop of index_clauses at clause k: the temporaries hold s, k and
    the number ns of short clauses among the first k, the memory represents the context
    with the first k clauses watched, and the array ts holds their short clauses. *)
-Record IndexInv (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit) (nl: nat)
+Record IndexInv (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit) (nl rc: nat)
   (ts: nat -> Z) (k: nat) (le: temp_env) (m1: mem): Prop := {
   xi_s: le ! _s = Some (sptr S);
   xi_k: le ! _k = Some (vint (Z.of_nat k));
   xi_ns: le ! _ns = Some (vint (Z.of_nat (length (ish (idx lss k)))));
   xi_le: k <= length lss;
-  xi_rep: Rep m1 S N lss (ictx lss al nl N k) [];
+  xi_rep: Rep m1 S N lss (ictx lss al nl N rc k) [];
   xi_shorts: Arr m1 (b_shorts S) (length lss) ts;
   xi_ts: forall (q: nat), q < length (ish (idx lss k)) ->
     ts q = Z.of_nat (nth q (rev (ish (idx lss k))) 0);
 }.
 
-Definition index_inv (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit) (nl: nat)
-  (k: nat) (le: temp_env) (m1: mem): Prop :=
-  exists (ts: nat -> Z), IndexInv S N lss al nl ts k le m1.
+Definition index_inv (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit)
+  (nl rc k: nat) (le: temp_env) (m1: mem): Prop :=
+  exists (ts: nat -> Z), IndexInv S N lss al nl rc ts k le m1.
 
 Definition index_variant (lss: list (list Lit)): nat -> nat -> Prop :=
   ltof nat (fun (k: nat) => length lss - k).
 
 (* What the loop of index_clauses ends in: every clause indexed, or out of room. *)
-Definition IndexPost (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit) (nl: nat)
-  (le: temp_env) (m: mem) (out: outcome): Prop :=
-  (out = Out_normal /\ index_inv S N lss al nl (length lss) le m) \/
+Definition IndexPost (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit)
+  (nl rc: nat) (le: temp_env) (m: mem) (out: outcome): Prop :=
+  (out = Out_normal /\ index_inv S N lss al nl rc (length lss) le m) \/
   out = Out_return (Some (vint (-1), Ctypesdefs.tint)).
 
 (* What must hold after the watchers of clause k: the loop goes on, or index_clauses
    returns -1. *)
-Definition IndexK (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit) (nl: nat)
+Definition IndexK (S: Shape) (N: nat) (lss: list (list Lit)) (al: Table Lit) (nl rc: nat)
   (k: nat): temp_env -> mem -> outcome -> Prop :=
-  LoopK (index_variant lss) (index_inv S N lss al nl) (IndexPost S N lss al nl) k.
+  LoopK (index_variant lss) (index_inv S N lss al nl rc) (IndexPost S N lss al nl rc) k.
 
 (* The state of the loop body of clause k: the temporaries also hold len, and the memory
    represents x with the pool tp. *)
@@ -272,19 +273,19 @@ Record IndexAt (S: Shape) (N: nat) (lss: list (list Lit)) (ts tp: nat -> Z) (k: 
 
 (* Clause k of the context while indexing is clause k of lss, at its range of clits. *)
 Lemma ictx_clause: forall (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
-  (al: Table Lit) (nl j k: nat) (x: Ctx),
-  RepB m S N lss x [] -> cmap x = cmap (ictx lss al nl N j) -> k < length lss ->
+  (al: Table Lit) (nl rc j k: nat) (x: Ctx),
+  RepB m S N lss x [] -> cmap x = cmap (ictx lss al nl N rc j) -> k < length lss ->
   tget (cmap x) k = Some (nth k lss []) /\
   length (nth k lss []) = starts S (Datatypes.S k) - starts S k.
 Proof.
-  intros m S N lss al nl j k x HRep Hcm Hk.
+  intros m S N lss al nl rc j k x HRep Hcm Hk.
   assert (Hcl: tget (cmap x) k = Some (nth k lss [])).
   { rewrite Hcm. cbn [ictx cmap]. rewrite idx_cm by lia.
     replace (k <? length lss) with true by (symmetry; now apply Nat.ltb_lt). reflexivity.
     }
   split.
   - assumption.
-  - destruct (a_lits _ _ _ _ _ _ HRep) as (t & _ & Hclauses).
+  - destruct (a_lits _ _ _ _ _ _ _ HRep) as (t & _ & Hclauses).
     apply (clause_length m S N lss x [] t k).
     + assumption.
     + assumption.
@@ -298,17 +299,17 @@ Qed.
        k++;
      {{ IndexInv (k + 1) }}                                                            *)
 Lemma index_short_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (al: Table Lit) (nl: nat) (ts tp: nat -> Z) (k: nat) (le: temp_env) (m: mem),
-  IndexAt S N lss ts tp k (ictx lss al nl N (Datatypes.S k)) le m ->
-  Exec ge le m index_short (IndexK S N lss al nl k).
+  (al: Table Lit) (nl rc: nat) (ts tp: nat -> Z) (k: nat) (le: temp_env) (m: mem),
+  IndexAt S N lss ts tp k (ictx lss al nl N rc (Datatypes.S k)) le m ->
+  Exec ge le m index_short (IndexK S N lss al nl rc k).
 Proof.
-  intros S N lss al nl ts tp k le m HA.
+  intros S N lss al nl rc ts tp k le m HA.
   destruct HA as [Hs Hk Hns Hlen Hlt HRep Apool Hpool Ats Hts].
-  pose proof (r_lss_small _ _ _ _ _ _ HRep) as Hlss.
-  pose proof (r_nclits_small _ _ _ _ _ _ HRep) as Hncl.
-  pose proof (Rep.r_starts _ _ _ _ _ _ HRep k Hlt) as Hrange.
+  pose proof (r_lss_small _ _ _ _ _ _ _ HRep) as Hlss.
+  pose proof (r_nclits_small _ _ _ _ _ _ _ HRep) as Hncl.
+  pose proof (Rep.r_starts _ _ _ _ _ _ _ HRep k Hlt) as Hrange.
   pose proof (idx_lists lss k (Nat.lt_le_incl _ _ Hlt)) as (Hwl & Hshk & Hshl).
-  destruct (ictx_clause m S N lss al nl (Datatypes.S k) k _ HRep eq_refl Hlt)
+  destruct (ictx_clause m S N lss al nl rc (Datatypes.S k) k _ HRep eq_refl Hlt)
     as [_ Hlen_cl].
   assert (Hshn: ish (idx lss (Datatypes.S k)) =
                 if Nat.leb (length (nth k lss [])) 1 then k :: ish (idx lss k)
@@ -336,8 +337,8 @@ Proof.
                     = Int.repr (Z.of_nat (length (ish (idx lss (Datatypes.S k)))))).
       { rewrite Hshn, add_repr. f_equal. cbn [length]. lia. }
       assert (Hnsk: length (ish (idx lss k)) < length lss) by lia.
-      pose proof (Rep.r_nodup _ _ _ _ _ _ HRep) as Hnd.
-      pose proof (Rep.r_shorts _ _ _ _ _ _ HRep) as Fsh.
+      pose proof (Rep.r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
+      pose proof (Rep.r_shorts _ _ _ _ _ _ _ HRep) as Fsh.
       cbv beta iota. run. eapply exec_store.
       * evl.
       * ev.
@@ -470,32 +471,33 @@ Qed.
      {{ IndexAt (ictx (k + 1)) }}                                           (ictx_step)
        ...                                                       (index_short_correct) *)
 Lemma index_watch_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (al: Table Lit) (nl: nat) (ts tp: nat -> Z) (k: nat) (le: temp_env) (m: mem),
-  IndexAt S N lss ts tp k (ictx lss al nl N k) le m ->
+  (al: Table Lit) (nl rc: nat) (ts tp: nat -> Z) (k: nat) (le: temp_env) (m: mem),
+  IndexAt S N lss ts tp k (ictx lss al nl N rc k) le m ->
   le ! _b = Some (vint (Z.of_nat (starts S k))) ->
-  Exec ge le m index_watch (SeqK ge index_short (IndexK S N lss al nl k)).
+  Exec ge le m index_watch (SeqK ge index_short (IndexK S N lss al nl rc k)).
 Proof.
-  intros S N lss al nl ts tp k le m HA Hb. pose proof HA as HA'.
+  intros S N lss al nl rc ts tp k le m HA Hb. pose proof HA as HA'.
   destruct HA' as [Hs Hk Hns Hlen Hlt HRep Apool Hpool Ats Hts].
-  pose proof (r_n _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_nodup _ _ _ _ _ _ HRep) as Hnd.
-  pose proof (r_nclits_small _ _ _ _ _ _ HRep) as Hncl.
-  pose proof (Rep.r_starts _ _ _ _ _ _ HRep k Hlt) as Hrange.
-  pose proof (r_clits _ _ _ _ _ _ HRep) as Fclits.
-  pose proof (a_lits _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
-  destruct (ictx_clause m S N lss al nl k k _ HRep eq_refl Hlt) as [Hcls Hlen_cl].
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
+  pose proof (r_nclits_small _ _ _ _ _ _ _ HRep) as Hncl.
+  pose proof (Rep.r_starts _ _ _ _ _ _ _ HRep k Hlt) as Hrange.
+  pose proof (r_clits _ _ _ _ _ _ _ HRep) as Fclits.
+  pose proof (a_lits _ _ _ _ _ _ _ HRep) as (tl & Alits & Hclauses).
+  destruct (ictx_clause m S N lss al nl rc k k _ HRep eq_refl Hlt) as [Hcls Hlen_cl].
   (* What is left after the watchers: IndexAt for ictx (k + 1) *)
   assert (Hnext: forall (le': temp_env) (m': mem) (tp': nat -> Z),
     le' ! _s = Some (sptr S) -> le' ! _k = Some (vint (Z.of_nat k)) ->
     le' ! _ns = Some (vint (Z.of_nat (length (ish (idx lss k))))) ->
     le' ! _len = Some (vint (Z.of_nat (starts S (Datatypes.S k) - starts S k))) ->
-    RepB m' S N lss (ictx lss al nl N (Datatypes.S k)) [] ->
+    RepB m' S N lss (ictx lss al nl N rc (Datatypes.S k)) [] ->
     Arr m' (b_wpool S) (2 * npool S) tp' ->
-    PoolOf S N tp' (wls (ictx lss al nl N (Datatypes.S k))) (fun (_ _: nat) => False) ->
+    PoolOf S N tp' (wls (ictx lss al nl N rc (Datatypes.S k)))
+      (fun (_ _: nat) => False) ->
     Mem.unchanged_on (fun (b: block) (_: Z) => b <> b_wpool S /\ b <> b_wlen S) m m' ->
-    SeqK ge index_short (IndexK S N lss al nl k) le' m' Out_normal).
+    SeqK ge index_short (IndexK S N lss al nl rc k) le' m' Out_normal).
   { intros le' m' tp' Hs' Hk' Hns' Hlen' HRep' Apool' Hpool' Hun. normal.
-    apply (index_short_correct S N lss al nl ts tp' k). constructor.
+    apply (index_short_correct S N lss al nl rc ts tp' k). constructor.
     - assumption.
     - assumption.
     - assumption.
@@ -511,7 +513,7 @@ Proof.
       + assumption.
     - assumption. }
   assert (Hfail: forall (le': temp_env) (m': mem),
-    SeqK ge index_short (IndexK S N lss al nl k) le' m'
+    SeqK ge index_short (IndexK S N lss al nl rc k) le' m'
       (Out_return (Some (vint (-1), Ctypesdefs.tint)))).
   { intros le' m'. abrupt. apply loopk_return. right. reflexivity. }
   unfold index_watch, index_body, index_loop, f_index_clauses.
@@ -565,7 +567,7 @@ Proof.
         pose proof (key_small c0 N Hc0 HN) as Hkc0.
         cbv beta iota. fold (push_stmt _t'3 _a__1 _a__1). run. rewrite Htl0.
         apply (index_push_correct S N lss
-          (ictx lss al nl N k) k c0 c0 tp _t'3 _a__1 _a__1).
+          (ictx lss al nl N rc k) k c0 c0 tp _t'3 _a__1 _a__1).
         -- assumption.
         -- assumption.
         -- assumption.
@@ -603,7 +605,7 @@ Proof.
       { rewrite add_repr. f_equal. lia. }
       cbv beta iota. fold (push_stmt _t'1 _a _c) (push_stmt _t'2 _c _a).
       run. rewrite Htl0. run. rewrite Htl1.
-      apply (index_push_correct S N lss (ictx lss al nl N k) k c0 c1 tp _t'1 _a _c).
+      apply (index_push_correct S N lss (ictx lss al nl N rc k) k c0 c1 tp _t'1 _a _c).
       * assumption.
       * assumption.
       * assumption.
@@ -616,8 +618,8 @@ Proof.
       * assumption.
       * intros le' m'. abrupt. apply Hfail.
       * intros m1 tp1 HRep1 Apool1 Hpool1 Hun1. normal.
-        set (x1 := set_watching (ictx lss al nl N k) c0
-                     (watching (wls (ictx lss al nl N k)) c0 ++ [(k, c1)])) in *.
+        set (x1 := set_watching (ictx lss al nl N rc k) c0
+                     (watching (wls (ictx lss al nl N rc k)) c0 ++ [(k, c1)])) in *.
         apply (index_push_correct S N lss x1 k c1 c0 tp1 _t'2 _c _a).
         -- assumption.
         -- assumption.
@@ -651,17 +653,17 @@ Qed.
      {{ IndexAt (ictx k) /\ b }}
        ...                                                       (index_watch_correct) *)
 Lemma index_body_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (al: Table Lit) (nl: nat) (ts: nat -> Z) (k: nat) (le: temp_env) (m: mem),
-  k < length lss -> IndexInv S N lss al nl ts k le m ->
-  Exec ge le m index_body (IndexK S N lss al nl k).
+  (al: Table Lit) (nl rc: nat) (ts: nat -> Z) (k: nat) (le: temp_env) (m: mem),
+  k < length lss -> IndexInv S N lss al nl rc ts k le m ->
+  Exec ge le m index_body (IndexK S N lss al nl rc k).
 Proof.
-  intros S N lss al nl ts k le m Hlt HI.
+  intros S N lss al nl rc ts k le m Hlt HI.
   destruct HI as [Hs Hk Hns Hkl [HRep [tp [Apool Hpool]]] Ats Hts].
-  pose proof (r_lss_small _ _ _ _ _ _ HRep) as Hlss.
-  pose proof (r_nclits_small _ _ _ _ _ _ HRep) as Hncl.
-  pose proof (Rep.r_starts _ _ _ _ _ _ HRep k Hlt) as Hrange.
-  pose proof (r_cstart _ _ _ _ _ _ HRep) as Fcstart.
-  pose proof (a_starts _ _ _ _ _ _ HRep) as Astarts.
+  pose proof (r_lss_small _ _ _ _ _ _ _ HRep) as Hlss.
+  pose proof (r_nclits_small _ _ _ _ _ _ _ HRep) as Hncl.
+  pose proof (Rep.r_starts _ _ _ _ _ _ _ HRep k Hlt) as Hrange.
+  pose proof (r_cstart _ _ _ _ _ _ _ HRep) as Fcstart.
+  pose proof (a_starts _ _ _ _ _ _ _ HRep) as Astarts.
   assert (Hadd: Int.add (Int.repr (Z.of_nat k)) (Int.repr 1)
                 = Int.repr (Z.of_nat (Datatypes.S k))).
   { rewrite add_repr. f_equal. lia. }
@@ -673,7 +675,7 @@ Proof.
   cbn [fn_body drop_stmts first_stmt loop_body Swhile].
   (* int b = s->cstart[k]; int len = s->cstart[k + 1] - b; *)
   run. ints. clear Fcstart Astarts.
-  apply (index_watch_correct S N lss al nl ts tp k).
+  apply (index_watch_correct S N lss al nl rc ts tp k).
   - constructor.
     + tmp.
     + tmp.
@@ -696,18 +698,19 @@ Qed.
 
    The loop ends: length lss - k decreases. *)
 Lemma index_loop_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (al: Table Lit) (nl: nat) (le: temp_env) (m: mem),
-  (1 <= N)%nat -> index_inv S N lss al nl 0 le m ->
-  Exec ge le m index_loop (IndexPost S N lss al nl).
+  (al: Table Lit) (nl rc: nat) (le: temp_env) (m: mem),
+  (1 <= N)%nat -> index_inv S N lss al nl rc 0 le m ->
+  Exec ge le m index_loop (IndexPost S N lss al nl rc).
 Proof.
-  intros S N lss al nl le m HN1 HI0.
+  intros S N lss al nl rc le m HN1 HI0.
   unfold index_loop, f_index_clauses. cbn [fn_body drop_stmts first_stmt].
-  apply exec_loop with (R := index_variant lss) (I := index_inv S N lss al nl) (a := 0).
+  apply exec_loop with (R := index_variant lss) (I := index_inv S N lss al nl rc)
+    (a := 0).
   - apply well_founded_ltof.
   - intros k le1 m1 [ts HI]. pose proof HI as HI'.
     destruct HI' as [Hs Hk Hns Hkl [HRep [tp [Apool Hpool]]] Ats Hts].
-    pose proof (r_lss_small _ _ _ _ _ _ HRep) as Hlss.
-    pose proof (Rep.r_ncl _ _ _ _ _ _ HRep) as Fncl.
+    pose proof (r_lss_small _ _ _ _ _ _ _ HRep) as Hlss.
+    pose proof (Rep.r_ncl _ _ _ _ _ _ _ HRep) as Fncl.
     (* if (k < s->ncl) ... else break; *)
     run. eapply (exec_if_cmp _ _ _ Clt).
     + ev.
@@ -721,7 +724,7 @@ Proof.
         replace (zcmp Clt (Z.of_nat k) (Z.of_nat (length lss))) with true
           by (symmetry; cbn [zcmp]; apply Z.ltb_lt; lia).
         cbv beta iota. apply exec_skip. normal. clear Fncl.
-        apply (index_body_correct S N lss al nl ts k).
+        apply (index_body_correct S N lss al nl rc ts k).
         -- assumption.
         -- constructor.
            ++ tmp.
@@ -762,25 +765,25 @@ Qed.
      {{ result = the number of short clauses /\ Rep (ictx ... ncl) /\
         they are in shorts }}                                                          *)
 Lemma index_clauses_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (al: Table Lit) (nl: nat) (tsh: nat -> Z),
-  {{ m | Rep m S N lss (ictx lss al nl N 0) [] /\ Arr m (b_shorts S) (length lss) tsh /\
-         (1 <= N)%nat }}
+  (al: Table Lit) (nl rc: nat) (tsh: nat -> Z),
+  {{ m | Rep m S N lss (ictx lss al nl N rc 0) [] /\
+    Arr m (b_shorts S) (length lss) tsh /\ (1 <= N)%nat }}
     f_index_clauses(sptr S)
   {{ m', v | v = vint (-1) \/ exists (tsh': nat -> Z),
              v = vint (Z.of_nat (length (ish (idx lss (length lss))))) /\
-             Rep m' S N lss (ictx lss al nl N (length lss)) [] /\
+             Rep m' S N lss (ictx lss al nl N rc (length lss)) [] /\
              Arr m' (b_shorts S) (length lss) tsh' /\
              forall (q: nat), q < length (ish (idx lss (length lss))) ->
                tsh' q = Z.of_nat (nth q (rev (ish (idx lss (length lss)))) 0) }}.
 Proof.
-  intros S N lss al nl tsh m (HRep & Ash & HN1).
+  intros S N lss al nl rc tsh m (HRep & Ash & HN1).
   eapply call_simple.
   - reflexivity.
   - reflexivity.
   - unfold f_index_clauses. cbn [fn_body fn_return].
     (* int k = 0; int ns = 0; *)
-    run. apply exec_weaken with (Q := IndexPost S N lss al nl).
-    + apply (index_loop_correct S N lss al nl).
+    run. apply exec_weaken with (Q := IndexPost S N lss al nl rc).
+    + apply (index_loop_correct S N lss al nl rc).
       * assumption.
       * exists tsh. constructor.
         -- tmp.

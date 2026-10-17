@@ -38,7 +38,7 @@ Section Free.
         | Some (r, ls') => visit_t p rest kept (move_watch x1 i (o :: r :: ls') r o)
         | None          =>
           if lookup_undef (vals x1) o then visit_t p rest ((i, o) :: kept)
-            (assign x1 o (S i))
+            (assign x1 o (input i))
           else (set_watching x1 p (rev_append kept ws), Some i)
         end
       else visit_t p rest kept x
@@ -109,7 +109,7 @@ Section Free.
       match lookup (vals x) a with
       | Some true  => check_shorts_t ss' x
       | Some false => (x, Some i)
-      | None       => check_shorts_t ss' (assign x a (S i))
+      | None       => check_shorts_t ss' (assign x a (input i))
       end
     | Some []       => (x, Some i)
     | None          => check_shorts_t ss' x
@@ -143,14 +143,6 @@ Section Lims.
     | []         => False
     end
   end.
-
-  Lemma pa_length_app: forall (m n: PA), PA.length ⟨m ++ n⟩ = PA.length m + PA.length n.
-  Proof.
-    intros m n. induction n as [|n IH l|n IH l]; simpl.
-    - lia.
-    - rewrite IH. lia.
-    - rewrite IH. lia.
-  Qed.
 
   (* Propagations keep the positions of the decisions. *)
   Lemma lims_extends: forall (lims: list nat) (m m': PA), LimsOf lims m -> Extends m m' -> LimsOf lims m'.
@@ -194,30 +186,6 @@ Section Lims.
 End Lims.
 
 Section Trail.
-  (* The last literal of a trail is at the end of its table. *)
-  Lemma trail_of_snoc: forall (tr: Table Lit) (tlen: nat) (m m': PA) (t: Lit),
-    trail_lits m' = trail_lits m ++ [t] ->
-    TrailOf tr tlen m' ->
-    tlen = S (PA.length m) /\ tget tr (PA.length m) = t /\ TrailOf tr (PA.length m) m.
-  Proof.
-    intros tr tlen m m' t Hlits [Hlen Hnth]. rewrite Hlits, length_app, trail_lits_length in Hlen. simpl in Hlen.
-    split.
-    - lia.
-    - split.
-      + rewrite Hnth.
-        * rewrite Hlits, app_nth2.
-          -- now rewrite trail_lits_length, Nat.sub_diag.
-          -- rewrite trail_lits_length. lia.
-        * lia.
-      + split.
-        * now rewrite trail_lits_length.
-        * intros j Hj. rewrite Hnth.
-          -- rewrite Hlits, app_nth1.
-             ++ reflexivity.
-             ++ now rewrite trail_lits_length.
-          -- lia.
-  Qed.
-
   (* v without the values of the literals at the n positions from j on, newest first. *)
   Fixpoint unset_range (v: Values) (tr: Table Lit) (j n: nat): Values :=
   match n with

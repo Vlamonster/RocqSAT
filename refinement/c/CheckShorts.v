@@ -28,13 +28,15 @@ Record ShortsInv (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx) (lims: list
   hi_res: res = check_shorts_t (skipn (length (shorts x) - q) (shorts x)) xc;
 }.
 
-(* What the loop of check_shorts ends in: no conflict, a conflict (return 1), or out of
-   room (return -1); res is the result of the model. *)
+(* What the loop of check_shorts ends in: no conflict, a conflict on one of the clauses
+   lss (return i + 1 for clause i), or out of room (return -1); res is the result of the
+   model. *)
 Definition ShortsPost (S: Shape) (N: nat) (lss: list (list Lit)) (lims: list nat)
   (res: Ctx * option nat) (le: temp_env) (m: mem) (out: outcome): Prop :=
   (out = Out_normal /\ snd res = None /\ Rep m S N lss (fst res) lims) \/
-  (out = Out_return (Some (vint 1, Ctypesdefs.tint)) /\ enc_conf (snd res) = 1 /\
-   Rep m S N lss (fst res) lims) \/
+  (out = Out_return (Some (vint (enc_conf (snd res)), Ctypesdefs.tint)) /\
+   Rep m S N lss (fst res) lims /\
+   (forall (i: nat), snd res = Some i -> (i < length lss)%nat)) \/
   out = Out_return (Some (vint (-1), Ctypesdefs.tint)).
 
 (* The variant and the invariant of the loop. *)
@@ -48,16 +50,17 @@ Definition shorts_inv (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
      {{ ShortsInv xc q /\ q > 0 }}
        int i = s->shorts[q - 1];
        int b = s->cstart[i];
-       if (b == s->cstart[i + 1]) return 1;
-     {{ result = 1: clause i is empty, a conflict }}
+       if (b == s->cstart[i + 1]) return i + 1;
+     {{ result = i + 1: clause i is empty, a conflict }}
        int a = s->clits[b];
        int v = lit_value(s, a);
-       if (v == -1) return 1;
-     {{ result = 1: the first literal a of clause i is false, a conflict }}
+       if (v == -1) return i + 1;
+     {{ result = i + 1: the first literal a of clause i is false, a conflict }}
      {{ ShortsInv xc q /\ a is true or unassigned }}
-       if (v == 0) { if (!assign(s, a)) return -1; }
+       if (v == 0) { if (!assign(s, a, i + 1)) return -1; }
      {{ result = -1 (out of room) }}
-     {{ ShortsInv xc' q, with xc' = xc if a is true and assign xc a (i + 1) otherwise }}
+     {{ ShortsInv xc' q, with xc' = xc if a is true and assign xc a (input i)
+        otherwise }}
        q--;
      {{ ShortsInv xc' (q - 1) }}                                                       *)
 Lemma shorts_body_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
@@ -69,7 +72,7 @@ Lemma shorts_body_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x:
 Proof.
   intros S N lss x lims res xc q le m1 HI.
   destruct HI as [Hs Hq Hqle [HRepc [tp [Apool Hpool]]] Hsh Hcheck].
-  pose proof (r_n _ _ _ _ _ _ HRepc) as HN.
+  pose proof (r_n _ _ _ _ _ _ _ HRepc) as HN.
   pose proof HRepc as HRepc'. destruct HRepc'. destruct a_shorts as (tsh & Ash & Htsh).
   destruct a_lits as (tl & Alits & Hlits). unpack. rewrite Hsh in *.
   unfold shorts_body, shorts_loop, f_check_shorts.
@@ -95,7 +98,7 @@ Proof.
                 = Int.repr (Z.of_nat (Datatypes.S i))).
   { rewrite add_repr. f_equal. lia. }
   cbn [check_shorts_t] in Hcheck. rewrite (proj2 Hlits i Hi_lt) in Hcheck.
-  (* int b = s->cstart[i]; if (b == s->cstart[i + 1]) return 1; *)
+  (* int b = s->cstart[i]; if (b == s->cstart[i + 1]) return i + 1; *)
   run. eapply (exec_if_cmp _ _ _ Ceq).
   - ev.
   - ev.
@@ -104,20 +107,20 @@ Proof.
   - unfold Small. lia.
   - unfold Small. lia.
   - destruct (Nat.eq_dec (starts S i) (starts S (Datatypes.S i))) as [Heq | Hne].
-    + (* clause i is empty: a conflict, return 1; *)
+    + (* clause i is empty: a conflict, return i + 1; *)
       rewrite Heq, Nat.sub_diag in Hcheck. cbn [seq map] in Hcheck. rewrite Heq.
       replace (zcmp Ceq (Z.of_nat (starts S (Datatypes.S i)))
                  (Z.of_nat (starts S (Datatypes.S i))))
         with true by (symmetry; cbn [zcmp]; apply Z.eqb_refl).
       cbv beta iota. eapply exec_return.
       * ev.
-      * ret. right. left. split.
-        -- reflexivity.
-        -- rewrite Hcheck. cbn [fst snd enc_conf]. split.
-           ++ reflexivity.
+      * ret. right. left. rewrite Hcheck. cbn [fst snd]. split.
+        -- cbn [cast_int_int]. rewrite enc_conf_some. reflexivity.
+        -- split.
            ++ split.
               ** assumption.
               ** exists tp. split; assumption.
+           ++ intros i' Hsome. injection Hsome as <-. assumption.
     + (* clause i has a first literal a: int a = s->clits[b]; int v = lit_value(s, a); *)
       replace (zcmp Ceq (Z.of_nat (starts S i)) (Z.of_nat (starts S (Datatypes.S i))))
         with false by (symmetry; cbn [zcmp]; apply Z.eqb_neq; lia).
@@ -133,7 +136,7 @@ Proof.
       cbv beta iota. run. rewrite Hta. call lit_value_fun. eapply call_weaken.
       { apply (lit_value_correct S N lss xc lims a m1). split; assumption. }
       intros m2 v [-> ->]. normal. run.
-      (* if (v == -1) return 1; *)
+      (* if (v == -1) return i + 1; *)
       eapply (exec_if_cmp _ _ _ Ceq _ _ _ (-1)).
       * ev.
       * ev.
@@ -143,7 +146,7 @@ Proof.
       * unfold Small. lia.
       * destruct (Z.eqb_spec (enc_value (lookup (vals xc) a)) (-1))
           as [Hfalse | Hnotfalse].
-        -- (* a is false: a conflict, return 1; *)
+        -- (* a is false: a conflict, return i + 1; *)
            assert (Hl: lookup (vals xc) a = Some false).
            { destruct (lookup (vals xc) a) as [[|]|].
              - discriminate.
@@ -154,19 +157,19 @@ Proof.
              by (symmetry; cbn [zcmp]; apply Z.eqb_eq; assumption).
            cbv beta iota. eapply exec_return.
            ++ ev.
-           ++ ret. right. left. split.
-              ** reflexivity.
-              ** rewrite Hcheck. cbn [fst snd enc_conf]. split.
-                 --- reflexivity.
+           ++ ret. right. left. rewrite Hcheck. cbn [fst snd]. split.
+              ** cbn [cast_int_int]. rewrite enc_conf_some. reflexivity.
+              ** split.
                  --- split.
                      +++ assumption.
                      +++ exists tp. split; assumption.
+                 --- intros i' Hsome. injection Hsome as <-. assumption.
         -- (* a is true or unassigned *)
            replace (zcmp Ceq (enc_value (lookup (vals xc) a)) (-1)) with false
              by (symmetry; cbn [zcmp]; apply Z.eqb_neq; assumption).
            cbv beta iota. run.
-           (* if (v == 0) { if (!assign(s, a)) return -1; } ends with a context xc' that
-              the model goes on from, or returns -1. *)
+           (* if (v == 0) { if (!assign(s, a, i + 1)) return -1; } ends with a context
+              xc' that the model goes on from, or returns -1. *)
            apply exec_weaken with (Q := fun (le': temp_env) (m3: mem) (out: outcome) =>
              (out = Out_normal /\ le' ! _s = Some (sptr S) /\
               le' ! _q = Some (vint (Z.of_nat (Datatypes.S q))) /\ exists (xc': Ctx),
@@ -202,13 +205,16 @@ Proof.
                  --- exfalso. apply Hnotfalse. reflexivity.
                  --- (* a is unassigned: assign it, with reason i + 1 *)
                      change (zcmp Ceq (enc_value None) 0) with true. cbv beta iota. run.
-                     call assign_fun. eapply call_weaken.
-                     { apply (assign_correct S N lss xc lims a (Datatypes.S i) tp m1).
+                     call assign_fun. cbn [cast_int_int].
+                     rewrite (add_repr (Z.of_nat i) 1). eapply call_weaken.
+                     { apply (assign_correct S N lss xc lims a (input i) tp m1).
                        split.
                        - assumption.
                        - split.
                          + assumption.
-                         + assumption. }
+                         + split.
+                           * assumption.
+                           * assumption. }
                      intros m3 v Hv. normal.
                      destruct Hv as [-> | (-> & HRep3 & Apool3)].
                      +++ (* out of room: return -1; *)
@@ -231,7 +237,7 @@ Proof.
                                   ++++ tmp.
                                   ++++ split.
                                        **** tmp.
-                                       **** exists (assign xc a (Datatypes.S i)). split.
+                                       **** exists (assign xc a (input i)). split.
                                             ----- split.
                                                   +++++ assumption.
                                                   +++++ exists tp. split; assumption.
@@ -274,8 +280,8 @@ Proof.
   - apply well_founded_ltof.
   - intros q le1 m1 [xc HI]. pose proof HI as HI'.
     destruct HI' as [Hs Hq Hqle [HRepc Hpool] Hsh Hcheck].
-    pose proof (r_shorts_le _ _ _ _ _ _ HRepc) as Hshle.
-    pose proof (r_lss_small _ _ _ _ _ _ HRepc) as Hlss.
+    pose proof (r_shorts_le _ _ _ _ _ _ _ HRepc) as Hshle.
+    pose proof (r_lss_small _ _ _ _ _ _ _ HRepc) as Hlss.
     rewrite Hsh in Hshle. apply exec_seq.
     (* if (q > 0) ... else break; *)
     eapply (exec_if_cmp _ _ _ Cgt _ _ _ 0).
@@ -309,7 +315,7 @@ Qed.
        int q = s->nshorts;
      {{ ShortsInv x (length (shorts x)) }}
        while (q > 0) { ... }                                    (shorts_loop_correct)
-     {{ the outcome of the model, or -1 }}
+     {{ the outcome of the model, a conflict on one of the clauses lss, or -1 }}
        return 0;                                                                  *)
 Lemma check_shorts_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
   (lims: list nat),
@@ -317,7 +323,9 @@ Lemma check_shorts_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x
     f_check_shorts(sptr S)
   {{ m', v | v = vint (-1) \/
              (v = vint (enc_conf (snd (check_shorts_t (shorts x) x))) /\
-              Rep m' S N lss (fst (check_shorts_t (shorts x) x)) lims) }}.
+              Rep m' S N lss (fst (check_shorts_t (shorts x) x)) lims /\
+              forall (i: nat), snd (check_shorts_t (shorts x) x) = Some i ->
+                (i < length lss)%nat) }}.
 Proof.
   intros S N lss x lims m HRep.
   remember (check_shorts_t (shorts x) x) as res eqn:Hres.
@@ -325,7 +333,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold f_check_shorts. cbn [fn_body fn_return].
-    pose proof (r_nshorts _ _ _ _ _ _ (proj1 HRep)) as Fns.
+    pose proof (r_nshorts _ _ _ _ _ _ _ (proj1 HRep)) as Fns.
     (* int q = s->nshorts; *)
     run. clear Fns.
     apply exec_weaken with (Q := ShortsPost S N lss lims res).
@@ -337,7 +345,7 @@ Proof.
       * assumption.
       * reflexivity.
       * rewrite Nat.sub_diag. assumption.
-    + intros le' m' out [(-> & Hnone & HRep') | [(-> & Hconf & HRep') | ->]].
+    + intros le' m' out [(-> & Hnone & HRep') | [(-> & HRep' & Hcls) | ->]].
       * (* no conflict: return 0; *)
         normal. eapply exec_return.
         -- ev.
@@ -345,13 +353,17 @@ Proof.
            ++ apply result_int.
            ++ right. split.
               ** rewrite Hnone. reflexivity.
-              ** assumption.
-      * (* a conflict: return 1 *)
-        abrupt. exists (vint 1). split.
+              ** split.
+                 --- assumption.
+                 --- rewrite Hnone. intros i Heq. discriminate.
+      * (* a conflict on clause i: return i + 1 *)
+        abrupt. exists (vint (enc_conf (snd res))). split.
         -- apply result_int.
         -- right. split.
-           ++ rewrite Hconf. reflexivity.
-           ++ assumption.
+           ++ reflexivity.
+           ++ split.
+              ** assumption.
+              ** assumption.
       * (* out of room: return -1 *)
         abrupt. exists (vint (-1)). split.
         -- apply result_int.

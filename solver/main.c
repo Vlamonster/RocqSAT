@@ -127,6 +127,18 @@ int main(void) {
   s.lims = ints(nv);
   s.phs = ints(nv);
   s.mrk = ints(2L * nv);
+  s.rsn = ints(nv);
+  s.lvl = ints(nv);
+  s.lt = ints(nv);
+  /* Room for the reason clauses, below 2^30 as init requires: when it is full, a literal is asserted without
+     one. */
+  long rcap = 64L * nv + 1024;
+  if (rcap >= (1L << 30)) rcap = (1L << 30) - 1;
+  s.rcap = (int) rcap;
+  s.rlits = ints(s.rcap);
+  s.rbeg = ints(nv);
+  s.rlen = ints(nv);
+  s.rpos = ints(nv);
   if (!init(&s)) {
     fprintf(stderr, "bad input\n");
     return 1;

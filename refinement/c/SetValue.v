@@ -12,21 +12,21 @@ Import ListNotations.
 (* set_value stores the value o of atom a at the entries of its two literals, 2a and
    2a + 1. Only the values change:
 
-     {{ RepB m S N lss x lims /\ a < N }}
+     {{ RepL m S N lss x lims lt /\ a < N }}
        s->vals[2 * a] = v;
        s->vals[2 * a + 1] = -v;                                         (rep_store_vals)
-     {{ RepB (set_vals x (tset (vals x) a o)) /\ only the values changed }}           *)
-Lemma set_value_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
-  (lims: list nat) (a: nat) (o: option bool),
-  {{ m | RepB m S N lss x lims /\ (a < N)%nat }}
+     {{ RepL (set_vals x (tset (vals x) a o)) lt /\ only the values changed }}       *)
+Lemma set_value_correct {lt: list Lit}: forall (S: Shape) (N: nat) (lss: list (list Lit))
+  (x: Ctx) (lims: list nat) (a: nat) (o: option bool),
+  {{ m | RepL m S N lss x lims lt /\ (a < N)%nat }}
     f_set_value(sptr S, vint (Z.of_nat a), vint (enc_value o))
-  {{ m', v | RepB m' S N lss (set_vals x (tset (vals x) a o)) lims /\
+  {{ m', v | RepL m' S N lss (set_vals x (tset (vals x) a o)) lims lt /\
              Mem.unchanged_on (fun (b: block) (_: Z) => b <> b_vals S) m m' }}.
 Proof.
   intros S N lss x lims a o m [HRep Ha].
-  pose proof (r_n _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_vals _ _ _ _ _ _ HRep) as Fvals.
-  pose proof (a_vals _ _ _ _ _ _ HRep) as Avals.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_vals _ _ _ _ _ _ _ HRep) as Fvals.
+  pose proof (a_vals _ _ _ _ _ _ _ HRep) as Avals.
   (* The entries of the two literals of a, as C computes them. *)
   assert (Hpos: Int.mul (Int.repr 2) (Int.repr (Z.of_nat a))
                 = Int.repr (Z.of_nat (2 * a))).
@@ -54,7 +54,7 @@ Proof.
       * apply Hst1.
       * normal.
         pose proof (arr_store _ _ _ _ (2 * a) _ _ Avals ltac:(lia) Hst1) as Avals1.
-        pose proof (r_nodup _ _ _ _ _ _ HRep) as Hnd.
+        pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
         assert (Fvals1: Fld m1 (b_s S) 24 Mptr (Vptr (b_vals S) Ptrofs.zero)).
         { apply (fld_store_other _ _ _ _ _ _ _ _ _ _ Fvals Hst1). left. neq Hnd. }
         clear Fvals Avals.

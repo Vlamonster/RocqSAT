@@ -83,8 +83,8 @@ Lemma wpush_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
                   (fun (b: block) (_: Z) => b <> b_wpool S /\ b <> b_wlen S) m m') }}.
 Proof.
   intros S N lss x lims l i b t skip m (HRep & Apool & Hpool & Hskip & Hl & Hi & Hb).
-  pose proof (key_small l N Hl (r_n _ _ _ _ _ _ HRep)) as Hkey.
-  pose proof (key_small b N Hb (r_n _ _ _ _ _ _ HRep)) as Hkeyb.
+  pose proof (key_small l N Hl (r_n _ _ _ _ _ _ _ HRep)) as Hkey.
+  pose proof (key_small b N Hb (r_n _ _ _ _ _ _ _ HRep)) as Hkeyb.
   pose proof (lit_key_lt l N Hl) as Hk.
   eapply call_simple.
   - reflexivity.
@@ -139,7 +139,7 @@ Proof.
            ++ normal.
               pose proof (rep_store_pool m m1 S N lss x lims _ _ HRep Hst1) as HRep1.
               pose proof (arr_store _ _ _ _ (2 * w) _ _ Apool ltac:(lia) Hst1) as Apool1.
-              pose proof (Rep.r_wpool _ _ _ _ _ _ HRep1) as Fwpool1.
+              pose proof (Rep.r_wpool _ _ _ _ _ _ _ HRep1) as Fwpool1.
               pose proof r_nodup as Hnd. keep_mem m1.
               (* s->wpool[q + 1] = b; *)
               run. eapply exec_store.
@@ -162,8 +162,8 @@ Proof.
                          (2 * w + 1) _ _ Apool1).
                        - lia.
                        - apply Hst2. }
-                     pose proof (Rep.r_wlen _ _ _ _ _ _ HRep2) as Fwlen2.
-                     pose proof (Rep.a_wlen _ _ _ _ _ _ HRep2) as Awlen2.
+                     pose proof (Rep.r_wlen _ _ _ _ _ _ _ HRep2) as Fwlen2.
+                     pose proof (Rep.a_wlen _ _ _ _ _ _ _ HRep2) as Awlen2.
                      keep_mem m2.
                      (* s->wlen[l] = n + 1; *)
                      run. eapply exec_store.

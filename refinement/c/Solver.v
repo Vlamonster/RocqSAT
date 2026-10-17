@@ -52,23 +52,24 @@ Proof.
 Qed.
 
 (* The solver, as the driver runs it. From memory holding the clauses lss of f for N
-   atoms, laid out as InitInput says: init rejects the input, or solve answers 1 with a
+   atoms, laid out as InitInput says, with room rc for the literals of the reason
+   clauses: init rejects the input, or solve answers 1 with a
    model of f on the trail, 0 when f is unsatisfiable, or 2 when out of room. Both calls
    terminate. In between, init sets up the initial context of SolverStep.v
    (init_correct), from which solve runs the solver (solve_correct). *)
-Theorem solver_correct: forall (S: Shape) (bm: block) (N: nat) (lss: list (list Lit))
+Theorem solver_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   (f: CNF) (tw tc: nat -> Z),
   InitInput S N lss tw tc -> ClauseListsOf f lss ->
-  {{ m | IRep m S bm N lss tw tc }}
+  {{ m | IRep m S N lss rc tw tc }}
     f_init(sptr S); f_solve(sptr S)
   {{ m', r | r = Rejected \/
              (r = Returned 1 /\ exists (pm: PA), Model pm f /\ TrailIn m' S N pm) \/
              (r = Returned 0 /\ Unsat f) \/
              r = Returned 2 }}.
 Proof.
-  intros S bm N lss f tw tc HIn Hlss m HI. pose proof Hlss as [Hsound Hcomplete].
+  intros S N lss rc f tw tc HIn Hlss m HI. pose proof Hlss as [Hsound Hcomplete].
   eapply call_weaken.
-  - apply (init_correct S bm N lss tw tc HIn m HI).
+  - apply (init_correct S N lss rc tw tc HIn m HI).
   - intros m' v [-> | [-> [HN1 (offs & caps & acc & HRep & Hnd & Hacc)]]].
     + (* init returned 0: rejected *)
       left. split.
@@ -76,7 +77,8 @@ Proof.
       * left. reflexivity.
     + (* init returned 1: solve runs from the initial context *)
       right. eapply call_weaken.
-      * apply (solve_correct (with_room S offs caps) N lss (initial_of lss acc N) f m').
+      * apply (solve_correct (with_room S offs caps) N lss (initial_of lss acc N rc) f
+                 m').
         split.
         -- assumption.
         -- apply initial_of_inv.
@@ -90,7 +92,7 @@ Proof.
                  apply (lits_of_clauses lss f l Hlss) in Hl as [cs [Hcs Hl]].
                  apply In_nth with (d := []) in Hcs as [i [Hi <-]].
                  apply (clause_atoms m' (with_room S offs caps) N lss
-                          (initial_of lss acc N) [] i (nth i lss []) l (proj1 HRep)).
+                          (initial_of lss acc N rc) [] i (nth i lss []) l (proj1 HRep)).
                  --- (* clause i of the initial context is clause i of lss *)
                      rewrite initial_of_idx. cbn [cmap]. rewrite idx_cm by lia.
                      replace (i <? length lss)%nat with true

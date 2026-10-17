@@ -75,12 +75,14 @@ Definition fuel_inv (S: Shape) (N: nat) (lss: list (list Lit)) (lims: list nat)
 Definition fuel_variant: nat -> nat -> Prop := ltof nat (fun (f: nat) => f).
 
 (* What the loop of propagate ends in: out of fuel, which is res with no conflict; a
-   return of the outcome of res; or out of room (return -1). *)
+   return of the outcome of res, a conflict on one of the clauses lss or none; or out of
+   room (return -1). *)
 Definition PropPost (S: Shape) (N: nat) (lss: list (list Lit)) (lims: list nat)
   (res: Ctx * option nat) (le: temp_env) (m: mem) (out: outcome): Prop :=
   (out = Out_normal /\ snd res = None /\ Rep m S N lss (fst res) lims) \/
   (out = Out_return (Some (vint (enc_conf (snd res)), Ctypesdefs.tint)) /\
-   Rep m S N lss (fst res) lims) \/
+   Rep m S N lss (fst res) lims /\
+   (forall (i: nat), snd res = Some i -> (i < length lss)%nat)) \/
   out = Out_return (Some (vint (-1), Ctypesdefs.tint)).
 
 (* One pass of the loop, with fuel f + 1, as propagate_t (f + 1):
@@ -90,7 +92,7 @@ Definition PropPost (S: Shape) (N: nat) (lss: list (list Lit)) (lims: list nat)
      {{ result = 0: the queue is empty, res = (xc, None) }}
        int c = visit(s, s->tr[s->qhead] ^ 1);                         (visit_correct)
        if (c != 0) return c;
-     {{ result = c: a conflict (1) or out of room (-1) }}
+     {{ result = c: a conflict on clause i (i + 1) or out of room (-1) }}
      {{ Rep x1, after the visit without conflict }}
        s->qhead = s->qhead + 1;                                       (rep_store_qhead)
        fuel--;
@@ -104,7 +106,7 @@ Lemma prop_body_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
 Proof.
   intros S N lss lims res xc f le m1 HI.
   destruct HI as [Hs Hf Hfle [HRepc [tp [Apool Hpool]]] Hprop].
-  pose proof (r_n _ _ _ _ _ _ HRepc) as HN.
+  pose proof (r_n _ _ _ _ _ _ _ HRepc) as HN.
   pose proof HRepc as HRepc'. destruct HRepc'. unpack.
   unfold prop_body, prop_loop, f_propagate.
   cbn [fn_body drop_stmts first_stmt loop_body Swhile].
@@ -138,7 +140,7 @@ Proof.
            ++ exists tp. split; assumption.
         -- assumption.
       * intros m2 v Hv. normal. forget_mem m1.
-        destruct Hv as [-> | [-> HRep2]].
+        destruct Hv as [-> | (-> & HRep2 & Hcls)].
         -- (* out of room: if (c != 0) return c; with c = -1 *)
            run. eapply (exec_if_cmp _ _ _ Cne _ _ (-1) 0).
            ++ ev.
@@ -153,19 +155,24 @@ Proof.
         -- unfold watching in *.
            destruct (visit_t p (tget (wls xc) (lit_key p)) [] xc) as [x1 [i|]]
              eqn:Hvisit; cbn [fst snd enc_conf] in HRep2 |- *.
-           ++ (* a conflict: if (c != 0) return c; with c = 1 *)
-              run. eapply (exec_if_cmp _ _ _ Cne _ _ 1 0).
+           ++ (* a conflict on clause i: if (c != 0) return c; with c = i + 1 *)
+              pose proof (Hcls i eq_refl) as Hi_lt.
+              run. eapply (exec_if_cmp _ _ _ Cne _ _ (Z.of_nat i + 1) 0).
               ** ev.
               ** ev.
               ** reflexivity.
               ** reflexivity.
               ** unfold Small. lia.
               ** unfold Small. lia.
-              ** change (zcmp Cne 1 0) with true. cbv beta iota. eapply exec_return.
+              ** replace (zcmp Cne (Z.of_nat i + 1) 0) with true
+                   by (symmetry; cbn [zcmp]; apply negb_true_iff, Z.eqb_neq; lia).
+                 cbv beta iota. eapply exec_return.
                  --- ev.
                  --- ret. right. left. rewrite Hprop. cbn [fst snd enc_conf]. split.
                      +++ reflexivity.
-                     +++ assumption.
+                     +++ split.
+                         *** assumption.
+                         *** assumption.
            ++ (* no conflict: s->qhead = s->qhead + 1; fuel--; *)
               run. eapply (exec_if_cmp _ _ _ Cne _ _ 0 0).
               ** ev.
@@ -177,10 +184,10 @@ Proof.
               ** change (zcmp Cne 0 0) with false. cbv beta iota.
                  destruct HRep2 as [HRep2 [tq [Apool2 Hpool2]]].
                  destruct (visit_t_qhead _ _ _ _ _ _ Hvisit) as [Hqv Htv].
-                 pose proof (Rep.r_qhead _ _ _ _ _ _ HRep2) as Fqh2.
-                 pose proof (Rep.r_tlen _ _ _ _ _ _ HRep2) as Ftlen2.
-                 pose proof (Rep.r_nodup _ _ _ _ _ _ HRep2) as Hnd2.
-                 pose proof (Rep.r_qhead_le _ _ _ _ _ _ HRep2) as Hqle2.
+                 pose proof (Rep.r_qhead _ _ _ _ _ _ _ HRep2) as Fqh2.
+                 pose proof (Rep.r_tlen _ _ _ _ _ _ _ HRep2) as Ftlen2.
+                 pose proof (Rep.r_nodup _ _ _ _ _ _ _ HRep2) as Hnd2.
+                 pose proof (Rep.r_qhead_le _ _ _ _ _ _ _ HRep2) as Hqle2.
                  assert (Hq1': Int.add (Int.repr (Z.of_nat (qhead x1))) (Int.repr 1)
                                = Int.repr (Z.of_nat (Datatypes.S (qhead x1)))).
                  { rewrite add_repr by lia. f_equal. lia. }
@@ -227,8 +234,10 @@ Proof.
       * ret. right. left. rewrite Hprop. cbn [fst snd enc_conf]. split.
         -- reflexivity.
         -- split.
-           ++ assumption.
-           ++ exists tp. split; assumption.
+           ++ split.
+              ** assumption.
+              ** exists tp. split; assumption.
+           ++ intros i Heq. discriminate.
 Qed.
 
 (* The loop of propagate, from fuel N + 1:
@@ -257,7 +266,7 @@ Proof.
     + ev.
     + reflexivity.
     + reflexivity.
-    + pose proof (r_n _ _ _ _ _ _ (proj1 HRepc)). unfold Small. lia.
+    + pose proof (r_n _ _ _ _ _ _ _ (proj1 HRepc)). unfold Small. lia.
     + unfold Small. lia.
     + destruct f as [|f].
       * (* out of fuel: break; with no conflict *)
@@ -283,16 +292,18 @@ Qed.
        while (fuel > 0) { ... }                                   (prop_loop_correct)
        return 0;
      {{ result = -1, or the outcome of propagate_t (N + 1) x /\ Rep of its
-        context }}                                                                   *)
+        context /\ a conflict is on one of the clauses lss }}                      *)
 Lemma propagate_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
   (lims: list nat),
   {{ m | Rep m S N lss x lims }}
     f_propagate(sptr S)
   {{ m', v | v = vint (-1) \/
              (v = vint (enc_conf (snd (propagate_t (Datatypes.S N) x))) /\
-              Rep m' S N lss (fst (propagate_t (Datatypes.S N) x)) lims) }}.
+              Rep m' S N lss (fst (propagate_t (Datatypes.S N) x)) lims /\
+              forall (i: nat), snd (propagate_t (Datatypes.S N) x) = Some i ->
+                (i < length lss)%nat) }}.
 Proof.
-  intros S N lss x lims m HRep. pose proof (r_n _ _ _ _ _ _ (proj1 HRep)) as HN.
+  intros S N lss x lims m HRep. pose proof (r_n _ _ _ _ _ _ _ (proj1 HRep)) as HN.
   remember (propagate_t (Datatypes.S N) x) as res eqn:Hres.
   eapply call_simple.
   - reflexivity.
@@ -301,7 +312,7 @@ Proof.
     assert (Hfuel: Int.add (Int.repr (Z.of_nat N)) (Int.repr 1)
                    = Int.repr (Z.of_nat (Datatypes.S N))).
     { rewrite add_repr by lia. f_equal. lia. }
-    pose proof (r_nv _ _ _ _ _ _ (proj1 HRep)) as Fnv.
+    pose proof (r_nv _ _ _ _ _ _ _ (proj1 HRep)) as Fnv.
     (* int fuel = s->nv + 1; *)
     run. ints. clear Fnv.
     apply exec_weaken with (Q := PropPost S N lss lims res).
@@ -311,7 +322,7 @@ Proof.
       * lia.
       * assumption.
       * assumption.
-    + intros le' m' out [(-> & Hnone & HRep') | [(-> & HRep') | ->]].
+    + intros le' m' out [(-> & Hnone & HRep') | [(-> & HRep' & Hcls) | ->]].
       * (* out of fuel: return 0; *)
         normal. eapply exec_return.
         -- ev.
@@ -319,13 +330,17 @@ Proof.
            ++ apply result_int.
            ++ right. split.
               ** rewrite Hnone. reflexivity.
-              ** assumption.
+              ** split.
+                 --- assumption.
+                 --- rewrite Hnone. intros i Heq. discriminate.
       * (* a return of the outcome *)
         abrupt. exists (vint (enc_conf (snd res))). split.
         -- apply result_int.
         -- right. split.
            ++ reflexivity.
-           ++ assumption.
+           ++ split.
+              ** assumption.
+              ** assumption.
       * (* out of room *)
         abrupt. exists (vint (-1)). split.
         -- apply result_int.
