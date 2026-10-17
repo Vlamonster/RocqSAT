@@ -1,8 +1,10 @@
 # RocqSAT
 
 A Rocq formalization of an abstract DPLL-style SAT transition system, proving soundness, completeness and
-termination, together with a verified solver extracted to OCaml. See
-[`verification/README.md`](verification/README.md) for an overview of the formalization.
+termination, together with a verified solver in C, compiled with CompCert. See
+[`abstraction/README.md`](abstraction/README.md) for an overview of the formalization,
+[`refinement/README.md`](refinement/README.md) for the concrete solver and its proofs, and
+[`solver/`](solver/README.md) for the C program.
 
 # Installation
 
@@ -15,17 +17,55 @@ termination, together with a verified solver extracted to OCaml. See
 
 # Running
 
-You can run a problem from the repository root using:
+The benchmark problems are not part of the repository; fetch them into `problems/` first (see
+[Problems](#problems)):
+```bash
+./fetch_problems.sh
+```
+You can then run a problem from the repository root using:
 ```bash
 dune exec rocqsat < problems/sat/satlib/hanoi/hanoi4.cnf
 ```
-This rebuilds the solver from the proofs first if anything changed. It prints `UNSAT`, or `SAT` followed by a
-model.
+This runs the C solver of [`solver/`](solver/README.md), verified against `refinement/core/SolverStep.v` with
+CompCert's semantics of C and compiled with CompCert (`ccomp`). It prints `UNSAT`, `SAT` followed by a model,
+or `UNKNOWN` if it ran out of room.
 
-`dune exec rocqsat -- --c < problem.cnf` runs the C solver of [`c/`](c/README.md) instead, which mirrors the
-table-only step `cstep` of `verification/refinement/CStep.v` and prints the same, or `UNKNOWN` if it ran out of
-room. Its VST proofs are work in progress. The problems are grouped by status in `problems/sat` and `problems/unsat`; see
-[`problems/README.md`](problems/README.md) for their sources.
+# Problems
+
+`./fetch_problems.sh` downloads the two assets of the `bench-v1` release, checks them against their SHA-256 and
+unpacks them into `problems/` (ignored by git). The problems are in DIMACS CNF format, grouped by their status:
+`problems/sat/` holds satisfiable problems and `problems/unsat/` unsatisfiable ones, each with a directory per
+source and a directory per family below it. The status of every problem was checked with an independent solver
+(Kissat).
+
+| Location                                         | Problems | Release asset       | Source |
+|--------------------------------------------------|---------:|---------------------|--------|
+| `problems/sat/cnfgen/`, `problems/unsat/cnfgen/` |       55 | `cnfgen.tar.xz`     | CNFgen |
+| `problems/sat/satlib/`, `problems/unsat/satlib/` |     9306 | `satlib-all.tar.xz` | SATLIB |
+
+**CNFgen.** Crafted families generated with CNFgen 0.9.6 (https://massimolauria.net/cnfgen): pigeonhole
+principle (`php`), ordering principle (`op`), parity principle (`parity`), mutilated chessboard (`mchess`), Tseitin
+formulas on random 4-regular graphs (`tseitin`), and 3-colourability of random regular graphs (`kcolor`). The
+comments at the start of each file give the command line and random seed that produced it. Cite CNFgen as:
+
+> Massimo Lauria, Jan Elffers, Jakob Nordström and Marc Vinyals. CNFgen: A Generator of Crafted Benchmarks.
+> SAT 2017, LNCS 10491, pages 464–473.
+
+**SATLIB.** The benchmark problems of SATLIB (https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html): uniform random
+3-SAT (`uf*`, `uuf*`), graph colouring (`flat*`, `sw100-*`, `gcp`), planning (`blocksworld`, `logistics`),
+all-interval series (`ais`), quasigroups (`qg`), bounded model checking (`bmc`), the DIMACS families (`aim`,
+`lran`, `jnh`, `dubois`, `parity`, `ii`, `hanoi`, `bf`, `ssa`, `pigeon-hole`, `pret`) and the Beijing SAT
+competition problems (`beijing`). The comments in each file name its original contributor. Cite SATLIB as:
+
+> Holger H. Hoos and Thomas Stützle. SATLIB: An Online Resource for Research on SAT. In I. P. Gent, H. van Maaren
+> and T. Walsh (editors), SAT 2000, pages 283–292, IOS Press, 2000.
+
+The release has them normalized, repairing a few formatting errors of the original files: the `%` trailer at the
+end of the random 3-SAT and graph colouring files is removed, as is the lone `0` line at the end of the `pret`
+files (an unintended empty clause), and the 202 clauses of `dubois100` that lack their terminating `0` (one clause
+per line) get one. The status of 12 problems could not be checked within 10 minutes (`par32-*`, `g125.17` and
+`g250.29`); those are filed as SATLIB documents them. The script that built the asset from the original archives
+is `problems/fetch_satlib.py` in commit `5e45497`.
 
 # Editor support
 

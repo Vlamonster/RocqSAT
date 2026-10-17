@@ -1,0 +1,6 @@
+; The concrete solver steps on tables, proved to be strategies of the abstract systems (library
+; RocqSAT.refinement). It needs no CompCert: the proofs about the C solver are in ../c.
+(rocq.theory
+ (name RocqSAT.refinement)
+ (package rocqsat)
+ (theories Stdlib Equations RocqSAT))

@@ -17,4 +17,5 @@
   (rocq-runtime (= 9.2.0))
   (rocq-equations (= 1.3.2+9.2))
   (dune (= 3.23.1))
+  (coq-compcert (= 3.18))
  ))

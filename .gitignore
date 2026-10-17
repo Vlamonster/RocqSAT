@@ -1,5 +1,6 @@
 /_build/
 *.cache
-/problems/sat/satlib-all/
-/problems/unsat/satlib-all/
-compile_commands.json
+/problems/
+/context/
+/_opam
+/.vscode/settings.json

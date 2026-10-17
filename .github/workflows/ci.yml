@@ -30,7 +30,7 @@ jobs:
         if: github.ref == 'refs/heads/thesis'
         run: |
           mkdir doc
-          opam exec -- rocq doc -Q _build/default/verification/ RocqSAT _build/default/verification/*.v _build/default/verification/rules/*.v _build/default/verification/utils/*.v _build/default/verification/refinement/*.v -d doc -toc
+          opam exec -- rocq doc -Q _build/default/abstraction/ RocqSAT -Q _build/default/refinement/core/ RocqSAT.refinement -Q _build/default/refinement/c/ RocqSAT.refinement.c _build/default/abstraction/*.v _build/default/abstraction/rules/*.v _build/default/abstraction/utils/*.v _build/default/abstraction/systems/*.v _build/default/refinement/core/*.v _build/default/refinement/c/*.v -d doc -toc
 
       - name: Upload documentation artifact
         if: github.ref == 'refs/heads/thesis'
