@@ -4,31 +4,29 @@ From Stdlib Require Import List.
 From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
   Ctypes Cop Clight ClightBigstep.
 From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis.
+From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Analysis Step.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep AddLits.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepReasons AddLits.
 Import ListNotations.
 
 (* What analyze_loop does with the reason of the trail literal t: add the literals of its
    clause other than t, or stop if it has none. *)
 Definition reason_add (y: Ctx) (t: Lit) (d: nat) (lt: list Lit) (pathc: nat):
-  Table bool * list Lit * option nat :=
+  Table bool * list Lit * Heur * option nat :=
 match reason_lits y (tget (rsn y) (extract t)) with
-| None    => (mrk y, lt, None)
-| Some ys => add_lits (lvl y) d (nvars y) (Some t) ys (mrk y) lt pathc
+| None    => (mrk y, lt, hr y, None)
+| Some ys => add_lits (lvl y) d (nvars y) (Some t) ys (mrk y) lt (hr y) pathc
 end.
 
 (* What add_reason_lits returns and leaves, from the memory m of the call: the count of
-   reason_add or -1, the marks and lower literals it gives, and only the marks, lt and
-   the
-   fields of s changed. *)
+   reason_add or -1, the marks, lower literals and heuristic it gives, and only those and
+   the fields of s changed. *)
 Definition ReasonPost (S: Shape) (N: nat) (lss: list (list Lit)) (y: Ctx)
   (lims: list nat) (lt: list Lit) (t: Lit) (d pathc: nat) (m m': mem) (v: val): Prop :=
   match reason_add y t d lt pathc with
-  | (mk', lt', r) =>
-    v = vint (enc_count r) /\ RepL m' S N lss (set_mrk y mk') lims lt' /\
-    Mem.unchanged_on
-      (fun (b: block) (_: Z) => b <> b_mrk S /\ b <> b_lt S /\ b <> b_s S) m m'
+  | (mk', lt', h', r) =>
+    v = vint (enc_count r) /\ RepL m' S N lss (with_heur (set_mrk y mk') h') lims lt' /\
+    Mem.unchanged_on (AddKept S) m m'
   end.
 
 (* Without a reason clause, nothing changes and the result is -1. *)
@@ -41,7 +39,7 @@ Proof.
   rewrite Hnone. split.
   - reflexivity.
   - split.
-    + apply rep_mrk_same. assumption.
+    + destruct y. apply HRep.
     + apply Mem.unchanged_on_refl.
 Qed.
 
@@ -132,11 +130,10 @@ Proof.
                                 ++++ assumption.
                                 ++++ apply (r_nclits_small _ _ _ _ _ _ _ HRep).
     * intros m' v Hpost. normal.
-      destruct
-                  (add_lits (lvl y) d (nvars y) (Some t) (map (fun (k: nat) => lit_of
-                    (tcl k))
+      destruct (add_lits (lvl y) d (nvars y) (Some t)
+                  (map (fun (k: nat) => lit_of (tcl k))
                      (seq (starts S i) (starts S (Datatypes.S i) - starts S i)))
-                  (mrk y) lt pathc) as [[mk' lt'] r] eqn:Hadd.
+                  (mrk y) lt (hr y) pathc) as [[[mk' lt'] h'] r] eqn:Hadd.
       destruct Hpost as (-> & HRep' & Hun).
       eapply exec_return.
       -- ev.
@@ -259,8 +256,8 @@ Proof.
           - assumption. }
         rewrite Hys in Hpost.
         destruct (add_lits (lvl y) d (nvars y) (Some t) (tget (rcl y) j) (mrk y) lt
-          pathc)
-          as [[mk' lt'] r] eqn:Hadd_lits.
+                    (hr y) pathc)
+          as [[[mk' lt'] h'] r] eqn:Hadd_lits.
         destruct Hpost as (-> & HRep' & Hun).
         eapply exec_return.
         -- ev.

@@ -18,6 +18,7 @@ From RocqSAT Require Import Model.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Heur.
 From RocqSAT.refinement Require Import Propagate.
 
 Section Entailment.
@@ -326,20 +327,23 @@ Section Analysis.
   end.
 
   (* Add the literals ys other than t that are not marked in mk to the analysis at level
-     d, with the levels lv: mark them, count those of level d in pathc and append the
-     others to lt. Both stay below bound; at a literal that would pass it, stop with no
-     count. *)
+     d, with the levels lv: mark them, bump their atoms in the heuristic h (of bound
+     atoms), count those of level d in pathc and append the others to lt. Both stay below
+     bound; at a literal that would pass it, stop with no count. *)
   Fixpoint add_lits (lv: Table nat) (d bound: nat) (t: option Lit) (ys: list Lit)
-    (mk: Table bool) (lt: list Lit) (pathc: nat): Table bool * list Lit * option nat :=
+    (mk: Table bool) (lt: list Lit) (h: Heur) (pathc: nat):
+    Table bool * list Lit * Heur * option nat :=
   match ys with
-  | []       => (mk, lt, Some pathc)
+  | []       => (mk, lt, h, Some pathc)
   | y :: ys' =>
-    if is_lit t y || tget mk (lit_key y) then add_lits lv d bound t ys' mk lt pathc
+    if is_lit t y || tget mk (lit_key y) then add_lits lv d bound t ys' mk lt h pathc
     else if Nat.eqb (tget lv (extract y)) d then
-      if bound <=? pathc then (mk, lt, None)
-      else add_lits lv d bound t ys' (tset mk (lit_key y) true) lt (S pathc)
-    else if bound <=? length lt then (mk, lt, None)
-    else add_lits lv d bound t ys' (tset mk (lit_key y) true) (lt ++ [y]) pathc
+      if bound <=? pathc then (mk, lt, h, None)
+      else add_lits lv d bound t ys' (tset mk (lit_key y) true) lt
+             (bump h bound (extract y)) (S pathc)
+    else if bound <=? length lt then (mk, lt, h, None)
+    else add_lits lv d bound t ys' (tset mk (lit_key y) true) (lt ++ [y])
+           (bump h bound (extract y)) pathc
   end.
 
   (* The position after the newest of the trail positions lo .. idx - 1 whose literal has
@@ -363,42 +367,100 @@ Section Analysis.
      lo: pathc literals of level d are marked, and the positions from idx on are done.
      Look for the newest marked one, t; if it is the last, ¬t is the literal to assert;
      otherwise resolve with the reason of t. Without a literal to assert, the marks of
-     level d are cleared. The marks and the literals of the lower levels are returned
-     too. *)
+     level d are cleared. The marks, the literals of the lower levels and the heuristic
+     h, whose atoms add_lits bumps, are returned too. *)
   Fixpoint analyze_loop (x: Ctx) (d lo fuel idx: nat) (mk: Table bool) (lt: list Lit)
-    (pathc: nat): option Lit * Table bool * list Lit :=
+    (h: Heur) (pathc: nat): option Lit * Table bool * list Lit * Heur :=
   match fuel with
-  | 0       => (None, unmark_range (tr x) mk idx (idx - lo), lt)
+  | 0       => (None, unmark_range (tr x) mk idx (idx - lo), lt, h)
   | S fuel' =>
-    if Nat.eqb pathc 0 then (None, unmark_range (tr x) mk idx (idx - lo), lt) else
+    if Nat.eqb pathc 0 then (None, unmark_range (tr x) mk idx (idx - lo), lt, h) else
     let idx1 := prev_marked (tr x) mk lo idx (idx - lo) in
-    if idx1 <=? lo then (None, unmark_range (tr x) mk idx1 (idx1 - lo), lt) else
+    if idx1 <=? lo then (None, unmark_range (tr x) mk idx1 (idx1 - lo), lt, h) else
     let t := tget (tr x) (idx1 - 1) in
-    if Nat.eqb pathc 1 then (Some (¬t), mk, lt) else
+    if Nat.eqb pathc 1 then (Some (¬t), mk, lt, h) else
     let mk1 := tset mk (lit_key (¬t)) false in
     match reason_lits x (tget (rsn x) (extract t)) with
-    | None    => (None, unmark_range (tr x) mk1 (idx1 - 1) (idx1 - 1 - lo), lt)
+    | None    => (None, unmark_range (tr x) mk1 (idx1 - 1) (idx1 - 1 - lo), lt, h)
     | Some ys =>
-      match add_lits (lvl x) d (nvars x) (Some t) ys mk1 lt (pathc - 1) with
-      | (mk2, lt2, Some p) => analyze_loop x d lo fuel' (idx1 - 1) mk2 lt2 p
-      | (mk2, lt2, None)   =>
-        (None, unmark_range (tr x) mk2 (idx1 - 1) (idx1 - 1 - lo), lt2)
+      match add_lits (lvl x) d (nvars x) (Some t) ys mk1 lt h (pathc - 1) with
+      | (mk2, lt2, h2, Some p) => analyze_loop x d lo fuel' (idx1 - 1) mk2 lt2 h2 p
+      | (mk2, lt2, h2, None)   =>
+        (None, unmark_range (tr x) mk2 (idx1 - 1) (idx1 - 1 - lo), lt2, h2)
       end
     end
   end.
 
   (* Analyse the conflict on clause i at level d of x, whose last decision is at trail
-     position lo: the literal to assert, if any, with the marks and the literals of the
-     lower levels of the analysed clause. *)
-  Definition analyze (x: Ctx) (i d lo: nat): option Lit * Table bool * list Lit :=
+     position lo: the literal to assert, if any, with the marks, the literals of the
+     lower levels of the analysed clause and the heuristic, from h. *)
+  Definition analyze (x: Ctx) (h: Heur) (i d lo: nat):
+    option Lit * Table bool * list Lit * Heur :=
   match tget (cmap x) i with
-  | None    => (None, mrk x, [])
+  | None    => (None, mrk x, [], h)
   | Some ls =>
-    match add_lits (lvl x) d (nvars x) None ls (mrk x) [] 0 with
-    | (mk, lt, Some p) => analyze_loop x d lo (tlen x) (tlen x) mk lt p
-    | (mk, lt, None)   => (None, unmark_range (tr x) mk (tlen x) (tlen x - lo), lt)
+    match add_lits (lvl x) d (nvars x) None ls (mrk x) [] h 0 with
+    | (mk, lt, h, Some p) => analyze_loop x d lo (tlen x) (tlen x) mk lt h p
+    | (mk, lt, h, None)   =>
+      (None, unmark_range (tr x) mk (tlen x) (tlen x - lo), lt, h)
     end
   end.
+
+  (* The analysis keeps the literals to decide on of the heuristic: it only bumps. *)
+  Lemma add_lits_dlit: forall (lv: Table nat) (d bound: nat) (t: option Lit)
+    (ys: list Lit) (mk mk': Table bool) (lt lt': list Lit) (h h': Heur) (pathc: nat)
+    (r: option nat),
+    add_lits lv d bound t ys mk lt h pathc = (mk', lt', h', r) -> dlit h' = dlit h.
+  Proof.
+    intros lv d bound t ys. induction ys as [|y ys IH];
+      intros mk mk' lt lt' h h' pathc r Hadd; cbn [add_lits] in Hadd.
+    - injection Hadd as _ _ <- _. reflexivity.
+    - destruct (is_lit t y || tget mk (lit_key y)).
+      + apply (IH _ _ _ _ _ _ _ _ Hadd).
+      + destruct (Nat.eqb (tget lv (extract y)) d).
+        * destruct (bound <=? pathc).
+          -- injection Hadd as _ _ <- _. reflexivity.
+          -- rewrite (IH _ _ _ _ _ _ _ _ Hadd). apply bump_dlit.
+        * destruct (bound <=? length lt).
+          -- injection Hadd as _ _ <- _. reflexivity.
+          -- rewrite (IH _ _ _ _ _ _ _ _ Hadd). apply bump_dlit.
+  Qed.
+
+  Lemma analyze_loop_dlit: forall (x: Ctx) (d lo fuel idx: nat) (mk mk': Table bool)
+    (lt lt': list Lit) (h h': Heur) (pathc: nat) (ou: option Lit),
+    analyze_loop x d lo fuel idx mk lt h pathc = (ou, mk', lt', h') -> dlit h' = dlit h.
+  Proof.
+    intros x d lo fuel. induction fuel as [|fuel IH];
+      intros idx mk mk' lt lt' h h' pathc ou Hloop; cbn [analyze_loop] in Hloop.
+    - injection Hloop as _ _ _ <-. reflexivity.
+    - destruct (Nat.eqb pathc 0).
+      + injection Hloop as _ _ _ <-. reflexivity.
+      + destruct (prev_marked (tr x) mk lo idx (idx - lo) <=? lo).
+        * injection Hloop as _ _ _ <-. reflexivity.
+        * destruct (Nat.eqb pathc 1).
+          -- injection Hloop as _ _ _ <-. reflexivity.
+          -- destruct (reason_lits x _) as [ys|].
+             ++ destruct (add_lits _ _ _ _ ys _ lt h (pathc - 1)) as [[[mk2 lt2] h2] [p|]]
+                  eqn:Hadd.
+                ** rewrite (IH _ _ _ _ _ _ _ _ _ Hloop).
+                   apply (add_lits_dlit _ _ _ _ _ _ _ _ _ _ _ _ _ Hadd).
+                ** injection Hloop as _ _ _ <-.
+                   apply (add_lits_dlit _ _ _ _ _ _ _ _ _ _ _ _ _ Hadd).
+             ++ injection Hloop as _ _ _ <-. reflexivity.
+  Qed.
+
+  Lemma analyze_dlit: forall (x: Ctx) (h0: Heur) (i d lo: nat) (ou: option Lit)
+    (mk: Table bool) (lt: list Lit) (h: Heur),
+    analyze x h0 i d lo = (ou, mk, lt, h) -> dlit h = dlit h0.
+  Proof.
+    intros x h0 i d lo ou mk lt h Han. unfold analyze in Han.
+    destruct (tget (cmap x) i) as [ls|].
+    - destruct (add_lits _ _ _ _ ls _ [] h0 0) as [[[mk1 lt1] h1] [p|]] eqn:Hadd.
+      + rewrite (analyze_loop_dlit _ _ _ _ _ _ _ _ _ _ _ _ _ Han).
+        apply (add_lits_dlit _ _ _ _ _ _ _ _ _ _ _ _ _ Hadd).
+      + injection Han as _ _ _ <-. apply (add_lits_dlit _ _ _ _ _ _ _ _ _ _ _ _ _ Hadd).
+    - injection Han as _ _ _ <-. reflexivity.
+  Qed.
 
   (* Unmark the literals of lt, and find the highest level among them (0 if there is
      none). *)
@@ -759,21 +821,21 @@ Section AnalysisSpec.
      only grows, and when no bound was passed it contains ys too, with the count
      right. *)
   Lemma add_lits_spec: forall (ys: list Lit) (t: option Lit) (idx: nat)
-    (mk mk': Table bool) (lt lt': list Lit) (pathc: nat) (r: option nat),
+    (mk mk': Table bool) (lt lt': list Lit) (h h': Heur) (pathc: nat) (r: option nat),
     AInv idx mk lt pathc ->
     (forall (y: Lit), In y ys -> is_lit t y = false -> l_eval m y = Some false /\
        (tget (lvl x) (extract y) = d ->
           exists (q: nat), lo <= q < idx /\ tget (tr x) q = ¬y)) ->
-    add_lits (lvl x) d (nvars x) t ys mk lt pathc = (mk', lt', r) ->
+    add_lits (lvl x) d (nvars x) t ys mk lt h pathc = (mk', lt', h', r) ->
     AMarks idx mk' lt' /\
     (forall (z: Lit), In z (aclause idx mk lt) -> In z (aclause idx mk' lt')) /\
     (forall (p: nat), r = Some p -> AInv idx mk' lt' p /\
        forall (y: Lit), In y ys -> is_lit t y = false -> In y (aclause idx mk' lt')).
   Proof.
     intros ys t.
-    induction ys as [|y ys IH]; intros idx mk mk' lt lt' pathc r Hinv Hys Hadd;
+    induction ys as [|y ys IH]; intros idx mk mk' lt lt' h h' pathc r Hinv Hys Hadd;
       cbn [add_lits] in Hadd.
-    - injection Hadd as <- <- <-. split.
+    - injection Hadd as <- <- _ <-. split.
       + apply Hinv.
       + split.
         * easy.
@@ -787,7 +849,7 @@ Section AnalysisSpec.
       { intros z Hz. apply Hys. now right. }
       destruct (is_lit t y || tget mk (lit_key y)) eqn:Hskip.
       (* y is t, or marked already *)
-      + destruct (IH idx mk mk' lt lt' pathc r Hinv Hys' Hadd)
+      + destruct (IH idx mk mk' lt lt' h h' pathc r Hinv Hys' Hadd)
           as (Hmarks & Hmono & Hsome).
         split.
         * assumption.
@@ -813,7 +875,7 @@ Section AnalysisSpec.
         (* y is of the current level: mark it and count it *)
         * apply Nat.eqb_eq in Hlv. destruct (Hy_pos Hlv) as (q0 & Hq0 & Hq0y).
           destruct (nvars x <=? pathc).
-          -- injection Hadd as <- <- <-. split.
+          -- injection Hadd as <- <- _ <-. split.
              ++ now split.
              ++ split.
                 ** easy.
@@ -844,7 +906,7 @@ Section AnalysisSpec.
                      now destruct (Nat.eq_dec (lit_key y) (lit_key z)).
                    * now split.
                - now rewrite Hlen, Hcount. }
-             destruct (IH idx _ mk' lt lt' (S pathc) r Hinv1 Hys' Hadd)
+             destruct (IH idx _ mk' lt lt' _ h' (S pathc) r Hinv1 Hys' Hadd)
                as (Hmarks & Hmono & Hsome).
              split.
              ++ assumption.
@@ -860,7 +922,7 @@ Section AnalysisSpec.
                        +++ now apply Hin'.
         (* y is of a lower level: mark it and keep it *)
         * apply Nat.eqb_neq in Hlv. destruct (nvars x <=? length lt).
-          -- injection Hadd as <- <- <-. split.
+          -- injection Hadd as <- <- _ <-. split.
              ++ now split.
              ++ split.
                 ** easy.
@@ -894,7 +956,7 @@ Section AnalysisSpec.
                      -- apply tget_tset_same.
                      -- now split.
                - now rewrite Hsame. }
-             destruct (IH idx _ mk' (lt ++ [y]) lt' pathc r Hinv1 Hys' Hadd)
+             destruct (IH idx _ mk' (lt ++ [y]) lt' _ h' pathc r Hinv1 Hys' Hadd)
                as (Hmarks & Hmono & Hsome).
              split.
              ++ assumption.
@@ -959,20 +1021,20 @@ Section AnalysisSpec.
      entailed. Every step resolves away the newest marked literal of the current
      level. *)
   Lemma analyze_loop_spec: forall (fuel idx: nat) (mk mk': Table bool) (lt lt': list Lit)
-    (pathc: nat) (ou: option Lit),
+    (h h': Heur) (pathc: nat) (ou: option Lit),
     AInv idx mk lt pathc -> Entailed f (aclause idx mk lt) -> idx - lo <= fuel ->
-    analyze_loop x d lo fuel idx mk lt pathc = (ou, mk', lt') -> AResult ou mk' lt'.
+    analyze_loop x d lo fuel idx mk lt h pathc = (ou, mk', lt', h') -> AResult ou mk' lt'.
   Proof.
     intros fuel.
     induction fuel as [|fuel IH];
-      intros idx mk mk' lt lt' pathc ou Hinv Hent Hfuel Hloop;
+      intros idx mk mk' lt lt' h h' pathc ou Hinv Hent Hfuel Hloop;
       cbn [analyze_loop] in Hloop.
-    - injection Hloop as <- <- <-. apply (aresult_fail idx).
+    - injection Hloop as <- <- <- _. apply (aresult_fail idx).
       + apply Hinv.
       + apply Hinv.
     - pose proof Hinv as [Hrange Hmarks Hcount].
       destruct (Nat.eqb pathc 0) eqn:Hzero.
-      + injection Hloop as <- <- <-. now apply (aresult_fail idx).
+      + injection Hloop as <- <- <- _. now apply (aresult_fail idx).
       + assert (Hidx: idx = lo + (idx - lo)) by lia.
         destruct (prev_marked_spec (tr x) mk lo (idx - lo) idx Hidx)
           as (Hrange1 & Hnone & Htop).
@@ -985,7 +1047,7 @@ Section AnalysisSpec.
           intros q Hq. apply Hnone. lia. }
         destruct (idx1 <=? lo) eqn:Hlo.
         (* No marked literal is left: give up *)
-        * injection Hloop as <- <- <-. apply Nat.leb_le in Hlo.
+        * injection Hloop as <- <- <- _. apply Nat.leb_le in Hlo.
           assert (Hmarks1: AMarks idx1 mk lt).
           { split.
             - intros y Hy.
@@ -1006,7 +1068,7 @@ Section AnalysisSpec.
             now rewrite Htop. }
           destruct (Nat.eqb pathc 1) eqn:Hone.
           (* ¬t is the last literal of the current level: assert it *)
-          -- injection Hloop as <- <- <-. apply Nat.eqb_eq in Hone.
+          -- injection Hloop as <- <- <- _. apply Nat.eqb_eq in Hone.
              rewrite Hcur1, Hsplit in Hcount. simpl in Hcount.
              assert (Hempty: cur_lits (tr x) mk lo (idx1 - 1 - lo) = []).
              { destruct (cur_lits (tr x) mk lo (idx1 - 1 - lo)).
@@ -1096,8 +1158,8 @@ Section AnalysisSpec.
              ++ assert (Hq_range: lo < q < tlen x) by lia.
                 destruct (reason_spec q ys Hq_range Hreason)
                   as (Hys_ent & Ht_in & Hys_pos).
-                destruct (add_lits (lvl x) d (nvars x) (Some t) ys mk1 lt (pathc - 1))
-                  as [[mk2 lt2] r] eqn:Hadd.
+                destruct (add_lits (lvl x) d (nvars x) (Some t) ys mk1 lt h (pathc - 1))
+                  as [[[mk2 lt2] h2] r] eqn:Hadd.
                 assert (Hpre: forall (y: Lit), In y ys -> is_lit (Some t) y = false ->
                           l_eval m y = Some false /\
                           (tget (lvl x) (extract y) = d ->
@@ -1113,12 +1175,12 @@ Section AnalysisSpec.
                         -- assumption.
                       * assumption.
                     + assumption. }
-                destruct (add_lits_spec ys (Some t) q mk1 mk2 lt lt2 (pathc - 1) r Hinv1
-                            Hpre Hadd)
+                destruct (add_lits_spec ys (Some t) q mk1 mk2 lt lt2 h h2 (pathc - 1) r
+                            Hinv1 Hpre Hadd)
                   as (Hmarks2 & Hmono & Hsome).
                 destruct r as [p|].
                 ** destruct (Hsome p eq_refl) as [Hinv2 Hys_in].
-                   apply (IH q mk2 mk' lt2 lt' p ou Hinv2).
+                   apply (IH q mk2 mk' lt2 lt' h2 h' p ou Hinv2).
                    --- apply (entailed_resolve f (aclause idx mk lt) ys
                                (aclause q mk2 lt2) t).
                        +++ assumption.
@@ -1134,22 +1196,22 @@ Section AnalysisSpec.
                            *** cbn [is_lit]. now apply Lit.eqb_neq.
                    --- lia.
                    --- assumption.
-                ** injection Hloop as <- <- <-. apply (aresult_fail q).
+                ** injection Hloop as <- <- <- _. apply (aresult_fail q).
                    --- assumption.
                    --- lia.
-             ++ injection Hloop as <- <- <-. apply (aresult_fail q).
+             ++ injection Hloop as <- <- <- _. apply (aresult_fail q).
                 ** apply Hinv1.
                 ** lia.
   Qed.
 
   (* The analysis of a false clause of x. *)
-  Lemma analyze_spec: forall (i: nat) (ls: list Lit) (ou: option Lit) (mk: Table bool)
-    (lt: list Lit),
+  Lemma analyze_spec: forall (h0: Heur) (i: nat) (ls: list Lit) (ou: option Lit)
+    (mk: Table bool) (lt: list Lit) (h: Heur),
     tget (cmap x) i = Some ls ->
     (forall (y: Lit), In y ls -> lookup (vals x) y = Some false) ->
-    Unmarked (mrk x) -> analyze x i d lo = (ou, mk, lt) -> AResult ou mk lt.
+    Unmarked (mrk x) -> analyze x h0 i d lo = (ou, mk, lt, h) -> AResult ou mk lt.
   Proof.
-    intros i ls ou mk lt Hi Hfalse Hunmarked Han. unfold analyze in Han.
+    intros h0 i ls ou mk lt h Hi Hfalse Hunmarked Han. unfold analyze in Han.
     rewrite Hi in Han.
     assert (Hlen: lo < tlen x).
     { destruct Htrail as [Hlen _]. rewrite Hlen, trail_lits_length. unfold m.
@@ -1172,19 +1234,20 @@ Section AnalysisSpec.
       split.
       - assumption.
       - intros Hlv. now apply false_pos. }
-    destruct (add_lits (lvl x) d (nvars x) None ls (mrk x) [] 0)
-      as [[mk1 lt1] r] eqn:Hadd.
-    destruct (add_lits_spec ls None (tlen x) (mrk x) mk1 [] lt1 0 r Hinv0 Hpre Hadd)
+    destruct (add_lits (lvl x) d (nvars x) None ls (mrk x) [] h0 0)
+      as [[[mk1 lt1] h1] r] eqn:Hadd.
+    destruct (add_lits_spec ls None (tlen x) (mrk x) mk1 [] lt1 h0 h1 0 r Hinv0 Hpre
+                Hadd)
       as (Hmarks1 & _ & Hsome).
     destruct r as [p|].
     - destruct (Hsome p eq_refl) as [Hinv1 Hls_in].
-      apply (analyze_loop_spec (tlen x) (tlen x) mk1 mk lt1 lt p ou Hinv1).
+      apply (analyze_loop_spec (tlen x) (tlen x) mk1 mk lt1 lt h1 h p ou Hinv1).
       + apply (entailed_incl f ls).
         * apply entailed_clause_of. now apply (core_sound m f x Hcore i).
         * intros y Hy. now apply Hls_in.
       + lia.
       + assumption.
-    - injection Han as <- <- <-. apply (aresult_fail (tlen x)).
+    - injection Han as <- <- <- _. apply (aresult_fail (tlen x)).
       + assumption.
       + lia.
   Qed.
@@ -1204,7 +1267,7 @@ Section Reasons.
   mkCtx (vals x) (cmap x) (wls x) (tr x) (tlen x) (qhead x) (shorts x) (alls x) (nlits x)
     (cur x)
     (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x) (tset (rcl x) (nr x) c)
-    (tset (rps x) (nr x) (tlen x)) (S (nr x)) (rcap x).
+    (tset (rps x) (nr x) (tlen x)) (S (nr x)) (rcap x) (hr x).
 
   (* Store u :: lt as reason clause nr x, for the literal at trail position tlen x: the
      context and the reason, or no reason if there is no room (nvars x reason clauses,

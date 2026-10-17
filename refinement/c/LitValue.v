@@ -9,14 +9,15 @@ From RocqSAT.refinement.c Require Import Logic Arrays Common Rep.
 Import ListNotations.
 
 (* lit_value reads the value of l, kept per literal (key_value_lookup). It stores
-   nothing, so the memory stays m:
+   nothing, so the memory stays m; it runs also during an analysis (any lower literals
+   lt):
 
-     {{ RepB m S N lss x lims /\ extract l < N }}
+     {{ RepL m S N lss x lims lt /\ extract l < N }}
        return s->vals[l];
      {{ result = key_value (vals x) (lit_key l) = enc_value (lookup (vals x) l) }}    *)
-Lemma lit_value_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
-  (lims: list nat) (l: Lit),
-  {{ m | RepB m S N lss x lims /\ (extract l < N)%nat }}
+Lemma lit_value_correct {lt: list Lit}: forall (S: Shape) (N: nat)
+  (lss: list (list Lit)) (x: Ctx) (lims: list nat) (l: Lit),
+  {{ m | RepL m S N lss x lims lt /\ (extract l < N)%nat }}
     f_lit_value(sptr S, vint (key l))
   {{ m', v | m' = m /\ v = vint (enc_value (lookup (vals x) l)) }}.
 Proof.

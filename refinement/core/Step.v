@@ -22,6 +22,7 @@ From RocqSAT.rules Require Import Decide.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Heur.
 From RocqSAT.refinement Require Import Propagate.
 From RocqSAT.refinement Require Import Analysis.
 
@@ -120,26 +121,36 @@ end.
 Definition clear_shorts (x: Ctx): Ctx :=
 mkCtx (vals x) (cmap x) (wls x) (tr x) (tlen x) (qhead x) [] (alls x) (nlits x) (cur x)
   (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x) (rcl x) (rps x) (nr x)
-  (rcap x).
+  (rcap x) (hr x).
 
 (* The context with cursor c. *)
 Definition with_cursor (x: Ctx) (c: nat): Ctx :=
 mkCtx (vals x) (cmap x) (wls x) (tr x) (tlen x) (qhead x) (shorts x) (alls x) (nlits x) c
   (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x) (rcl x) (rps x) (nr x)
-  (rcap x).
+  (rcap x) (hr x).
 
 (* The context before deciding at cursor c: c is saved, and the decision level goes up. *)
 Definition open_level (x: Ctx) (c: nat): Ctx :=
 mkCtx (vals x) (cmap x) (wls x) (tr x) (tlen x) (qhead x) (shorts x) (alls x) (nlits x) c
   (c :: saved x) (rsn x) (lvl x) (S (dl x)) (mrk x) (phs x) (nvars x) (rcl x) (rps x)
-  (nr x) (rcap x).
+  (nr x) (rcap x) (hr x).
+
+(* The context x with the heuristic h. *)
+Definition with_heur (x: Ctx) (h: Heur): Ctx :=
+mkCtx (vals x) (cmap x) (wls x) (tr x) (tlen x) (qhead x) (shorts x) (alls x) (nlits x)
+  (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x) (rcl x) (rps x)
+  (nr x) (rcap x) h.
+
+(* The literals to decide on of the heuristic h are literals of f. *)
+Definition DlitIn (f: CNF) (h: Heur): Prop :=
+  forall (a: nat) (l: Lit), tget (dlit h) a = Some l -> l ∈ f.
 
 (* The context after jumping back to a trail of length len with values v, cursor c,
    saved cursors st, decision level d and marks mk; the watches are kept, the queue is
    empty, and the reason clauses of the literals from len on are dropped. *)
 Definition jump (x: Ctx) (v: Values) (len c: nat) (st: list nat) (d: nat) (mk: Table bool): Ctx :=
 mkCtx v (cmap x) (wls x) (tr x) len len (shorts x) (alls x) (nlits x) c st (rsn x) (lvl x)
-  d mk (phs x) (nvars x) (rcl x) (rps x) (pop_reasons (rps x) len (nr x)) (rcap x).
+  d mk (phs x) (nvars x) (rcl x) (rps x) (pop_reasons (rps x) len (nr x)) (rcap x) (hr x).
 
 (* The reason clauses are entailed, and stored for increasing trail positions below the
    end of the trail. *)
@@ -159,7 +170,8 @@ Record StepCore (m: PA) (f: CNF) (x: Ctx): Prop := {
   sc_shorts: forall (i: nat) (ls: list Lit), In i (shorts x) -> tget (cmap x) i = Some ls -> length ls <= 1;
   sc_marks: Unmarked (mrk x);
   sc_bound: S (max_atom_f f) <= nvars x;
-  sc_slots: SlotsOk f x
+  sc_slots: SlotsOk f x;
+  sc_dlit: DlitIn f (hr x)
 }.
 
 (* Moreover the state is well-formed and entailed, as every reachable state is. *)
@@ -299,11 +311,11 @@ Lemma front_shorts: forall (m m1: PA) (f: CNF) (x x1: Ctx) (r: option nat),
     exists (ls: list Lit), tget (cmap x1) i = Some ls /\ forall (y: Lit), In y ls -> lookup (vals x1) y = Some false).
 Proof.
   intros m m1 f x x1 r
-    [Hprop Hcomplete Hcursor Hsaved Hempty Hshorts Hmarks Hbound Hslots] Hcheck.
+    [Hprop Hcomplete Hcursor Hsaved Hempty Hshorts Hmarks Hbound Hslots Hdlit] Hcheck.
   pose proof (check_shorts_extends (shorts x) m m1 x x1 r Hcheck) as Hext.
   destruct (check_shorts_spec (shorts x) m m1 f x x1 r Hprop Hshorts Hcheck)
     as (Hder & (Hcm & _ & Hsh & Hal & Hnl & Hcur & Hsv & _ & Hmk & Hnv & Hrcl & Hrps
-        & Hnr & _) & Hincl & Hprop1 & Hnone & Hsome).
+        & Hnr & _ & Hhr) & Hincl & Hprop1 & Hnone & Hsome).
   split.
   - assumption.
   - split.
@@ -332,6 +344,7 @@ Proof.
               ** apply Hprop.
               ** apply Hprop1.
               ** assumption.
+        -- unfold DlitIn. rewrite Hhr. assumption.
       * split.
         -- intros Hr i Hi. apply (Hnone Hr i []).
            ++ apply Hempty. now apply (reordered_empty (cmap x) (cmap x1)).
@@ -352,12 +365,12 @@ Lemma front_prop: forall (m1 m2: PA) (f: CNF) (x1 x2: Ctx) (r: option nat),
     exists (ls: list Lit), tget (cmap x2) i = Some ls /\ forall (y: Lit), In y ls -> lookup (vals x2) y = Some false).
 Proof.
   intros m1 m2 f x1 x2 r
-    [Hprop Hcomplete Hcursor Hsaved Hempty Hshorts Hmarks Hbound Hslots] Hwf Hnonempty
-    Hpropagate.
+    [Hprop Hcomplete Hcursor Hsaved Hempty Hshorts Hmarks Hbound Hslots Hdlit] Hwf
+    Hnonempty Hpropagate.
   pose proof (propagate_extends _ m1 m2 _ x2 r Hpropagate) as Hext.
   destruct (propagate_spec (S (nvars x1)) m1 m2 f (clear_shorts x1) x2 r) as
-    (Hder & (Hcm & Hsh & Hal & Hnl & Hcur & Hsv & _ & Hmk & Hnv & Hrcl & Hrps & Hnr & _)
-      & Hincl & Hprop2 & Hnone & Hsome).
+    (Hder & (Hcm & Hsh & Hal & Hnl & Hcur & Hsv & _ & Hmk & Hnv & Hrcl & Hrps & Hnr & _
+       & Hhr) & Hincl & Hprop2 & Hnone & Hsome).
   - destruct Hprop as [Hcore Hq Hwatch Hsaved' Hlisted Hblocked]. split.
     + now apply (core_ext m1 f x1).
     + assumption.
@@ -369,7 +382,7 @@ Proof.
   - assumption.
   - simpl. lia.
   - assumption.
-  - simpl in Hcm, Hsh, Hal, Hnl, Hcur, Hsv, Hmk, Hnv, Hrcl, Hrps, Hnr, Hincl. split.
+  - simpl in Hcm, Hsh, Hal, Hnl, Hcur, Hsv, Hmk, Hnv, Hrcl, Hrps, Hnr, Hhr, Hincl. split.
     + assumption.
     + split.
       * assumption.
@@ -396,6 +409,7 @@ Proof.
                  --- apply Hprop.
                  --- apply Hprop2.
                  --- assumption.
+           ++ unfold DlitIn. rewrite Hhr. assumption.
         -- split.
            ++ assumption.
            ++ split.
@@ -516,21 +530,30 @@ Section Jumps.
      queue holds just u, the saved cursor of d is restored, the reason clauses of the
      dropped literals are dropped, and u has a reason that justifies it. *)
   Lemma jump_core: forall (mt n: PA) (f: CNF) (x: Ctx) (d u: Lit) (v': Values) (c0: nat)
-    (st: list nat) (mk: Table bool) (x': Ctx) (r: Reason),
+    (st: list nat) (mk: Table bool) (h: Heur) (x': Ctx) (r: Reason),
     StepCore ⟨mt; d ++ n⟩ f x ->
     ValuesOf v' mt ->
     lookup v' u = None ->
     CursorT (values mt) f (alls x) (nlits x) c0 ->
     SavedC f (alls x) (nlits x) mt st ->
-    Unmarked mk ->
-    JumpReason f mt u (jump x v' (PA.length mt) c0 st (decisions mt) mk) x' r ->
+    Unmarked mk -> DlitIn f h ->
+    JumpReason f mt u (with_heur (jump x v' (PA.length mt) c0 st (decisions mt) mk) h) x'
+      r ->
     StepCore ⟨mt, u⟩ f (assign x' u r).
   Proof.
-    intros mt n f x d u v' c0 st mk x' r
+    intros mt n f x d u v' c0 st mk h x' r
       [[[Hvals Hfresh Htrail Hsound Hnodup Hdl Htrace] Hq Hwatch Hsavedq Hlisted
         Hblocked] Hcomplete Hcursor Hsaved Hempty Hshorts Hmarks Hbound
-        [Hent Horder Hbelow]] Hv' Hu Hc0 Hst Hmk Hreason.
-    set (xj := jump x v' (PA.length mt) c0 st (decisions mt) mk) in Hreason.
+        [Hent Horder Hbelow] Hdlit] Hv' Hu Hc0 Hst Hmk Hh Hreason.
+    set (xj := with_heur (jump x v' (PA.length mt) c0 st (decisions mt) mk) h) in Hreason.
+    (* The reason clause keeps the heuristic h. *)
+    assert (Hhr: hr x' = h).
+    { pose proof Hreason as Hreason'.
+      destruct Hreason' as [[-> _] | (lt & Hpush & _ & _)].
+      - reflexivity.
+      - unfold push_reason in Hpush. destruct (_ && _).
+        + injection Hpush as <- _. reflexivity.
+        + injection Hpush as <- _. reflexivity. }
     destruct (fresh_split mt n d Hfresh) as [Hfresh' _].
     destruct (saved_q_split (cmap x) mt n d Hsavedq) as [Hok Hsavedq'].
     destruct (pop_reasons_spec (rps x) (PA.length mt) (nr x) Horder) as [Hpop_le Hpop].
@@ -592,9 +615,9 @@ Section Jumps.
                                  (tset (rcl xj) (nr xj) (u :: lt))
                                  (tset (rps xj) (nr xj) (tlen xj)) (S (nr xj)) mt).
           { now apply trace_push. }
-          unfold xj, add_reason in *.
-          cbn [jump vals cmap wls tr tlen qhead shorts alls nlits cur saved rsn lvl dl
-            mrk phs nvars rcl rps nr rcap] in *.
+          unfold xj, add_reason, with_heur in *.
+          cbn [with_heur jump vals cmap wls tr tlen qhead shorts alls nlits cur saved rsn
+            lvl dl mrk phs nvars rcl rps nr rcap] in *.
           set (j0 := pop_reasons (rps x) (PA.length mt) (nr x)) in *. split.
           * apply (prop_inv_reasons mt f _ _ Hprop_j).
             -- reflexivity.
@@ -655,6 +678,7 @@ Section Jumps.
     - simpl. now rewrite Hmk'.
     - simpl. now rewrite Hnv.
     - assumption.
+    - unfold DlitIn. cbn [assign hr]. rewrite Hhr. assumption.
   Qed.
 End Jumps.
 
@@ -717,21 +741,20 @@ Qed.
 
 (* Deciding the unassigned literal at position c of the cursor, with its phase, is a Decide step, to a consistent
    context. *)
-Lemma decide_spec: forall (m: PA) (f: CNF) (x: Ctx) (c: nat),
+Lemma decide_lit_spec: forall (m: PA) (f: CNF) (x: Ctx) (c: nat) (l0: Lit),
   StepCore m f x ->
   qhead x = tlen x ->
   shorts x = [] ->
   (forall (i: nat), tget (cmap x) i <> Some []) ->
-  CursorT (vals x) f (alls x) (nlits x) c ->
-  c < nlits x ->
-  lookup (vals x) (tget (alls x) c) = None ->
-  state m f ==>[DPLL_BJ] state ⟨m; (phase (phs x) (tget (alls x) c))⟩ f /\
-  StepCore ⟨m; (phase (phs x) (tget (alls x) c))⟩ f
-    (assign (open_level x c) (phase (phs x) (tget (alls x) c)) no_reason).
+  CursorT (vals x) f (alls x) (nlits x) c -> l0 ∈ f ->
+  lookup (vals x) l0 = None ->
+  state m f ==>[DPLL_BJ] state ⟨m; (phase (phs x) l0)⟩ f /\
+  StepCore ⟨m; (phase (phs x) l0)⟩ f
+    (assign (open_level x c) (phase (phs x) l0) no_reason).
 Proof.
-  intros m f x c [Hprop Hcomplete _ Hsaved _ _ Hmarks Hbound Hslots] Hq Hshorts Hnonempty
-    Hc Hlt Hundef.
-  pose proof Hc as [_ [Hin _]]. pose proof Hprop as [[Hvals _ _ _ _ _ _] _ _ _ _ _].
+  intros m f x c l0 [Hprop Hcomplete _ Hsaved _ _ Hmarks Hbound Hslots Hdlit] Hq Hshorts
+    Hnonempty Hc Hl0 Hundef.
+  pose proof Hprop as [[Hvals _ _ _ _ _ _] _ _ _ _ _].
   apply (phase_undef _ (phs x)) in Hundef as Hl.
   assert (Hext: forall (y: Lit), lookup (vals x) y = lookup (values m) y).
   - intros y. now rewrite Hvals, lookup_values.
@@ -739,7 +762,7 @@ Proof.
     + apply (t_step Decide).
       * right. right. now left.
       * apply r_decide.
-        -- now apply phase_in, Hin.
+        -- now apply phase_in.
         -- unfold Undef. now rewrite <- Hvals.
     + split.
       * apply prop_inv_decide.
@@ -748,7 +771,8 @@ Proof.
         -- assumption.
       * assumption.
       * apply (cursor_incl (vals x)).
-        -- intros y Hy. apply (incl_undef (vals x) (set_value (vals x) (phase (phs x) (tget (alls x) c)))).
+        -- intros y Hy.
+           apply (incl_undef (vals x) (set_value (vals x) (phase (phs x) l0))).
            ++ apply incl_set_value.
               ** apply incl_refl.
               ** assumption.
@@ -769,6 +793,71 @@ Proof.
         -- reflexivity.
         -- reflexivity.
         -- simpl. lia.
+      * assumption.
+Qed.
+
+(* Changing the heuristic, but not its literals to decide on, keeps the context
+   consistent: nothing else depends on it. *)
+Lemma step_core_heur: forall (m: PA) (f: CNF) (x: Ctx) (h: Heur),
+  StepCore m f x -> dlit h = dlit (hr x) -> StepCore m f (with_heur x h).
+Proof.
+  intros m f x h
+    [Hprop Hcomplete Hcursor Hsaved Hempty Hshorts Hmarks Hbound Hslots Hdlit] Hh.
+  split.
+  - apply (prop_inv_ext m f x).
+    + assumption.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+  - assumption.
+  - assumption.
+  - assumption.
+  - assumption.
+  - assumption.
+  - assumption.
+  - assumption.
+  - apply (slots_grow f x).
+    + assumption.
+    + reflexivity.
+    + reflexivity.
+    + reflexivity.
+    + cbn [with_heur tlen]. lia.
+  - unfold DlitIn. cbn [with_heur hr]. rewrite Hh. assumption.
+Qed.
+
+(* Deciding the literal at position c of the literals to decide on: a case of
+   decide_lit_spec. *)
+Lemma decide_spec: forall (m: PA) (f: CNF) (x: Ctx) (c: nat),
+  StepCore m f x ->
+  qhead x = tlen x ->
+  shorts x = [] ->
+  (forall (i: nat), tget (cmap x) i <> Some []) ->
+  CursorT (vals x) f (alls x) (nlits x) c ->
+  c < nlits x ->
+  lookup (vals x) (tget (alls x) c) = None ->
+  state m f ==>[DPLL_BJ] state ⟨m; (phase (phs x) (tget (alls x) c))⟩ f /\
+  StepCore ⟨m; (phase (phs x) (tget (alls x) c))⟩ f
+    (assign (open_level x c) (phase (phs x) (tget (alls x) c)) no_reason).
+Proof.
+  intros m f x c Hcore Hq Hshorts Hnonempty Hc Hlt Hundef.
+  pose proof Hc as [_ [Hin _]].
+  apply decide_lit_spec.
+  - assumption.
+  - assumption.
+  - assumption.
+  - assumption.
+  - assumption.
+  - now apply Hin.
+  - assumption.
 Qed.
 
 (* With an empty queue, no empty clause and nothing left to decide, no clause is false and every literal of f is
@@ -1087,14 +1176,15 @@ Section Initial.
       + replace (k + S j) with (S k + j) by lia. apply IH. lia.
   Qed.
 
-  (* The initial context for the clauses lss and the literals ls to decide on, with nv as the bound on the trail:
-     no values, an empty trail, and the clauses indexed. *)
+  (* The initial context for the clauses lss and the literals ls to decide on, with nv as
+     the bound on the trail: no values, an empty trail, the clauses indexed, and the
+     heuristic with the atoms of ls. *)
   Definition initial_of (lss: list (list Lit)) (ls: list Lit) (nv rc: nat): Ctx :=
   match index 0 lss (tmake None) (tmake []) [] with
   | (cm, wl, sh) =>
     mkCtx (tmake None) cm wl (tmake (Pos 0)) 0 0 sh (fill (tmake (Pos 0)) 0 ls)
       (length ls) 0 [] (tmake no_reason) (tmake 0) 0 (tmake false) (tmake None) nv
-      (tmake []) (tmake 0) 0 rc
+      (tmake []) (tmake 0) 0 rc (init_heur (fill (tmake (Pos 0)) 0 ls) nv (length ls))
   end.
 
   (* The initial context is consistent with the initial state of f if lss lists the clauses of f, without
@@ -1168,6 +1258,14 @@ Section Initial.
           -- intros j Hj. simpl in Hj. lia.
           -- intros j1 j2 Hj. simpl in Hj. lia.
           -- intros j Hj. simpl in Hj. lia.
+        * (* the literals to decide on of the heuristic are literals of ls *)
+          intros a l Hl. cbn [hr] in Hl.
+          apply (init_heur_dlit (fun (l': Lit) => l' ∈ f) (fill (tmake (Pos 0)) 0 ls) nv
+                   (length ls)) with a.
+          -- intros j Hj. rewrite <- (Nat.add_0_l j), fill_spec.
+             ++ apply Hls, nth_In. assumption.
+             ++ assumption.
+          -- assumption.
       + split.
         * apply initial_well_formed.
         * apply e_nil.

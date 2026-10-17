@@ -4,7 +4,7 @@ From Stdlib Require Import List Bool.
 From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
   Ctypes Ctypesdefs Cop Clight ClightBigstep.
 From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Propagate Step CStep.
+From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Step CStep.
 From RocqSAT.refinement.c Require Import solver.
 From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Wpush.
 Import ListNotations.
@@ -120,11 +120,11 @@ match p with
 end.
 
 (* The context while indexing clause k: all clauses known, the first k watched, nothing
-   assigned. *)
+   assigned, and the empty heuristic of the nl literals to decide on. *)
 Definition ictx (lss: list (list Lit)) (alls: Table Lit) (nl N rc k: nat): Ctx :=
 mkCtx (tmake None) (icm (idx lss (length lss))) (iwl (idx lss k)) (tmake (Pos 0)) 0 0 []
   alls nl 0 [] (tmake no_reason) (tmake 0) 0 (tmake false) (tmake None) N (tmake [])
-  (tmake 0) 0 rc.
+  (tmake 0) 0 rc (empty_heur nl).
 
 Section Facts.
   Context (lss: list (list Lit)).
@@ -194,7 +194,8 @@ Lemma ictx_step: forall (lss: list (list Lit)) (alls: Table Lit) (nl N rc k: nat
   ictx lss alls nl N rc (Datatypes.S k) =
   mkCtx (tmake None) (icm (idx lss (length lss)))
     (watch_first (iwl (idx lss k)) k (nth k lss [])) (tmake (Pos 0)) 0 0 [] alls nl 0 []
-    (tmake no_reason) (tmake 0) 0 (tmake false) (tmake None) N (tmake []) (tmake 0) 0 rc.
+    (tmake no_reason) (tmake 0) 0 (tmake false) (tmake None) N (tmake [])
+    (tmake 0) 0 rc (empty_heur nl).
 Proof.
   intros lss alls nl N rc k Hk. unfold ictx. rewrite (idx_snoc lss k Hk). reflexivity.
 Qed.

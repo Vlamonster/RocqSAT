@@ -101,7 +101,8 @@ Proof.
            { rewrite add_repr. f_equal. lia. }
            cbv beta iota. run. rewrite Ht.
            call lit_value_fun. eapply call_weaken.
-           { apply (lit_value_correct S N lss x lims y m). split; assumption. }
+           { apply (lit_value_correct (lt := []) S N lss x lims y m).
+             split; assumption. }
            intros m' v [-> ->]. normal.
            eapply (exec_if_cmp _ _ _ Cne _ _ _ (-1)).
            ++ ev.

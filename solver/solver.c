@@ -184,6 +184,128 @@ static int phase(struct solver *s, int l) {
   return l;
 }
 
+/* Activities stay below 2^30, so that C adds two of them without overflow (act_lim). */
+#define ACT_LIM (1 << 30)
+
+/* Divide the activities by 2^20, and make the bump c divided by it, at least 1 (rescale). */
+static void rescale(struct solver *s, int c) {
+  int a = 0;
+  while (a < s->nv) {
+    s->act[a] = s->act[a] >> 20;
+    a++;
+  }
+  c = c >> 20;
+  if (c < 1) c = 1;
+  s->inc = c;
+}
+
+/* Move the atom at heap position i up while its parent has a lower activity, at most hsize times (heap_up). */
+static void heap_up(struct solver *s, int i) {
+  int a = s->heap[i];
+  int fuel = s->hsize;
+  while (fuel > 0) {
+    if (i <= 0) break;
+    int p = (i - 1) / 2;
+    int b = s->heap[p];
+    if (s->act[b] >= s->act[a]) break;
+    s->heap[i] = b;
+    s->hpos[b] = i;
+    i = p;
+    fuel--;
+  }
+  s->heap[i] = a;
+  s->hpos[a] = i;
+}
+
+/* Move the atom at heap position i down while a child has a higher activity, at most hsize times (heap_down). */
+static void heap_down(struct solver *s, int i) {
+  int a = s->heap[i];
+  int n = s->hsize;
+  int fuel = n;
+  while (fuel > 0) {
+    int c = 2 * i + 1;
+    if (c >= n) break;
+    if (c + 1 < n) {
+      if (s->act[s->heap[c + 1]] > s->act[s->heap[c]]) c = c + 1;
+    }
+    int b = s->heap[c];
+    if (s->act[b] <= s->act[a]) break;
+    s->heap[i] = b;
+    s->hpos[b] = i;
+    i = c;
+    fuel--;
+  }
+  s->heap[i] = a;
+  s->hpos[a] = i;
+}
+
+/* Put atom a in the heap, unless it is there, is not decided on, or the heap is full (heap_insert). */
+static void heap_insert(struct solver *s, int a) {
+  if (s->hpos[a] >= 0) return;
+  if (s->dlit[a] < 0) return;
+  int n = s->hsize;
+  if (n >= s->nv) return;
+  s->heap[n] = a;
+  s->hpos[a] = n;
+  s->hsize = n + 1;
+  heap_up(s, n);
+}
+
+/* Take the atom at the top of the non-empty heap out of it (heap_pop). */
+static int heap_pop(struct solver *s) {
+  int a = s->heap[0];
+  int n = s->hsize - 1;
+  s->hsize = n;
+  s->hpos[a] = -1;
+  if (n > 0) {
+    int b = s->heap[n];
+    s->heap[0] = b;
+    s->hpos[b] = 0;
+    heap_down(s, 0);
+  }
+  return a;
+}
+
+/* Raise the activity of atom a by the bump, rescaling first if it would reach ACT_LIM (bump). */
+static void bump(struct solver *s, int a) {
+  if (s->act[a] >= ACT_LIM - s->inc) rescale(s, s->inc);
+  s->act[a] = s->act[a] + s->inc;
+  int i = s->hpos[a];
+  if (i >= 0) heap_up(s, i);
+}
+
+/* Raise the bump by 1/19, the factor 1/0.95 of MiniSat, rescaling when it reaches ACT_LIM / 2 (decay). */
+static void decay(struct solver *s) {
+  int c = s->inc;
+  c = c + c / 19;
+  if (c >= ACT_LIM / 2) rescale(s, c);
+  else s->inc = c;
+}
+
+/* Take atoms out of the heap, at most nv, until the literal to decide on of one is unassigned: that literal, or
+   -1 (pick). */
+static int pick(struct solver *s) {
+  int fuel = s->nv;
+  while (fuel > 0) {
+    if (s->hsize <= 0) return -1;
+    int b = heap_pop(s);
+    int l = s->dlit[b];
+    if (l >= 0) {
+      if (lit_value(s, l) == 0) return l;
+    }
+    fuel--;
+  }
+  return -1;
+}
+
+/* Put the atoms of the trail positions j .. q - 1 back in the heap (reinsert). */
+static void reinsert(struct solver *s, int j, int q) {
+  while (q > j) {
+    heap_insert(s, s->tr[q - 1] >> 1);
+    q--;
+  }
+}
+
 /* The number of reason clauses of the literals below trail position j: those at j and above are the newest
    (pop_reasons). */
 static inline int pop_reasons(struct solver *s, int j) {
@@ -195,9 +317,10 @@ static inline int pop_reasons(struct solver *s, int j) {
   return n;
 }
 
-/* Cut the trail back to position j, unassigning the literals from there on, with an empty queue, and drop the
-   reason clauses of the literals from j on (the values, length, queue and reason clauses of jump). */
+/* Cut the trail back to position j, putting the atoms from there on back in the heap and unassigning them, with an
+   empty queue, and drop the reason clauses of the literals from j on (jump_heur). */
 static void cut(struct solver *s, int j) {
+  reinsert(s, j, s->tlen);
   int q = s->tlen;
   while (q > j) {
     set_value(s, s->tr[q - 1] >> 1, 0);
@@ -212,6 +335,12 @@ static void cut(struct solver *s, int j) {
   }
 }
 
+/* Mark literal y for the analysis and bump its atom (the marking of add_lits). */
+static inline void mark(struct solver *s, int y) {
+  s->mrk[y] = 1;
+  bump(s, y >> 1);
+}
+
 /* Add the literals cl[q .. e) other than t that are not marked to the analysis at level d (add_lits): mark them,
    count those of level d in pathc, and append the others to lt. The new count, or -1 if a count or lt would reach
    nv. */
@@ -222,12 +351,12 @@ static int add_lits(struct solver *s, int *cl, int q, int e, int t, int d, int p
       if (s->mrk[y] == 0) {
         if (s->lvl[y >> 1] == d) {
           if (pathc >= s->nv) return -1;
-          s->mrk[y] = 1;
+          mark(s, y);
           pathc++;
         } else {
           int n = s->ltlen;
           if (n >= s->nv) return -1;
-          s->mrk[y] = 1;
+          mark(s, y);
           s->lt[n] = y;
           s->ltlen = n + 1;
         }
@@ -337,6 +466,7 @@ static int push_reason(struct solver *s, int u) {
 static int resolve(struct solver *s, int i) {
   int d = s->dl;
   if (d == 0) return 1;
+  decay(s);
   int lo = s->lims[d - 1];
   int u = analyze(s, i, d, lo);
   int mx = unmark_lower(s);
@@ -371,6 +501,15 @@ static int step(struct solver *s) {
   c = propagate(s);
   if (c < 0) return -1;
   if (c > 0) return resolve(s, c - 1);
+  int l0 = pick(s);
+  if (l0 >= 0) {
+    int l = phase(s, l0);
+    s->saved[s->dl] = s->cur;
+    s->lims[s->dl] = s->tlen;
+    s->dl = s->dl + 1;
+    if (!assign(s, l, 0)) return -1;
+    return 2;
+  }
   int k = skip_from(s);
   if (k < s->nlits) {
     int l = phase(s, s->alls[k]);
@@ -507,6 +646,32 @@ static int index_clauses(struct solver *s) {
   return ns;
 }
 
+/* Set n ints from p on to -1, "none" (fill_none). */
+static void fill_none(int *p, int n) {
+  int q = 0;
+  while (q < n) {
+    p[q] = -1;
+    q++;
+  }
+}
+
+/* Put the atoms of the literals to decide on in the heap, in their order: the first literal of each atom becomes
+   its literal to decide on, with activity nlits - k for the literal at position k (add_atoms). */
+static void add_atoms(struct solver *s) {
+  int n = s->nlits;
+  int k = 0;
+  while (k < n) {
+    int l = s->alls[k];
+    int b = l >> 1;
+    if (s->dlit[b] < 0) {
+      s->dlit[b] = l;
+      s->act[b] = n - k;
+      heap_insert(s, b);
+    }
+    k++;
+  }
+}
+
 int init(struct solver *s) {
   if (s->nv < 1) return 0;
   int n = 2 * s->nv;
@@ -517,6 +682,10 @@ int init(struct solver *s) {
   zero(s->wlen, n);
   zero(s->rsn, s->nv);
   zero(s->lvl, s->nv);
+  zero(s->act, s->nv);
+  zero(s->heap, s->nv);
+  fill_none(s->hpos, s->nv);
+  fill_none(s->dlit, s->nv);
   s->tlen = 0;
   s->qhead = 0;
   s->nshorts = 0;
@@ -525,11 +694,14 @@ int init(struct solver *s) {
   s->ltlen = 0;
   s->rtop = 0;
   s->nr = 0;
+  s->hsize = 0;
   if (!check_clauses(s)) return 0;
   if (!check_lits(s)) return 0;
+  s->inc = s->nlits + 1;
   if (!check_room(s)) return 0;
   int ns = index_clauses(s);
   if (ns < 0) return 0;
   s->nshorts = ns;
+  add_atoms(s);
   return 1;
 }

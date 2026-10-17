@@ -38,6 +38,12 @@ struct solver {
   int *rlen;     /* [nv] its length */
   int *rpos;     /* [nv] the trail position of the literal it asserted (rps) */
   int nr;        /* the number of reason clauses (nr) */
+  int *act;      /* [nv] the activity of each atom, below 2^30 (VSIDS, act) */
+  int inc;       /* the bump, between 1 and 2^29 (inc) */
+  int *heap;     /* [nv] atoms to decide on, a heap by activity in heap[0 .. hsize) (heap) */
+  int *hpos;     /* [nv] the position of each atom in the heap, or -1 (hpos) */
+  int hsize;
+  int *dlit;     /* [nv] the literal to decide on for each atom, or -1 (dlit) */
 };
 
 /* Set up the initial state for the clauses already in cstart and clits, with the watch lists laid out in woff and

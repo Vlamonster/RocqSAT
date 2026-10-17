@@ -139,6 +139,10 @@ int main(void) {
   s.rbeg = ints(nv);
   s.rlen = ints(nv);
   s.rpos = ints(nv);
+  s.act = ints(nv);
+  s.heap = ints(nv);
+  s.hpos = ints(nv);
+  s.dlit = ints(nv);
   if (!init(&s)) {
     fprintf(stderr, "bad input\n");
     return 1;

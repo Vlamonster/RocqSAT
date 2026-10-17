@@ -5,11 +5,11 @@ From Stdlib Require Import List.
 From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
   Ctypes Cop Clight ClightBigstep.
 From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis Step CStep
-  SolverStep.
+From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Analysis Step
+  CStep SolverStep.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Assign Cut Analyze
-  UnmarkLower PushReason.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepReasons RepHeur
+  Assign Cut Decay Analyze UnmarkLower PushReason.
 Import ListNotations.
 
 (* What C returns and leaves for an outcome of a step on the context: 0 to stop with P of
@@ -116,47 +116,51 @@ Proof.
 Qed.
 
 (* The statements of resolve after the backjump: flipping the last decision. *)
-Definition resolve_flip: statement := drop_stmts 6 (fn_body f_resolve).
+Definition resolve_flip: statement := drop_stmts 7 (fn_body f_resolve).
 
 (* Flipping the last decision, at trail position j0, with the cursor c0 saved for it,
-   after the analysis left the marks mk2 and the lower literals lt:
+   after the analysis left the marks mk2, the lower literals lt and the heuristic h:
 
-     {{ RepL (set_mrk x mk2) (j0 :: lims0) lt /\ saved x = c0 :: st }}
+     {{ RepL (with_heur (set_mrk x mk2) h) (j0 :: lims0) lt /\ saved x = c0 :: st }}
        s->ltlen = 0;                                              (rep_store_ltlen_zero)
        int l = s->tr[lo];
        cut(s, lo);                                                       (cut_correct)
-     {{ RepB (jump x v1 j0 (cur x) (saved x) (dl x) mk2) (j0 :: lims0) }}
+     {{ RepB (jump_heur x v1 j0 (cur x) (saved x) (dl x) mk2 h) (j0 :: lims0) }}
        s->cur = s->saved[d - 1];
        s->dl = d - 1;                                                  (rep_store_level)
-     {{ RepB (jump x v1 j0 c0 st (dl x - 1) mk2) lims0 }}
+     {{ RepB (jump_heur x v1 j0 c0 st (dl x - 1) mk2 h) lims0 }}
        if (!assign(s, l ^ 1, 0)) return -1;                           (assign_correct)
        return 2;                                                      (resolve_assigned)
-     {{ ResolvePost (flip_t x j0 lims0 mk2) }}
+     {{ ResolvePost (flip_t x j0 lims0 mk2 h) }}
 
    where v1 = unset_range (vals x) (tr x) j0 (tlen x - j0) and l = tget (tr x) j0. *)
 Lemma resolve_flip_correct {lt: list Lit}: forall (S: Shape) (N: nat)
   (lss: list (list Lit)) (x: Ctx) (lims0: list nat) (j0 c0: nat) (st: list nat)
-  (mk2: Table bool) (P: mem -> Prop) (tp: nat -> Z) (le: temp_env) (m: mem),
-  RepL m S N lss (set_mrk x mk2) (j0 :: lims0) lt -> Arr m (b_wpool S) (2 * npool S) tp
-    ->
+  (mk2: Table bool) (h: Heur) (P: mem -> Prop) (tp: nat -> Z) (le: temp_env) (m: mem),
+  RepL m S N lss (with_heur (set_mrk x mk2) h) (j0 :: lims0) lt ->
+  Arr m (b_wpool S) (2 * npool S) tp ->
   PoolOf S N tp (wls x) (fun (_ _: nat) => False) -> (j0 < tlen x)%nat ->
   saved x = c0 :: st -> le ! _s = Some (sptr S) -> le ! _lo = Some (vint (Z.of_nat j0))
     ->
   le ! _d = Some (vint (Z.of_nat (length (j0 :: lims0)))) ->
   Exec ge le m resolve_flip
-    (Returns f_resolve (ResolvePost S N lss P (flip_t x j0 lims0 mk2))).
+    (Returns f_resolve (ResolvePost S N lss P (flip_t x j0 lims0 mk2 h))).
 Proof.
-  intros S N lss x lims0 j0 c0 st mk2 P tp le m HRep Apool Hpool Hj0 Hsv Hs Hlo Hd.
+  intros S N lss x lims0 j0 c0 st mk2 h P tp le m HRep Apool Hpool Hj0 Hsv Hs Hlo Hd.
   pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
   pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
-  pose proof (r_dl_eq _ _ _ _ _ _ _ HRep) as Hdl. cbn [set_mrk dl length] in Hdl.
+  pose proof (r_dl_eq _ _ _ _ _ _ _ HRep) as Hdl.
+  cbn [with_heur set_mrk dl length] in Hdl.
   pose proof (r_saved_len _ _ _ _ _ _ _ HRep) as Hslen.
-  cbn [set_mrk saved length] in Hslen. rewrite Hsv in Hslen. cbn [length] in Hslen.
+  cbn [with_heur set_mrk saved length] in Hslen.
+  rewrite Hsv in Hslen. cbn [length] in Hslen.
   pose proof (r_ltlen _ _ _ _ _ _ _ HRep) as Fltlen.
-  pose proof (r_tlen_le _ _ _ _ _ _ _ HRep) as Htlen. cbn [set_mrk tlen] in Htlen.
+  pose proof (r_tlen_le _ _ _ _ _ _ _ HRep) as Htlen.
+  cbn [with_heur set_mrk tlen] in Htlen.
   pose proof (r_dl_le _ _ _ _ _ _ _ HRep) as Hdle. cbn [length] in Hdle.
   assert (Hl: (extract (tget (tr x) j0) < N)%nat).
-  { pose proof (r_tr_atoms _ _ _ _ _ _ _ HRep j0) as Hat. cbn [set_mrk tr tlen] in Hat.
+  { pose proof (r_tr_atoms _ _ _ _ _ _ _ HRep j0) as Hat.
+    cbn [with_heur set_mrk tr tlen] in Hat.
     apply Hat. assumption. }
   pose proof (key_small _ N Hl HN) as Hkl.
   assert (Hxor: Int.xor (Int.repr (key (tget (tr x) j0))) (Int.repr 1)
@@ -184,14 +188,15 @@ Proof.
       { apply (arr_store_other _ _ _ _ _ _ _ _ _ Apool Hst1). neq Hnd. }
       keep_mem m1.
       pose proof (r_tr _ _ _ _ _ _ _ HRep1) as Ftr1.
-      pose proof (a_tr _ _ _ _ _ _ _ HRep1) as Atr1. cbn [set_mrk tr] in Atr1.
+      pose proof (a_tr _ _ _ _ _ _ _ HRep1) as Atr1. cbn [with_heur set_mrk tr] in Atr1.
       (* int l = s->tr[lo]; cut(s, lo); *)
       run. call cut_fun. eapply call_weaken.
-      { apply (cut_correct (lt := []) S N lss (set_mrk x mk2) (j0 :: lims0) j0 tp m1).
+      { apply (cut_correct (lt := []) S N lss (with_heur (set_mrk x mk2) h) (j0 :: lims0)
+                 j0 tp m1).
         split.
         - assumption.
         - split.
-          + cbn [set_mrk tlen]. lia.
+          + cbn [with_heur set_mrk tlen]. lia.
           + assumption. }
       intros m2 v [HRep2 Apool2]. normal. keep_mem m2.
       set (v1 := unset_range (vals x) (tr x) j0 (tlen x - j0)) in HRep2.
@@ -199,7 +204,8 @@ Proof.
       pose proof (r_dl _ _ _ _ _ _ _ HRep2) as Fdl2.
       pose proof (r_saved _ _ _ _ _ _ _ HRep2) as Fsaved2.
       pose proof (a_saved _ _ _ _ _ _ _ HRep2) as (tsv & Asaved & Htsv).
-      cbn [jump set_mrk saved] in Htsv. rewrite Hsv in Htsv. cbn [length] in Htsv.
+      cbn [jump_heur with_heur jump set_mrk saved] in Htsv.
+      rewrite Hsv in Htsv. cbn [length] in Htsv.
       assert (Htc0: tsv (length st) = Z.of_nat c0).
       { rewrite Htsv by lia. cbn [rev]. rewrite <- length_rev, nth_middle. reflexivity. }
       (* s->cur = s->saved[d - 1]; *)
@@ -238,8 +244,8 @@ Proof.
                               Hsv Hst3 Hst4) as HRep4.
                 cbn [skipn] in HRep4.
                 (* the context after the jump, as flip_t has it *)
-                assert (HRep4': RepB m4 S N lss (jump x v1 j0 c0 st (dl x - 1) mk2)
-                  lims0).
+                assert (HRep4': RepB m4 S N lss (jump_heur x v1 j0 c0 st (dl x - 1) mk2 h)
+                                  lims0).
                 { replace (dl x - 1)%nat with (length st) by lia. apply HRep4. }
                 assert (Apool3: Arr m3 (b_wpool S) (2 * npool S) tp).
                 { apply (arr_store_other _ _ _ _ _ _ _ _ _ Apool2 Hst3). neq Hnd. }
@@ -248,8 +254,8 @@ Proof.
                 keep_mem m4.
                 (* if (!assign(s, l ^ 1, 0)) return -1; return 2; *)
                 run. call assign_fun. cbn [cast_int_int]. ints. eapply call_weaken.
-                --- apply (assign_correct S N lss (jump x v1 j0 c0 st (dl x - 1) mk2)
-                  lims0
+                --- apply (assign_correct S N lss
+                             (jump_heur x v1 j0 c0 st (dl x - 1) mk2 h) lims0
                              (¬(tget (tr x) j0)) no_reason tp m4).
                     split.
                     +++ apply HRep4'.
@@ -268,19 +274,21 @@ Qed.
 (* The backjump: the statements of resolve when the analysis gives a literal to assert
    below the current level. *)
 Definition resolve_jump: statement :=
-  then_stmt (drop_stmts 1 (then_stmt (first_stmt (drop_stmts 5 (fn_body f_resolve))))).
+  then_stmt (drop_stmts 1 (then_stmt (first_stmt (drop_stmts 6 (fn_body f_resolve))))).
 
-(* Jumping back to level mx, below the current one, and asserting u, with the marks mk2
-   and the lower literals lt the analysis left. The decision of level mx + 1 is at trail
-   position j, and c0 is the cursor saved for it; st are the cursors saved before it:
+(* Jumping back to level mx, below the current one, and asserting u, with the marks
+   mk2, the lower literals lt and the heuristic h the analysis left. The decision of
+   level mx + 1 is at trail position j, and c0 is the cursor saved for it; st are the
+   cursors saved before it:
 
-     {{ RepL (set_mrk x mk2) lims lt /\ mx < length lims /\ u in the temporaries }}
+     {{ RepL (with_heur (set_mrk x mk2) h) lims lt /\ mx < length lims /\ u in the
+        temporaries }}
        cut(s, s->lims[mx]);                                              (cut_correct)
        s->cur = s->saved[mx];
        s->dl = mx;                                                     (rep_store_level)
-     {{ RepL (jump x v1 j c0 st mx mk2) lims' lt }}
+     {{ RepL (jump_heur x v1 j c0 st mx mk2 h) lims' lt }}
        int r = push_reason(s, u);                                (push_reason_correct)
-     {{ RepL x1 lims' lt, for push_reason (jump ...) u lt = (x1, r) }}
+     {{ RepL x1 lims' lt, for push_reason (jump_heur ...) u lt = (x1, r) }}
        s->ltlen = 0;                                              (rep_store_ltlen_zero)
        if (!assign(s, u, r)) return -1;                               (assign_correct)
        return 2;                                                      (resolve_assigned)
@@ -289,9 +297,10 @@ Definition resolve_jump: statement :=
    where v1 = unset_range (vals x) (tr x) j (tlen x - j), k = length lims - (mx + 1)
    and lims' = skipn (k + 1) lims, the positions of the levels up to mx. *)
 Lemma resolve_jump_correct {lt: list Lit}: forall (S: Shape) (N: nat)
-  (lss: list (list Lit)) (x: Ctx) (lims: list nat) (mk2: Table bool) (u: Lit)
+  (lss: list (list Lit)) (x: Ctx) (lims: list nat) (mk2: Table bool) (h: Heur) (u: Lit)
   (mx j c0: nat) (st: list nat) (P: mem -> Prop) (tp: nat -> Z) (le: temp_env) (m: mem),
-  RepL m S N lss (set_mrk x mk2) lims lt -> Arr m (b_wpool S) (2 * npool S) tp ->
+  RepL m S N lss (with_heur (set_mrk x mk2) h) lims lt ->
+  Arr m (b_wpool S) (2 * npool S) tp ->
   PoolOf S N tp (wls x) (fun (_ _: nat) => False) ->
   (forall (j': nat), In j' lims -> (j' < tlen x)%nat) -> (mx < length lims)%nat ->
   (extract u < N)%nat ->
@@ -301,19 +310,21 @@ Lemma resolve_jump_correct {lt: list Lit}: forall (S: Shape) (N: nat)
   le ! _mx = Some (vint (Z.of_nat mx)) ->
   Exec ge le m resolve_jump
     (Returns f_resolve (ResolvePost S N lss P
-       (match push_reason (jump x (unset_range (vals x) (tr x) j (tlen x - j)) j c0 st mx
-                             mk2) u lt with
+       (match push_reason (jump_heur x (unset_range (vals x) (tr x) j (tlen x - j)) j c0
+                             st mx mk2 h) u lt with
         | (x1, r) => CNext (assign x1 u r)
                        (skipn (Datatypes.S (length lims - Datatypes.S mx)) lims)
         end))).
 Proof.
-  intros S N lss x lims mk2 u mx j c0 st P tp le m HRep Apool Hpool Hlims Hmx Hu Hj Hsv
+  intros S N lss x lims mk2 h u mx j c0 st P tp le m HRep Apool Hpool Hlims Hmx Hu Hj Hsv
     Hs Hu' Hmx'.
   pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
   pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
-  pose proof (r_saved_len _ _ _ _ _ _ _ HRep) as Hslen. cbn [set_mrk saved] in Hslen.
+  pose proof (r_saved_len _ _ _ _ _ _ _ HRep) as Hslen.
+  cbn [with_heur set_mrk saved] in Hslen.
   pose proof (r_dl_le _ _ _ _ _ _ _ HRep) as Hdle.
-  pose proof (r_tlen_le _ _ _ _ _ _ _ HRep) as Htlen. cbn [set_mrk tlen] in Htlen.
+  pose proof (r_tlen_le _ _ _ _ _ _ _ HRep) as Htlen.
+  cbn [with_heur set_mrk tlen] in Htlen.
   pose proof (key_small u N Hu HN) as Hku.
   set (k := (length lims - Datatypes.S mx)%nat) in *.
   (* The decision of level mx + 1: entry mx of the arrays, oldest first. *)
@@ -335,10 +346,11 @@ Proof.
   cbn [fn_body drop_stmts first_stmt then_stmt].
   (* cut(s, s->lims[mx]); *)
   run. rewrite (Htl mx Hmx), Hlj. call cut_fun. eapply call_weaken.
-  { apply (cut_correct (lt := lt) S N lss (set_mrk x mk2) lims j tp m). split.
+  { apply (cut_correct (lt := lt) S N lss (with_heur (set_mrk x mk2) h) lims j tp m).
+    split.
     - assumption.
     - split.
-      + cbn [set_mrk tlen]. lia.
+      + cbn [with_heur set_mrk tlen]. lia.
       + assumption. }
   intros m1 v [HRep1 Apool1]. normal. keep_mem m1.
   set (v1 := unset_range (vals x) (tr x) j (tlen x - j)).
@@ -346,7 +358,7 @@ Proof.
   pose proof (r_dl _ _ _ _ _ _ _ HRep1) as Fdl1.
   pose proof (r_saved _ _ _ _ _ _ _ HRep1) as Fsaved1.
   pose proof (a_saved _ _ _ _ _ _ _ HRep1) as (tsv & Asaved & Htsv).
-  cbn [jump set_mrk saved] in Htsv.
+  cbn [jump_heur with_heur jump set_mrk saved] in Htsv.
   (* s->cur = s->saved[mx]; *)
   run. rewrite (Htsv mx) by lia. rewrite Hsc0. eapply exec_store.
   - evl.
@@ -379,7 +391,7 @@ Proof.
            pose proof (rep_store_level m1 m2 m3 S N lss _ lims k c0 st HRep1 Hsv Hst2
                          Hst3) as HRep3.
            (* the context after the jump, as resolve_t has it, at level mx = length st *)
-           set (xj := jump x v1 j c0 st (length st) mk2).
+           set (xj := jump_heur x v1 j c0 st (length st) mk2 h).
            assert (HRep3': RepL m3 S N lss xj (skipn (Datatypes.S k) lims) lt).
            { apply HRep3. }
            assert (Apool2: Arr m2 (b_wpool S) (2 * npool S) tp).
@@ -445,13 +457,16 @@ Qed.
        int d = s->dl;
        if (d == 0) return 1;
      {{ result = 1: no decision, fail }}
+       decay(s);                                                       (decay_correct)
+     {{ Rep (with_heur x hd) lims, for hd = decay (hr x) N }}
        int lo = s->lims[d - 1];
        int u = analyze(s, i, d, lo);                                 (analyze_correct)
+                                                                        (analyze_heur)
        int mx = unmark_lower(s);                                (unmark_lower_correct)
      {{ the result (mk2, mx) of clear_marks, but the mark of u }}
        if (u >= 0) {
          s->mrk[u] = 0;                                                  (rep_store_mrk)
-     {{ RepL (set_mrk x mk2) lims lt, (mk2, mx) = clear_marks ... }}
+     {{ RepL (with_heur (set_mrk x mk2) h) lims lt, (mk2, mx) = clear_marks ... }}
          if (mx < d) { ... }                                    (resolve_jump_correct)
        }
        ...                                                      (resolve_flip_correct)
@@ -471,6 +486,7 @@ Proof.
   pose proof (r_tlen_le _ _ _ _ _ _ _ HRep) as Htlen.
   pose proof (r_saved_len _ _ _ _ _ _ _ HRep) as Hslen.
   pose proof (r_dl _ _ _ _ _ _ _ HRep) as Fdl.
+  pose proof (r_nvars _ _ _ _ _ _ _ HRep) as Hnv.
   remember (resolve_t x lims i) as cr eqn:Hcr.
   change (fun (m' : mem) (v : val) => v = vint (-1) \/ COutcome S N lss P cr m' v)
     with (ResolvePost S N lss P cr).
@@ -496,7 +512,13 @@ Proof.
       * replace (zcmp Ceq (Z.of_nat (length (j0 :: lims0))) 0) with false
           by (cbn [zcmp length]; symmetry; apply Z.eqb_neq; lia).
         cbv beta iota. apply exec_skip. normal.
-        unfold resolve_t in Hcr. rewrite Hdl in Hcr. cbn [length] in Hdle.
+        unfold resolve_t in Hcr. rewrite Hdl, Hnv in Hcr. cbn [length] in Hdle.
+        (* decay(s); *)
+        set (hd := decay (hr x) N) in Hcr.
+        run. call decay_fun. eapply call_weaken.
+        { apply (decay_correct (lt := []) S N lss x (j0 :: lims0)). assumption. }
+        intros m0 v0 [HRep0 Hun0]. normal. transfer Hun0 Hnd. keep_mem m0.
+        clear HRep. rename HRep0 into HRep. fold hd in HRep.
         assert (Hj0: (j0 < tlen x)%nat) by (apply Hlims; now left).
         pose proof (r_lims _ _ _ _ _ _ _ HRep) as Flims.
         pose proof (a_lims _ _ _ _ _ _ _ HRep) as (tl & Alims & Htl).
@@ -508,7 +530,8 @@ Proof.
           rewrite <- length_rev, nth_middle. reflexivity. }
         (* int lo = s->lims[d - 1]; int u = analyze(s, i, d, lo); *)
         run. rewrite Htj0. call analyze_fun. eapply call_weaken.
-        { apply (analyze_correct S N lss x (j0 :: lims0) i (length (j0 :: lims0)) j0).
+        { apply (analyze_correct S N lss (with_heur x hd) (j0 :: lims0) i
+                   (length (j0 :: lims0)) j0).
           split.
           - assumption.
           - split.
@@ -517,16 +540,17 @@ Proof.
               * assumption.
               * lia. }
         intros m1 v1 Hpost. normal. unfold AnalyzePost in Hpost.
-        destruct (analyze x i (length (j0 :: lims0)) j0) as [[ou mk] lt] eqn:Han.
+        rewrite analyze_heur in Hpost. change (hr (with_heur x hd)) with hd in Hpost.
+        destruct (analyze x hd i (length (j0 :: lims0)) j0) as [[[ou mk] lt] h] eqn:Han.
         destruct Hpost as (-> & HRep1 & Hou & Hun1). transfer Hun1 Hnd. keep_mem m1.
         (* int mx = unmark_lower(s); *)
         run. call unmark_lower_fun. eapply call_weaken.
-        { apply (unmark_lower_correct (lt := lt) S N lss (set_mrk x mk) (j0 :: lims0)
-          m1).
-          assumption. }
+        { apply (unmark_lower_correct (lt := lt) S N lss (with_heur (set_mrk x mk) h)
+                   (j0 :: lims0) m1).
+          apply HRep1. }
         intros m2 v2 (HRep2 & -> & Hun2). normal. transfer Hun2 Hnd. keep_mem m2.
-        cbn [set_mrk lvl mrk] in HRep2.
-        change (lvl (set_mrk x mk)) with (lvl x). change (mrk (set_mrk x mk)) with mk.
+        change (lvl (with_heur (set_mrk x mk) h)) with (lvl x) in HRep2 |- *.
+        change (mrk (with_heur (set_mrk x mk) h)) with mk in HRep2 |- *.
         unfold clear_marks in Hcr.
         (* the highest level among lt is at most N *)
         assert (Hmx: (snd (unmark_lower (lvl x) mk 0 lt) <= N)%nat).
@@ -570,8 +594,9 @@ Proof.
                  exists m3. split.
                  --- apply Hst3.
                  --- normal.
-                     assert (HRep3: RepL m3 S N lss (set_mrk x (tset mk1 (lit_key u)
-                       false))
+                     assert (HRep3: RepL m3 S N lss
+                                      (with_heur (set_mrk x (tset mk1 (lit_key u) false))
+                                         h)
                                       (j0 :: lims0) lt).
                      { apply (rep_store_mrk m2 m3 S N lss _ _ (lit_key u) false HRep2 Hk
                                 Hst3). }
@@ -601,7 +626,7 @@ Proof.
                                by (unfold k; cbn [length] in *; lia).
                              rewrite Hcr.
                              apply (resolve_jump_correct S N lss x (j0 :: lims0)
-                                      (tset mk1 (lit_key u) false) u mx _ _ _ P tp).
+                                      (tset mk1 (lit_key u) false) h u mx _ _ _ P tp).
                              ---- assumption.
                              ---- assumption.
                              ---- assumption.
@@ -622,8 +647,7 @@ Proof.
                              cbv beta iota. apply exec_skip. normal. normal.
                              rewrite Hcr.
                              apply (resolve_flip_correct (lt := lt) S N lss x lims0 j0
-                               c0 st
-                                      (tset mk1 (lit_key u) false) P tp).
+                                      c0 st (tset mk1 (lit_key u) false) h P tp).
                              ---- assumption.
                              ---- assumption.
                              ---- assumption.
@@ -636,7 +660,7 @@ Proof.
               replace (zcmp Cge (enc_lit None) 0) with false by reflexivity.
               cbv beta iota. apply exec_skip. normal.
               rewrite Hcr.
-              apply (resolve_flip_correct (lt := lt) S N lss x lims0 j0 c0 st mk1 P tp).
+              apply (resolve_flip_correct (lt := lt) S N lss x lims0 j0 c0 st mk1 h P tp).
               ** assumption.
               ** assumption.
               ** assumption.

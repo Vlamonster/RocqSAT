@@ -6,7 +6,7 @@ From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
 From RocqSAT Require Import Lit.
 From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep SetValue.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepReasons SetValue.
 Import ListNotations.
 
 (* The context x with l appended to its values and its trail. *)

@@ -8,7 +8,7 @@ From RocqSAT Require Import Lit Clause CNF Assignment Evaluation State Satisfiab
 From RocqSAT Require Import Strategy.
 From RocqSAT.systems Require Basic DPLL_BJ.
 From RocqSAT Require Import Model.
-From RocqSAT.refinement Require Import Table Lookup Watches Search Propagate
+From RocqSAT.refinement Require Import Table Lookup Watches Search Heur Propagate
   Analysis Step CStep SolverStep.
 From RocqSAT.refinement.c Require Import solver.
 From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Resolve Step.
@@ -16,10 +16,10 @@ Import ListNotations.
 
 (* Flipping the last decision keeps the formula. *)
 Lemma flip_formula: forall (m' m pm': PA) (f f': CNF) (x x': Ctx) (l: Lit)
-  (mk: Table bool),
-  flip m' m f x l mk = Some (state pm' f', x') -> f' = f.
+  (mk: Table bool) (h: Heur),
+  flip m' m f x l mk h = Some (state pm' f', x') -> f' = f.
 Proof.
-  intros m' m pm' f f' x x' l mk. unfold flip.
+  intros m' m pm' f f' x x' l mk h. unfold flip.
   destruct (saved x); intros H.
   - discriminate.
   - injection H. congruence.
@@ -31,7 +31,8 @@ Lemma resolve_formula: forall (pm pm': PA) (f f': CNF) (x x': Ctx) (i: nat),
 Proof.
   intros pm pm' f f' x x' i. unfold resolve.
   destruct (split_last_decision pm) as [[m l]|].
-  - destruct (analyze x i (dl x) (PA.length m)) as [[ou mk] lt].
+  - destruct (analyze x (decay (hr x) (nvars x)) i (dl x) (PA.length m))
+      as [[[ou mk] lt] h].
     destruct (clear_marks (lvl x) mk lt ou) as [mk2 mx].
     destruct ou as [u|].
     + destruct (mx <? dl x)%nat.
@@ -39,8 +40,8 @@ Proof.
         -- destruct (skipn (dl x - Datatypes.S mx) (saved x)) as [|c0 st].
            ++ apply flip_formula.
            ++ (* the backjump asserts u *)
-              destruct (push_reason (jump x (unassign_segment (vals x) d n)
-                          (PA.length mt) c0 st mx mk2) u lt) as [x1 r].
+              destruct (push_reason (jump_heur x (unassign_segment (vals x) d n)
+                          (PA.length mt) c0 st mx mk2 h) u lt) as [x1 r].
               intros H. injection H. congruence.
         -- apply flip_formula.
       * apply flip_formula.
@@ -57,11 +58,15 @@ Proof.
   - apply resolve_formula.
   - destruct (propagate (Datatypes.S (nvars x1)) m1 (clear_shorts x1)) as [[m2 x2] [i|]].
     + apply resolve_formula.
-    + destruct (_ <? _)%nat.
-      * intros H. injection H. congruence.
-      * destruct (Nat.eqb (tlen x2) (tlen x)); intros H.
-        -- discriminate.
-        -- injection H. congruence.
+    + destruct (pick (vals x2) (hr x2) (nvars x2)) as [h [l0|]].
+      * (* a decision on the literal picked *)
+        intros H. injection H. congruence.
+      * (* a decision by the cursor, or a stop *)
+        destruct (_ <? _)%nat.
+        -- intros H. injection H. congruence.
+        -- destruct (Nat.eqb _ (tlen x)); intros H.
+           ++ discriminate.
+           ++ injection H. congruence.
 Qed.
 
 (* The invariant of the loop of solve at the state s of the derivation it follows, for

@@ -6,7 +6,7 @@ From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
 From RocqSAT Require Import Lit.
 From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepReasons.
 Import ListNotations.
 
 (* The model at position q of lt: it unmarks the literal there and takes the higher of

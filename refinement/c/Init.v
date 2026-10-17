@@ -4,11 +4,11 @@ From Stdlib Require Import List.
 From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
   Ctypes Cop Clight ClightBigstep.
 From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis Step
-  CStep.
+From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Analysis
+  Step CStep.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Wpush Zero
-  CheckClauses CheckLits CheckRoom Index.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepHeur Wpush Zero
+  FillNone CheckClauses CheckLits CheckRoom Index AddAtoms.
 Import ListNotations.
 
 (* The memory before init: the clauses in place, the watch lists laid out by the caller
@@ -51,6 +51,12 @@ Record IRep (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   i_rlen: Fld m (b_s S) 216 Mptr (Vptr (b_rlen S) Ptrofs.zero);
   i_rpos: Fld m (b_s S) 224 Mptr (Vptr (b_rpos S) Ptrofs.zero);
   i_nr: exists (v: val), Fld m (b_s S) 232 Mint32 v;
+  i_act: Fld m (b_s S) 240 Mptr (Vptr (b_act S) Ptrofs.zero);
+  i_inc: exists (v: val), Fld m (b_s S) 248 Mint32 v;
+  i_heap: Fld m (b_s S) 256 Mptr (Vptr (b_heap S) Ptrofs.zero);
+  i_hpos: Fld m (b_s S) 264 Mptr (Vptr (b_hpos S) Ptrofs.zero);
+  i_hsize: exists (v: val), Fld m (b_s S) 272 Mint32 v;
+  i_dlit: Fld m (b_s S) 280 Mptr (Vptr (b_dlit S) Ptrofs.zero);
   i_rcap_small: Z.of_nat rc < 1073741824;
   i_starts: Arr m (b_cstart S) (Datatypes.S (length lss))
     (fun (i: nat) => Z.of_nat (starts S i));
@@ -74,15 +80,19 @@ Record IRep (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   i_arlits: exists (t: nat -> Z), Arr m (b_rlits S) rc t;
   i_arbeg: exists (t: nat -> Z), Arr m (b_rbeg S) N t;
   i_arlen: exists (t: nat -> Z), Arr m (b_rlen S) N t;
-  i_arpos: exists (t: nat -> Z), Arr m (b_rpos S) N t
+  i_arpos: exists (t: nat -> Z), Arr m (b_rpos S) N t;
+  i_aact: exists (t: nat -> Z), Arr m (b_act S) N t;
+  i_aheap: exists (t: nat -> Z), Arr m (b_heap S) N t;
+  i_ahpos: exists (t: nat -> Z), Arr m (b_hpos S) N t;
+  i_adlit: exists (t: nat -> Z), Arr m (b_dlit S) N t
 }.
 
 (* The shape S with the watch lists laid out as offs and caps. *)
 Definition with_room (S: Shape) (o c: nat -> nat): Shape :=
 mkShape (b_s S) (b_cstart S) (b_clits S) (b_vals S) (b_wpool S) (b_woff S) (b_wlen S)
   (b_wcap S) (b_tr S) (b_shorts S) (b_alls S) (b_saved S) (b_lims S) (b_phs S) (b_mrk S)
-  (b_rsn S) (b_lvl S) (b_lt S) (b_rlits S) (b_rbeg S) (b_rlen S) (b_rpos S) (starts S)
-  (lits S) (nclits S) o c (npool S).
+  (b_rsn S) (b_lvl S) (b_lt S) (b_rlits S) (b_rbeg S) (b_rlen S) (b_rpos S) (b_act S)
+  (b_heap S) (b_hpos S) (b_dlit S) (starts S) (lits S) (nclits S) o c (npool S).
 
 (* The initial context is the indexed one, with its short clauses. *)
 Lemma initial_of_idx: forall (lss: list (list Lit)) (ls: list Lit) (nv rc: nat),
@@ -91,7 +101,8 @@ Lemma initial_of_idx: forall (lss: list (list Lit)) (ls: list Lit) (nv rc: nat),
     (tmake (Pos 0%nat)) 0%nat 0%nat
     (ish (idx lss (length lss))) (fill (tmake (Pos 0%nat)) 0%nat ls) (length ls) 0%nat []
     (tmake no_reason) (tmake 0%nat) 0%nat (tmake false) (tmake None) nv (tmake [])
-    (tmake 0%nat) 0%nat rc.
+    (tmake 0%nat) 0%nat rc
+    (init_heur (fill (tmake (Pos 0%nat)) 0%nat ls) nv (length ls)).
 Proof.
   intros lss ls nv rc. unfold initial_of, idx. rewrite firstn_all.
   now destruct (index 0%nat lss (tmake None) (tmake []) []) as [[cm wl] sh].
@@ -184,8 +195,9 @@ Record InitInput (S: Shape) (N: nat) (lss: list (list Lit)) (tw tc: nat -> Z): P
 (* The memory during init: the fields and the arrays, with the contents of the tables
    and fields that init sets as parameters. *)
 Record Setup (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
-  (tw tc tv tp twl ttr tsh ta tsv tl tph tm trs tlv tlt trl trb trn trp: nat -> Z)
-  (vt vq vn vl vc vd vlt vrt vnr: val): Prop := {
+  (tw tc tv tp twl ttr tsh ta tsv tl tph tm trs tlv tlt trl trb trn trp tac thp tps tdl:
+   nat -> Z)
+  (vt vq vn vl vc vd vlt vrt vnr vin vhs: val): Prop := {
   se_nodup: NoDup (iblocks S);
   se_nv: Fld m (b_s S) 0 Mint32 (vint (Z.of_nat N));
   se_ncl: Fld m (b_s S) 4 Mint32 (vint (Z.of_nat (length lss)));
@@ -221,6 +233,12 @@ Record Setup (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   se_rlen: Fld m (b_s S) 216 Mptr (Vptr (b_rlen S) Ptrofs.zero);
   se_rpos: Fld m (b_s S) 224 Mptr (Vptr (b_rpos S) Ptrofs.zero);
   se_nr: Fld m (b_s S) 232 Mint32 vnr;
+  se_act: Fld m (b_s S) 240 Mptr (Vptr (b_act S) Ptrofs.zero);
+  se_inc: Fld m (b_s S) 248 Mint32 vin;
+  se_heap: Fld m (b_s S) 256 Mptr (Vptr (b_heap S) Ptrofs.zero);
+  se_hpos: Fld m (b_s S) 264 Mptr (Vptr (b_hpos S) Ptrofs.zero);
+  se_hsize: Fld m (b_s S) 272 Mint32 vhs;
+  se_dlit: Fld m (b_s S) 280 Mptr (Vptr (b_dlit S) Ptrofs.zero);
   se_rcap_small: Z.of_nat rc < 1073741824;
   se_astarts: Arr m (b_cstart S) (Datatypes.S (length lss))
     (fun (i: nat) => Z.of_nat (starts S i));
@@ -244,6 +262,10 @@ Record Setup (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   se_arbeg: Arr m (b_rbeg S) N trb;
   se_arlen: Arr m (b_rlen S) N trn;
   se_arpos: Arr m (b_rpos S) N trp;
+  se_aact: Arr m (b_act S) N tac;
+  se_aheap: Arr m (b_heap S) N thp;
+  se_ahpos: Arr m (b_hpos S) N tps;
+  se_adlit: Arr m (b_dlit S) N tdl;
 }.
 
 (* What init gives: 0 to reject the input, or 1 with the initial context in memory. *)
@@ -258,26 +280,54 @@ Definition InitPost (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat) (m': me
 (* The zero table. *)
 Definition zeros: nat -> Z := fun (_: nat) => 0.
 
-(* The phases of init, each proved in a lemma of its own: clearing the tables, setting
-   the fields, the checks, and indexing the clauses. *)
+(* The table of -1, which encodes None (enc_pos, enc_lit). *)
+Definition nones: nat -> Z := fun (_: nat) => -1.
+
+(* The phases of init, each proved in a lemma of its own: clearing the tables (those of
+   the heuristic last), setting the fields, the checks, and indexing the clauses. *)
 Definition init_clear: statement := drop_stmts 2 (fn_body f_init).
-Definition init_fields: statement := drop_stmts 9 (fn_body f_init).
-Definition init_checks: statement := drop_stmts 17 (fn_body f_init).
-Definition init_index: statement := drop_stmts 20 (fn_body f_init).
+Definition init_clear_heur: statement := drop_stmts 9 (fn_body f_init).
+Definition init_fields: statement := drop_stmts 13 (fn_body f_init).
+Definition init_checks: statement := drop_stmts 22 (fn_body f_init).
+Definition init_index: statement := drop_stmts 26 (fn_body f_init).
+
+(* The empty heuristic of nl literals to decide on is within the bounds for N atoms: its
+   bump nl + 1 is below act_lim / 2 = 2^29, as nl <= 2 N and N < 2^28. *)
+Lemma empty_heur_ok: forall (N nl: nat),
+  (1 <= N)%nat -> (nl <= 2 * N)%nat -> Z.of_nat N < 268435456 ->
+  HeurOk N (empty_heur nl).
+Proof.
+  intros N nl HN1 Hnl HN. constructor.
+  - (* no activity yet *)
+    intros a Ha. cbn [empty_heur act]. rewrite tget_tmake.
+    change act_lim with 1073741824. lia.
+  - (* the bump *)
+    cbn [empty_heur inc]. change (act_lim / 2) with 536870912. lia.
+  - (* the heap entries are 0, an atom as N >= 1 *)
+    intros i Hi. cbn [empty_heur heap]. rewrite tget_tmake. lia.
+  - (* no atom in the heap *)
+    intros a i Ha Hi. cbn [empty_heur hpos] in Hi. rewrite tget_tmake in Hi.
+    discriminate.
+  - cbn [empty_heur hsize]. lia.
+  - (* no literal to decide on yet *)
+    intros a l Ha Hl. cbn [empty_heur dlit] in Hl. rewrite tget_tmake in Hl.
+    discriminate.
+Qed.
 
 (* The shape with the watch lists laid out as the caller asked, in tw and tc. *)
 Definition room_shape (S: Shape) (tw tc: nat -> Z): Shape :=
   with_room S (fun (k: nat) => Z.to_nat (tw k)) (fun (k: nat) => Z.to_nat (tc k)).
 
 (* After the checks: the memory represents the context ictx with the clause literals acc
-   to decide on, no watches yet, no marks, levels and reasons, and the watch lists laid
-   out as the caller asked. *)
+   to decide on, no watches yet, no marks, levels and reasons, the empty heuristic, and
+   the watch lists laid out as the caller asked. *)
 Lemma setup_rep: forall (m: mem) (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   (tw tc tp tsh ta tsv tl tlt trl trb trn trp: nat -> Z) (acc: list Lit),
   InitInput S N lss tw tc -> (1 <= N)%nat ->
   Setup m S N lss rc tw tc zeros tp zeros zeros tsh ta tsv tl zeros zeros zeros zeros tlt
-    trl trb trn trp (vint 0) (vint 0) (vint 0) (vint (Z.of_nat (length acc))) (vint 0)
-    (vint 0) (vint 0) (vint 0) (vint 0) ->
+    trl trb trn trp zeros zeros nones nones (vint 0) (vint 0) (vint 0)
+    (vint (Z.of_nat (length acc))) (vint 0) (vint 0) (vint 0) (vint 0) (vint 0)
+    (vint (Z.of_nat (length acc) + 1)) (vint 0) ->
   (forall (i: nat) (l: Lit), (i < length lss)%nat -> In l (nth i lss []) ->
      (extract l < N)%nat) ->
   NoDup acc -> (length acc <= 2 * N)%nat ->
@@ -292,8 +342,9 @@ Proof.
   destruct HIn as [Hclauses H0 Hend HN Hncl Hlss Hnp Hkeys Hsmall].
   destruct HSe as [Hnd Fnv Fncl Fcs Fcl Fvals Fpool Fnp Fwoff Fwlen Fwcap
     Ftr Ftlen Fqh Fsh Fns Falls Fnl Fcur Fsv Flims Fdl Fphs Fmrk Frsn Flvl Flt Fltlen
-    Frl Frcap Frtop Frb Frn Frp Fnr Hrc Ast Alits Avals Apool Awoff Awlen Awcap Atr Ash
-    Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl Arb Arn Arp].
+    Frl Frcap Frtop Frb Frn Frp Fnr Fact Finc Fheap Fhpos Fhsize Fdlit Hrc Ast Alits
+    Avals Apool Awoff Awlen Awcap Atr Ash Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl
+    Arb Arn Arp Aact Aheap Ahpos Adlit].
   pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
   set (al := fill (tmake (Pos 0%nat)) 0%nat acc).
   assert (Hal: forall (k: nat), (k < length acc)%nat ->
@@ -432,6 +483,11 @@ Proof.
     + cbn [ictx nr rcl reasons_size]. lia.
     + intros j y Hj. cbn [ictx nr] in Hj. lia.
     + intros j Hj. cbn [ictx nr] in Hj. lia.
+    + (* the empty heuristic *)
+      apply empty_heur_ok.
+      * assumption.
+      * assumption.
+      * assumption.
   - (* the pool holds the empty watch lists *)
     exists tp. split.
     + assumption.
@@ -440,7 +496,8 @@ Proof.
 Qed.
 
 
-(* The last phase: indexing the clauses, which sets the watches and the short clauses:
+(* The last phase: indexing the clauses, which sets the watches and the short clauses,
+   and adding the literals to decide on to the heuristic:
 
      {{ Rep (ictx ... 0) /\ the array of short clauses }}
        int ns = index_clauses(s);                              (index_clauses_correct)
@@ -448,6 +505,9 @@ Qed.
      {{ result = 0 (out of room) }}
      {{ Rep (ictx ... (length lss)) /\ the short clauses are in their array }}
        s->nshorts = ns;                                              (rep_store_shorts)
+     {{ RepB (ictx ... (length lss) with its short clauses, the empty heuristic) }}
+       add_atoms(s);                                                (add_atoms_correct)
+     {{ RepB (initial_of lss acc N rc): the heuristic is init_heur }}
        return 1;
      {{ result = 1 /\ Rep (initial_of lss acc N rc) }}                               *)
 Lemma init_index_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
@@ -503,7 +563,8 @@ Proof.
         pose proof (Rep.r_nodup _ _ _ _ _ _ _ HRep1) as Hnd.
         pose proof (Rep.r_nshorts _ _ _ _ _ _ _ HRep1) as Fns1.
         unfold S', room_shape, with_room in *.
-        cbn [b_s b_shorts b_wpool] in Fns1, Ash1, Hnd, Hpool1.
+        cbn [b_s b_shorts b_wpool b_act b_heap b_hpos b_dlit] in Fns1, Ash1, Hnd,
+          Hpool1.
         run. eapply exec_store.
         -- evl.
         -- ev.
@@ -519,26 +580,36 @@ Proof.
            ++ normal.
               pose proof (rep_store_shorts m1 m2 _ N lss _ [] _ tsh' HRep1 Ash1 Htsh1
                             Hshl Hshc Hst2) as HRep2.
-              eapply exec_return.
-              ** ev.
-              ** exists (vint 1). split.
-                 --- apply result_int.
-                 --- right. split.
-                     +++ reflexivity.
-                     +++ split.
-                         *** assumption.
-                         *** exists (fun (k: nat) => Z.to_nat (tw k)),
-                               (fun (k: nat) => Z.to_nat (tc k)), acc.
-                             split.
-                             ---- rewrite initial_of_idx. split.
-                                  ++++ apply HRep2.
-                                  ++++ destruct Hpool1 as [tp [Apool1 Hpool1]].
-                                       exists tp. split.
-                                       **** apply (arr_store_other _ _ _ _ _ _ _ _ _
-                                                     Apool1 Hst2).
-                                            neq Hnd.
+              destruct Hpool1 as [tp [Apool1 Hpool1]].
+              assert (Apool2: Arr m2 (b_wpool S) (2 * npool S') tp).
+              { apply (arr_store_other _ _ _ _ _ _ _ _ _ Apool1 Hst2). neq Hnd. }
+              keep_mem m2.
+              (* add_atoms(s); *)
+              run. call add_atoms_fun. eapply call_weaken.
+              ** eapply (add_atoms_correct (lt := []) S'). apply HRep2.
+              ** intros m3 v3 [HRep3 Hun3]. normal. unfold HeurFrame, S' in Hun3.
+                 cbn [b_act b_heap b_hpos b_dlit b_s] in Hun3.
+                 transfer Hun3 Hnd. keep_mem m3.
+                 (* return 1; *)
+                 eapply exec_return.
+                 --- ev.
+                 --- exists (vint 1). split.
+                     +++ apply result_int.
+                     +++ right. split.
+                         *** reflexivity.
+                         *** split.
+                             ---- assumption.
+                             ---- exists (fun (k: nat) => Z.to_nat (tw k)),
+                                    (fun (k: nat) => Z.to_nat (tc k)), acc.
+                                  split.
+                                  ++++ rewrite initial_of_idx. split.
+                                       **** apply HRep3.
+                                       **** exists tp. split.
+                                            ----- assumption.
+                                            ----- assumption.
+                                  ++++ split.
                                        **** assumption.
-                             ---- split; assumption.
+                                       **** assumption.
 Qed.
 
 (* The checks, after the tables and fields are cleared:
@@ -548,29 +619,32 @@ Qed.
      {{ result = 0: a literal out of range or twice in a clause }}
        if (!check_lits(s)) return 0;                                (check_lits_correct)
      {{ result = 0: alls is not the literals of the clauses, each once }}
+       s->inc = s->nlits + 1;
+     {{ Setup (cleared, the bump of empty_heur (length acc)) }}
        if (!check_room(s)) return 0;                                (check_room_correct)
      {{ result = 0: the watch lists do not fit }}
      {{ Rep (ictx ... 0) }}                                                  (setup_rep)
        ...                                                     (init_index_correct)  *)
 Lemma init_checks_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
-  (tw tc tp tsh ta tsv tl tlt trl trb trn trp: nat -> Z) (zl: Z) (le: temp_env)
-  (m: mem),
+  (tw tc tp tsh ta tsv tl tlt trl trb trn trp: nat -> Z) (zl: Z) (vin: val)
+  (le: temp_env) (m: mem),
   InitInput S N lss tw tc -> (1 <= N)%nat ->
   Setup m S N lss rc tw tc zeros tp zeros zeros tsh ta tsv tl zeros zeros zeros zeros tlt
-    trl trb trn trp (vint 0) (vint 0) (vint 0) (vint zl) (vint 0) (vint 0) (vint 0)
-    (vint 0) (vint 0) ->
+    trl trb trn trp zeros zeros nones nones (vint 0) (vint 0) (vint 0) (vint zl) (vint 0)
+    (vint 0) (vint 0) (vint 0) (vint 0) vin (vint 0) ->
   Small zl -> (forall (k: nat), (k < 2 * N)%nat -> Small (ta k)) ->
   le ! _s = Some (sptr S) ->
   Exec ge le m init_checks (Returns f_init (InitPost S N lss rc)).
 Proof.
-  intros S N lss rc tw tc tp tsh ta tsv tl tlt trl trb trn trp zl le m HIn HN1 HSe Hzl
-    Hta Hs.
+  intros S N lss rc tw tc tp tsh ta tsv tl tlt trl trb trn trp zl vin le m HIn HN1 HSe
+    Hzl Hta Hs.
   pose proof HIn as HIn'.
   destruct HIn' as [Hclauses H0 Hend HN Hncl Hlss Hnp Hkeys Hsmall].
   destruct HSe as [Hnd Fnv Fncl Fcs Fcl Fvals Fpool Fnp Fwoff Fwlen Fwcap
     Ftr Ftlen Fqh Fsh Fns Falls Fnl Fcur Fsv Flims Fdl Fphs Fmrk Frsn Flvl Flt Fltlen
-    Frl Frcap Frtop Frb Frn Frp Fnr Hrc Ast Alits Avals Apool Awoff Awlen Awcap Atr Ash
-    Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl Arb Arn Arp].
+    Frl Frcap Frtop Frb Frn Frp Fnr Fact Finc Fheap Fhpos Fhsize Fdlit Hrc Ast Alits
+    Avals Apool Awoff Awlen Awcap Atr Ash Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl
+    Arb Arn Arp Aact Aheap Ahpos Adlit].
   pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
   unfold init_checks, f_init. cbn [fn_body drop_stmts].
   (* if (!check_clauses(s)) return 0; *)
@@ -620,48 +694,57 @@ Proof.
               ** unfold Small. lia.
               ** change (negb (Z.eqb 0 0)) with false. cbv beta iota. apply exec_skip.
                  normal. rewrite Hzacc in Fnl.
-                 (* if (!check_room(s)) return 0; *)
-                 run. call check_room_fun. eapply call_weaken.
-                 --- apply (check_room_correct S N tw tc).
-                     repeat (split; [assumption | ]). assumption.
-                 --- intros m4 v [-> Hv]. normal. run.
-                     destruct Hv as [-> | (-> & Hroom & Horder)].
-                     +++ (* the watch lists do not fit: return 0; *)
-                         eapply (exec_if_int _ _ _ _ 1).
-                         *** ev.
-                         *** reflexivity.
-                         *** unfold Small. lia.
-                         *** change (negb (Z.eqb 1 0)) with true. cbv beta iota.
-                             eapply exec_return.
+                 (* s->inc = s->nlits + 1; *)
+                 run. eapply exec_store.
+                 --- evl.
+                 --- ev.
+                 --- reflexivity.
+                 --- reflexivity.
+                 --- fofs. bound.
+                 --- fofs. store_fld Finc Hnd'. cbn [Val.load_result] in Finc.
+                     rewrite add_repr in Finc.
+                     (* if (!check_room(s)) return 0; *)
+                     run. call check_room_fun. eapply call_weaken.
+                     +++ apply (check_room_correct S N tw tc).
+                         repeat (split; [assumption | ]). assumption.
+                     +++ intros m4 v [-> Hv]. normal. run.
+                         destruct Hv as [-> | (-> & Hroom & Horder)].
+                         *** (* the watch lists do not fit: return 0; *)
+                             eapply (exec_if_int _ _ _ _ 1).
                              ---- ev.
-                             ---- ret. exists (vint 0). split.
-                                  ++++ apply result_int.
-                                  ++++ now left.
-                     +++ (* the memory represents ictx: index the clauses *)
-                         eapply (exec_if_int _ _ _ _ 0).
-                         *** ev.
-                         *** reflexivity.
-                         *** unfold Small. lia.
-                         *** change (negb (Z.eqb 0 0)) with false. cbv beta iota.
-                             apply exec_skip. normal.
-                             apply (init_index_correct S N lss rc tw tc acc tsh).
-                             ---- assumption.
-                             ---- assumption.
-                             ---- intros l. rewrite Hacc. now apply cover.
-                             ---- apply (setup_rep _ S N lss rc tw tc tp tsh ta tsv tl
-                                           tlt trl trb trn trp acc).
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ constructor; assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                             ---- assumption.
-                             ---- tmp.
+                             ---- reflexivity.
+                             ---- unfold Small. lia.
+                             ---- change (negb (Z.eqb 1 0)) with true. cbv beta iota.
+                                 eapply exec_return.
+                                 ++++ ev.
+                                 ++++ ret. exists (vint 0). split.
+                                      **** apply result_int.
+                                      **** now left.
+                         *** (* the memory represents ictx: index the clauses *)
+                             eapply (exec_if_int _ _ _ _ 0).
+                             ---- ev.
+                             ---- reflexivity.
+                             ---- unfold Small. lia.
+                             ---- change (negb (Z.eqb 0 0)) with false. cbv beta iota.
+                                 apply exec_skip. normal.
+                                 apply (init_index_correct S N lss rc tw tc acc tsh).
+                                 ++++ assumption.
+                                 ++++ assumption.
+                                 ++++ intros l. rewrite Hacc. now apply cover.
+                                 ++++ apply (setup_rep _ S N lss rc tw tc tp tsh ta tsv
+                                               tl tlt trl trb trn trp acc).
+                                      **** assumption.
+                                      **** assumption.
+                                      **** constructor; assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                 ++++ assumption.
+                                 ++++ tmp.
 Qed.
 
 (* Setting the fields of an empty trail, queue, short clauses, cursor, decisions,
@@ -676,24 +759,27 @@ Qed.
        s->ltlen = 0;
        s->rtop = 0;
        s->nr = 0;
+       s->hsize = 0;
      {{ Setup (tables cleared, fields 0) }}
        ...                                                      (init_checks_correct) *)
 Lemma init_fields_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   (tw tc tp tsh ta tsv tl tlt trl trb trn trp: nat -> Z) (vt vq vn: val) (zl: Z)
-  (vc vd vlt vrt vnr: val) (le: temp_env) (m: mem),
+  (vc vd vlt vrt vnr vin vhs: val) (le: temp_env) (m: mem),
   InitInput S N lss tw tc -> (1 <= N)%nat ->
   Setup m S N lss rc tw tc zeros tp zeros zeros tsh ta tsv tl zeros zeros zeros zeros tlt
-    trl trb trn trp vt vq vn (vint zl) vc vd vlt vrt vnr ->
+    trl trb trn trp zeros zeros nones nones vt vq vn (vint zl) vc vd vlt vrt vnr vin
+    vhs ->
   Small zl -> (forall (k: nat), (k < 2 * N)%nat -> Small (ta k)) ->
   le ! _s = Some (sptr S) ->
   Exec ge le m init_fields (Returns f_init (InitPost S N lss rc)).
 Proof.
   intros S N lss rc tw tc tp tsh ta tsv tl tlt trl trb trn trp vt vq vn zl vc vd vlt vrt
-    vnr le m HIn HN1 HSe Hzl Hta Hs.
+    vnr vin vhs le m HIn HN1 HSe Hzl Hta Hs.
   destruct HSe as [Hnd Fnv Fncl Fcs Fcl Fvals Fpool Fnp Fwoff Fwlen Fwcap
     Ftr Ftlen Fqh Fsh Fns Falls Fnl Fcur Fsv Flims Fdl Fphs Fmrk Frsn Flvl Flt Fltlen
-    Frl Frcap Frtop Frb Frn Frp Fnr Hrc Ast Alits Avals Apool Awoff Awlen Awcap Atr Ash
-    Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl Arb Arn Arp].
+    Frl Frcap Frtop Frb Frn Frp Fnr Fact Finc Fheap Fhpos Fhsize Fdlit Hrc Ast Alits
+    Avals Apool Awoff Awlen Awcap Atr Ash Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl
+    Arb Arn Arp Aact Aheap Ahpos Adlit].
   pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
   unfold init_fields, f_init. cbn [fn_body drop_stmts].
   (* s->tlen = 0; *)
@@ -760,16 +846,87 @@ Proof.
                      +++ reflexivity.
                      +++ fofs. bound.
                      +++ fofs. store_fld Fnr Hnd'.
-                         cbn [Val.load_result] in Ftlen, Fqh, Fns, Fcur, Fdl, Fltlen,
-                           Frtop, Fnr.
-                         apply (init_checks_correct S N lss rc tw tc tp tsh ta tsv tl
-                                  tlt trl trb trn trp zl).
-                         *** assumption.
-                         *** assumption.
-                         *** constructor; assumption.
-                         *** assumption.
-                         *** assumption.
-                         *** tmp.
+                         (* s->hsize = 0; *)
+                         run. eapply exec_store.
+                         *** evl.
+                         *** ev.
+                         *** reflexivity.
+                         *** reflexivity.
+                         *** fofs. bound.
+                         *** fofs. store_fld Fhsize Hnd'.
+                             cbn [Val.load_result] in Ftlen, Fqh, Fns, Fcur, Fdl, Fltlen,
+                               Frtop, Fnr, Fhsize.
+                             apply (init_checks_correct S N lss rc tw tc tp tsh ta tsv tl
+                                      tlt trl trb trn trp zl vin).
+                             ---- assumption.
+                             ---- assumption.
+                             ---- constructor; assumption.
+                             ---- assumption.
+                             ---- assumption.
+                             ---- tmp.
+Qed.
+
+(* Clearing the tables of the heuristic, which the empty heuristic has empty:
+
+     {{ Setup (seven tables cleared) }}
+       zero(s->act, s->nv);                                               (zero_correct)
+       zero(s->heap, s->nv);
+       fill_none(s->hpos, s->nv);                                    (fill_none_correct)
+       fill_none(s->dlit, s->nv);
+     {{ Setup (act and heap 0, hpos and dlit -1, which encodes None) }}
+       ...                                                      (init_fields_correct) *)
+Lemma init_clear_heur_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
+  (rc: nat) (tw tc tp tsh ta tsv tl tlt trl trb trn trp tac thp tps tdl: nat -> Z)
+  (vt vq vn: val) (zl: Z) (vc vd vlt vrt vnr vin vhs: val) (le: temp_env) (m: mem),
+  InitInput S N lss tw tc -> (1 <= N)%nat ->
+  Setup m S N lss rc tw tc zeros tp zeros zeros tsh ta tsv tl zeros zeros zeros zeros tlt
+    trl trb trn trp tac thp tps tdl vt vq vn (vint zl) vc vd vlt vrt vnr vin vhs ->
+  Small zl -> (forall (k: nat), (k < 2 * N)%nat -> Small (ta k)) ->
+  le ! _s = Some (sptr S) ->
+  Exec ge le m init_clear_heur (Returns f_init (InitPost S N lss rc)).
+Proof.
+  intros S N lss rc tw tc tp tsh ta tsv tl tlt trl trb trn trp tac thp tps tdl vt vq vn
+    zl vc vd vlt vrt vnr vin vhs le m HIn HN1 HSe Hzl Hta Hs.
+  pose proof (in_n _ _ _ _ _ HIn) as HN.
+  destruct HSe as [Hnd Fnv Fncl Fcs Fcl Fvals Fpool Fnp Fwoff Fwlen Fwcap
+    Ftr Ftlen Fqh Fsh Fns Falls Fnl Fcur Fsv Flims Fdl Fphs Fmrk Frsn Flvl Flt Fltlen
+    Frl Frcap Frtop Frb Frn Frp Fnr Fact Finc Fheap Fhpos Fhsize Fdlit Hrc Ast Alits
+    Avals Apool Awoff Awlen Awcap Atr Ash Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl
+    Arb Arn Arp Aact Aheap Ahpos Adlit].
+  pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
+  unfold init_clear_heur, f_init. cbn [fn_body drop_stmts].
+  (* zero(s->act, s->nv); *)
+  run. call zero_fun. eapply call_weaken.
+  - apply (zero_correct _ N tac). split.
+    + assumption.
+    + lia.
+  - intros m1 v1 [Aact1 Hun1]. normal. transfer Hun1 Hnd'. keep_mem m1.
+    (* zero(s->heap, s->nv); *)
+    run. call zero_fun. eapply call_weaken.
+    + apply (zero_correct _ N thp). split.
+      * assumption.
+      * lia.
+    + intros m2 v2 [Aheap2 Hun2]. normal. transfer Hun2 Hnd'. keep_mem m2.
+      (* fill_none(s->hpos, s->nv); *)
+      run. call fill_none_fun. eapply call_weaken.
+      * apply (fill_none_correct _ N tps). split.
+        -- assumption.
+        -- lia.
+      * intros m3 v3 [Ahpos3 Hun3]. normal. transfer Hun3 Hnd'. keep_mem m3.
+        (* fill_none(s->dlit, s->nv); *)
+        run. call fill_none_fun. eapply call_weaken.
+        -- apply (fill_none_correct _ N tdl). split.
+           ++ assumption.
+           ++ lia.
+        -- intros m4 v4 [Adlit4 Hun4]. normal. transfer Hun4 Hnd'. keep_mem m4.
+           apply (init_fields_correct S N lss rc tw tc tp tsh ta tsv tl tlt trl trb trn
+                    trp vt vq vn zl vc vd vlt vrt vnr vin vhs).
+           ++ assumption.
+           ++ assumption.
+           ++ constructor; assumption.
+           ++ assumption.
+           ++ assumption.
+           ++ tmp.
 Qed.
 
 (* Clearing the tables that the initial context has empty:
@@ -783,25 +940,27 @@ Qed.
        zero(s->rsn, s->nv);
        zero(s->lvl, s->nv);
      {{ Setup (these seven tables are 0) }}
-       ...                                                      (init_fields_correct) *)
+       ...                                                  (init_clear_heur_correct) *)
 Lemma init_clear_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
-  (tw tc tv tp twl ttr tsh ta tsv tl tph tm trs tlv tlt trl trb trn trp: nat -> Z)
-  (vt vq vn: val) (zl: Z) (vc vd vlt vrt vnr: val) (le: temp_env) (m: mem),
+  (tw tc tv tp twl ttr tsh ta tsv tl tph tm trs tlv tlt trl trb trn trp tac thp tps tdl:
+   nat -> Z)
+  (vt vq vn: val) (zl: Z) (vc vd vlt vrt vnr vin vhs: val) (le: temp_env) (m: mem),
   InitInput S N lss tw tc -> (1 <= N)%nat ->
   Setup m S N lss rc tw tc tv tp twl ttr tsh ta tsv tl tph tm trs tlv tlt trl trb trn trp
-    vt vq vn (vint zl) vc vd vlt vrt vnr ->
+    tac thp tps tdl vt vq vn (vint zl) vc vd vlt vrt vnr vin vhs ->
   Small zl -> (forall (k: nat), (k < 2 * N)%nat -> Small (ta k)) ->
   le ! _s = Some (sptr S) ->
   le ! _n = Some (vint (Z.of_nat (2 * N))) ->
   Exec ge le m init_clear (Returns f_init (InitPost S N lss rc)).
 Proof.
   intros S N lss rc tw tc tv tp twl ttr tsh ta tsv tl tph tm trs tlv tlt trl trb trn trp
-    vt vq vn zl vc vd vlt vrt vnr le m HIn HN1 HSe Hzl Hta Hs Hn.
+    tac thp tps tdl vt vq vn zl vc vd vlt vrt vnr vin vhs le m HIn HN1 HSe Hzl Hta Hs Hn.
   pose proof (in_n _ _ _ _ _ HIn) as HN. pose proof (in_lss _ _ _ _ _ HIn) as Hlss.
   destruct HSe as [Hnd Fnv Fncl Fcs Fcl Fvals Fpool Fnp Fwoff Fwlen Fwcap
     Ftr Ftlen Fqh Fsh Fns Falls Fnl Fcur Fsv Flims Fdl Fphs Fmrk Frsn Flvl Flt Fltlen
-    Frl Frcap Frtop Frb Frn Frp Fnr Hrc Ast Alits Avals Apool Awoff Awlen Awcap Atr Ash
-    Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl Arb Arn Arp].
+    Frl Frcap Frtop Frb Frn Frp Fnr Fact Finc Fheap Fhpos Fhsize Fdlit Hrc Ast Alits
+    Avals Apool Awoff Awlen Awcap Atr Ash Aalls Asaved Alims Aphs Amrk Arsn Alvl Alt Arl
+    Arb Arn Arp Aact Aheap Ahpos Adlit].
   pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
   unfold init_clear, f_init. cbn [fn_body drop_stmts].
   (* zero(s->vals, n); *)
@@ -846,8 +1005,9 @@ Proof.
                      +++ assumption.
                      +++ lia.
                  --- intros m7 v7 [Alvl7 Hun7]. normal. transfer Hun7 Hnd'. keep_mem m7.
-                     apply (init_fields_correct S N lss rc tw tc tp tsh ta tsv tl tlt trl
-                              trb trn trp vt vq vn zl vc vd vlt vrt vnr).
+                     apply (init_clear_heur_correct S N lss rc tw tc tp tsh ta tsv tl tlt
+                              trl trb trn trp tac thp tps tdl vt vq vn zl vc vd vlt vrt
+                              vnr vin vhs).
                      +++ assumption.
                      +++ assumption.
                      +++ constructor; assumption.
@@ -875,10 +1035,11 @@ Proof.
   pose proof (in_n _ _ _ _ _ HIn) as HN.
   destruct HI as [Hnd Fnv Fncl Fcs Fcl Fvals Fpool Fnp Fwoff Fwlen Fwcap Ftr
     [vt Ftlen] [vq Fqh] Fsh [vn Fns] Falls [zl [Hzl Fnl]] [vc Fcur] Fsv Flims [vd Fdl]
-    Fphs Fmrk Frsn Flvl Flt [vlt Fltlen] Frl Frcap [vrt Frtop] Frb Frn Frp [vnr Fnr] Hrc
-    Ast Alits [tv Avals] [tp Apool] Awoff [twl Awlen] Awcap [ttr Atr] [tsh Ash]
-    [ta [Aalls Hta]] [tsv Asaved] [tl Alims] [tph Aphs] [tm Amrk] [trs Arsn] [tlv Alvl]
-    [tlt Alt] [trl Arl] [trb Arb] [trn Arn] [trp Arp]].
+    Fphs Fmrk Frsn Flvl Flt [vlt Fltlen] Frl Frcap [vrt Frtop] Frb Frn Frp [vnr Fnr] Fact
+    [vin Finc] Fheap Fhpos [vhs Fhsize] Fdlit Hrc Ast Alits [tv Avals] [tp Apool] Awoff
+    [twl Awlen] Awcap [ttr Atr] [tsh Ash] [ta [Aalls Hta]] [tsv Asaved] [tl Alims]
+    [tph Aphs] [tm Amrk] [trs Arsn] [tlv Alvl] [tlt Alt] [trl Arl] [trb Arb] [trn Arn]
+    [trp Arp] [tac Aact] [thp Aheap] [tps Ahpos] [tdl Adlit]].
   eapply call_simple.
   - reflexivity.
   - reflexivity.
@@ -913,7 +1074,8 @@ Proof.
            ++ ev.
            ++ apply seqk_normal.
               apply (init_clear_correct S N lss rc tw tc tv tp twl ttr tsh ta tsv tl tph
-                       tm trs tlv tlt trl trb trn trp vt vq vn zl vc vd vlt vrt vnr).
+                       tm trs tlv tlt trl trb trn trp tac thp tps tdl vt vq vn zl vc vd
+                       vlt vrt vnr vin vhs).
               ** assumption.
               ** assumption.
               ** constructor; assumption.

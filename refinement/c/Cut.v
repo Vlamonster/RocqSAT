@@ -5,10 +5,11 @@ From Stdlib Require Import List.
 From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
   Ctypes Cop Clight ClightBigstep.
 From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis Step
-  CStep.
+From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Analysis Step
+  CStep SolverStep.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep SetValue PopReasons.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepReasons RepHeur
+  SetValue PopReasons Reinsert.
 Import ListNotations.
 
 (* Unassigning the last literal of a range first. *)
@@ -21,10 +22,10 @@ Proof.
 Qed.
 
 (* The statements of cut after its loop. *)
-Definition cut_end: statement := drop_stmts 2 (fn_body f_cut).
+Definition cut_end: statement := drop_stmts 3 (fn_body f_cut).
 
 (* The statements of cut that drop reason clauses. *)
-Definition cut_drop: statement := then_stmt (drop_stmts 4 (drop_stmts 2 (fn_body f_cut))).
+Definition cut_drop: statement := then_stmt (drop_stmts 4 (drop_stmts 3 (fn_body f_cut))).
 
 (* Dropping the reason clauses from n on, for n < nr y:
 
@@ -210,8 +211,9 @@ Record CutInv (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx) (lims: list na
   cu_pool: Arr m1 (b_wpool S) (2 * npool S) t;
 }.
 
-(* cut unassigns the literals of the trail from its end down to position j, and then cuts
-   the trail at j with an empty queue, dropping the reason clauses from there on:
+(* The loop of cut unassigns the literals of the trail from its end down to position j,
+   and then cuts the trail at j with an empty queue, dropping the reason clauses from
+   there on:
 
      {{ RepL m S N lss x lims lt /\ j <= tlen x /\ Arr m pool t }}
        int q = s->tlen;
@@ -228,96 +230,138 @@ Record CutInv (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx) (lims: list na
         Arr pool t }}
 
    The loop ends: q decreases. *)
+Lemma cut_loop_correct {lt: list Lit}: forall (S: Shape) (N: nat) (lss: list (list Lit))
+  (x: Ctx) (lims: list nat) (j: nat) (t: nat -> Z) (le: temp_env) (m: mem),
+  RepL m S N lss x lims lt -> (j <= tlen x)%nat -> Arr m (b_wpool S) (2 * npool S) t ->
+  le ! _s = Some (sptr S) -> le ! _j = Some (vint (Z.of_nat j)) ->
+  Exec ge le m (drop_stmts 1 (fn_body f_cut)) (Returns f_cut (fun (m': mem) (_: val) =>
+    RepL m' S N lss
+      (jump x (unset_range (vals x) (tr x) j (tlen x - j)) j (cur x) (saved x) (dl x)
+         (mrk x)) lims lt /\
+    Arr m' (b_wpool S) (2 * npool S) t)).
+Proof.
+  intros S N lss x lims j t le m HRep Hj Apool0 Hs0 Hj0.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_tlen_le _ _ _ _ _ _ _ HRep) as Ht.
+  unfold f_cut. cbn [fn_body fn_return drop_stmts].
+  pose proof (r_tlen _ _ _ _ _ _ _ HRep) as Ftlen.
+  (* int q = s->tlen; *)
+  run. clear Ftlen. unfold Swhile.
+  apply exec_loop with (R := Peano.lt) (I := CutInv S N lss x lims lt j t)
+    (a := tlen x).
+  + apply lt_wf.
+  + intros q le1 m1 HI. destruct HI as [Hs Hj' Hq Hjq (v & Hv & HRepq) Apool].
+    pose proof (r_nodup _ _ _ _ _ _ _ HRepq) as Hnd.
+    pose proof (r_tr_atoms _ _ _ _ _ _ _ HRepq) as Hatoms.
+    pose proof (r_tr _ _ _ _ _ _ _ HRepq) as Ftr.
+    pose proof (a_tr _ _ _ _ _ _ _ HRepq) as Atr.
+    cbn [set_vals tr tlen] in Hatoms, Atr.
+    apply exec_seq.
+    (* if (q > j) ... else break; *)
+    eapply (exec_if_cmp _ _ _ Cgt).
+    * ev.
+    * ev.
+    * reflexivity.
+    * reflexivity.
+    * unfold Small. lia.
+    * unfold Small. lia.
+    * destruct (Nat.eq_dec q j) as [-> | Hne].
+      -- (* q = j: break; and the cut *)
+         replace (zcmp Cgt (Z.of_nat j) (Z.of_nat j)) with false
+           by (simpl; symmetry; apply Z.ltb_irrefl).
+         apply exec_break. abrupt. apply loopk_break. normal.
+         rewrite Nat.sub_diag in Hv. simpl in Hv. rewrite <- Hv.
+         apply (cut_end_correct S N lss x lims j v t).
+         ++ assumption.
+         ++ assumption.
+         ++ assumption.
+         ++ tmp.
+         ++ tmp.
+      -- (* q > j: unassign the literal at q - 1 *)
+         replace (zcmp Cgt (Z.of_nat q) (Z.of_nat j)) with true
+           by (simpl; symmetry; apply Z.ltb_lt; lia).
+         assert (Hsub: Int.sub (Int.repr (Z.of_nat q)) (Int.repr 1)
+                       = Int.repr (Z.of_nat (q - 1))).
+         { rewrite sub_repr. f_equal. lia. }
+         assert (Hl: (extract (tget (tr x) (q - 1)) < N)%nat).
+         { apply Hatoms. lia. }
+         pose proof (key_small _ N Hl HN) as Hkey.
+         assert (Hshr: Int.shr (Int.repr (key (tget (tr x) (q - 1)))) (Int.repr 1)
+                       = Int.repr (Z.of_nat (extract (tget (tr x) (q - 1))))).
+         { apply shr_key. lia. }
+         (* set_value(s, s->tr[q - 1] >> 1, 0); *)
+         cbv beta iota. run. call set_value_fun. cbn [cast_int_int]. rewrite Hshr.
+         eapply call_weaken.
+         { apply (set_value_correct (lt := lt) S N lss (set_vals x v) lims _ None).
+           split; assumption. }
+         intros m2 v2 [HRep2 Hun2]. normal. transfer Hun2 Hnd. keep_mem m2.
+         (* q--; and the loop goes on *)
+         run. ints. apply loopk_next with (q - 1)%nat.
+         ++ lia.
+         ++ constructor.
+            ** tmp.
+            ** tmp.
+            ** tmp.
+            ** lia.
+            ** exists (unset_value v (tget (tr x) (q - 1))). split.
+               --- rewrite unset_range_last by lia. assumption.
+               --- apply HRep2.
+            ** assumption.
+  + (* The invariant holds at the end of the trail. *)
+    constructor.
+    * tmp.
+    * tmp.
+    * tmp.
+    * lia.
+    * exists (vals x). split.
+      -- reflexivity.
+      -- destruct x. apply HRep.
+    * assumption.
+Qed.
+
+(* cut first puts the atoms of the trail from j on back into the heap of the heuristic,
+   then runs its loop:
+
+     {{ RepL m S N lss x lims lt /\ j <= tlen x /\ Arr m pool t }}
+       reinsert(s, j, s->tlen);                                        (reinsert_correct)
+     {{ RepL (with_heur x (reinsert (hr x) (tr x) N j (tlen x) (tlen x - j))) lt /\
+        Arr pool t }}
+       the loop and the cut;                                           (cut_loop_correct)
+     {{ RepL (jump_heur x (unset_range ...) j (cur x) (saved x) (dl x) (mrk x) (hr x)) lt
+        /\ Arr pool t }}                                                               *)
 Lemma cut_correct {lt: list Lit}: forall (S: Shape) (N: nat) (lss: list (list Lit))
   (x: Ctx) (lims: list nat) (j: nat) (t: nat -> Z),
   {{ m | RepL m S N lss x lims lt /\ (j <= tlen x)%nat /\
     Arr m (b_wpool S) (2 * npool S) t }}
     f_cut(sptr S, vint (Z.of_nat j))
   {{ m', v | RepL m' S N lss
-               (jump x (unset_range (vals x) (tr x) j (tlen x - j)) j (cur x) (saved x)
-                  (dl x) (mrk x)) lims lt /\
+               (jump_heur x (unset_range (vals x) (tr x) j (tlen x - j)) j (cur x)
+                  (saved x) (dl x) (mrk x) (hr x)) lims lt /\
              Arr m' (b_wpool S) (2 * npool S) t }}.
 Proof.
-  intros S N lss x lims j t m (HRep & Hj & Apool0).
-  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_tlen_le _ _ _ _ _ _ _ HRep) as Ht.
+  intros S N lss x lims j t m (HRep & Hj & Apool).
+  pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
+  pose proof (r_tlen _ _ _ _ _ _ _ HRep) as Ftlen.
+  pose proof (r_nvars _ _ _ _ _ _ _ HRep) as Hnv.
+  unfold jump_heur. rewrite Hnv.
   eapply call_simple.
   - reflexivity.
   - reflexivity.
   - unfold f_cut. cbn [fn_body fn_return].
-    pose proof (r_tlen _ _ _ _ _ _ _ HRep) as Ftlen.
-    (* int q = s->tlen; *)
-    run. clear Ftlen. unfold Swhile.
-    apply exec_loop with (R := Peano.lt) (I := CutInv S N lss x lims lt j t)
-      (a := tlen x).
-    + apply lt_wf.
-    + intros q le1 m1 HI. destruct HI as [Hs Hj' Hq Hjq (v & Hv & HRepq) Apool].
-      pose proof (r_nodup _ _ _ _ _ _ _ HRepq) as Hnd.
-      pose proof (r_tr_atoms _ _ _ _ _ _ _ HRepq) as Hatoms.
-      pose proof (r_tr _ _ _ _ _ _ _ HRepq) as Ftr.
-      pose proof (a_tr _ _ _ _ _ _ _ HRepq) as Atr.
-      cbn [set_vals tr tlen] in Hatoms, Atr.
-      apply exec_seq.
-      (* if (q > j) ... else break; *)
-      eapply (exec_if_cmp _ _ _ Cgt).
-      * ev.
-      * ev.
-      * reflexivity.
-      * reflexivity.
-      * unfold Small. lia.
-      * unfold Small. lia.
-      * destruct (Nat.eq_dec q j) as [-> | Hne].
-        -- (* q = j: break; and the cut *)
-           replace (zcmp Cgt (Z.of_nat j) (Z.of_nat j)) with false
-             by (simpl; symmetry; apply Z.ltb_irrefl).
-           apply exec_break. abrupt. apply loopk_break. normal.
-           rewrite Nat.sub_diag in Hv. simpl in Hv. rewrite <- Hv.
-           apply (cut_end_correct S N lss x lims j v t).
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ tmp.
-           ++ tmp.
-        -- (* q > j: unassign the literal at q - 1 *)
-           replace (zcmp Cgt (Z.of_nat q) (Z.of_nat j)) with true
-             by (simpl; symmetry; apply Z.ltb_lt; lia).
-           assert (Hsub: Int.sub (Int.repr (Z.of_nat q)) (Int.repr 1)
-                         = Int.repr (Z.of_nat (q - 1))).
-           { rewrite sub_repr. f_equal. lia. }
-           assert (Hl: (extract (tget (tr x) (q - 1)) < N)%nat).
-           { apply Hatoms. lia. }
-           pose proof (key_small _ N Hl HN) as Hkey.
-           assert (Hshr: Int.shr (Int.repr (key (tget (tr x) (q - 1)))) (Int.repr 1)
-                         = Int.repr (Z.of_nat (extract (tget (tr x) (q - 1))))).
-           { apply shr_key. lia. }
-           (* set_value(s, s->tr[q - 1] >> 1, 0); *)
-           cbv beta iota. run. call set_value_fun. cbn [cast_int_int]. rewrite Hshr.
-           eapply call_weaken.
-           { apply (set_value_correct (lt := lt) S N lss (set_vals x v) lims _ None).
-             split; assumption. }
-           intros m2 v2 [HRep2 Hun2]. normal. transfer Hun2 Hnd. keep_mem m2.
-           (* q--; and the loop goes on *)
-           run. ints. apply loopk_next with (q - 1)%nat.
-           ++ lia.
-           ++ constructor.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** lia.
-              ** exists (unset_value v (tget (tr x) (q - 1))). split.
-                 --- rewrite unset_range_last by lia. assumption.
-                 --- apply HRep2.
-              ** assumption.
-    + (* The invariant holds at the end of the trail. *)
-      constructor.
-      * tmp.
-      * tmp.
-      * tmp.
-      * lia.
-      * exists (vals x). split.
-        -- reflexivity.
-        -- destruct x. apply HRep.
-      * assumption.
+    (* reinsert(s, j, s->tlen); *)
+    run. call reinsert_fun. eapply call_weaken.
+    { apply (reinsert_correct (lt := lt) S N lss x lims j (tlen x)). split.
+      - assumption.
+      - lia. }
+    intros m1 v1 [HRep1 Hun1]. normal. transfer Hun1 Hnd. keep_mem m1.
+    (* the loop and the cut, on the context with the new heuristic *)
+    apply (cut_loop_correct S N lss
+             (with_heur x (reinsert (hr x) (tr x) N j (tlen x) (tlen x - j))) lims j t).
+    + assumption.
+    + assumption.
+    + assumption.
+    + tmp.
+    + tmp.
 Qed.
 
 Lemma cut_fun: exists (b: block),

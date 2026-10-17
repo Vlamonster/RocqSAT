@@ -93,7 +93,7 @@ Proof.
            (* lit_value(s, s->alls[c]) *)
            cbv beta iota. run. rewrite (Hta c) by lia. call lit_value_fun.
            eapply call_weaken.
-           { apply (lit_value_correct S N lss x lims (tget (alls x) c) m).
+           { apply (lit_value_correct (lt := []) S N lss x lims (tget (alls x) c) m).
              split; assumption. }
            intros m' v [-> ->]. normal.
            (* if (... == 0) return c; *)

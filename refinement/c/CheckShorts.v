@@ -134,7 +134,8 @@ Proof.
       rewrite Hta, lit_of_key in Hcheck.
       pose proof (key_small _ N Ha HN) as Hka.
       cbv beta iota. run. rewrite Hta. call lit_value_fun. eapply call_weaken.
-      { apply (lit_value_correct S N lss xc lims a m1). split; assumption. }
+      { apply (lit_value_correct (lt := []) S N lss xc lims a m1).
+        split; assumption. }
       intros m2 v [-> ->]. normal. run.
       (* if (v == -1) return i + 1; *)
       eapply (exec_if_cmp _ _ _ Ceq _ _ _ (-1)).

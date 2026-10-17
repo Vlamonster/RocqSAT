@@ -20,6 +20,7 @@ From RocqSAT.rules Require Import Backjump.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Heur.
 From RocqSAT.refinement Require Import Propagate.
 From RocqSAT.refinement Require Import Analysis.
 From RocqSAT.refinement Require Import Step.
@@ -143,27 +144,31 @@ match unmark_lower lv mk 0 lt with
   end
 end.
 
-(* Flip the last decision l of m = ⟨m'; l ++ n⟩, with the marks mk. *)
-Definition flip (m' m: PA) (f: CNF) (x: Ctx) (l: Lit) (mk: Table bool):
+(* The context after jumping back to a trail of length len, as jump, with the heuristic h
+   and the atoms of the trail positions from len on put back in its heap. *)
+Definition jump_heur (x: Ctx) (v: Values) (len c: nat) (st: list nat) (d: nat)
+  (mk: Table bool) (h: Heur): Ctx :=
+  with_heur (jump x v len c st d mk)
+    (reinsert h (tr x) (nvars x) len (tlen x) (tlen x - len)).
+
+(* Flip the last decision l of m = ⟨m'; l ++ n⟩, with the marks mk and the heuristic h. *)
+Definition flip (m' m: PA) (f: CNF) (x: Ctx) (l: Lit) (mk: Table bool) (h: Heur):
   option (State * Ctx) :=
 match saved x with
 | c0 :: st =>
   Some (state ⟨m', (¬l)⟩ f,
-        assign (jump x (unassign_level (vals x) m) (PA.length m') c0 st (dl x - 1) mk)
+        assign (jump_heur x (unassign_level (vals x) m) (PA.length m') c0 st (dl x - 1) mk
+                  h)
           (¬l) no_reason)
 | []       => None
 end.
 
-(* Resolve a conflict on the false clause i: fail without decisions; otherwise analyse
-   it, and if it gives a literal u to assert, jump back to before the decision of the
-   level after the highest level mx of the other literals of the analysed clause, and
-   assert u with that clause as its reason; otherwise flip the last decision. *)
 Definition resolve (m: PA) (f: CNF) (x: Ctx) (i: nat): option (State * Ctx) :=
 match split_last_decision m with
 | None         => Some (fail, x)
 | Some (m', l) =>
-  match analyze x i (dl x) (PA.length m') with
-  | (ou, mk, lt) =>
+  match analyze x (decay (hr x) (nvars x)) i (dl x) (PA.length m') with
+  | (ou, mk, lt, h) =>
     match clear_marks (lvl x) mk lt ou with
     | (mk2, mx) =>
       match ou with
@@ -174,16 +179,16 @@ match split_last_decision m with
             match skipn (dl x - S mx) (saved x) with
             | c0 :: st =>
               match push_reason
-                      (jump x (unassign_segment (vals x) d n) (PA.length mt) c0 st mx
-                         mk2) u lt with
+                      (jump_heur x (unassign_segment (vals x) d n) (PA.length mt) c0 st mx
+                         mk2 h) u lt with
               | (x1, r) => Some (state ⟨mt, u⟩ f, assign x1 u r)
               end
-            | []       => flip m' m f x l mk2
+            | []       => flip m' m f x l mk2 h
             end
-          | None            => flip m' m f x l mk2
+          | None            => flip m' m f x l mk2 h
           end
-        else flip m' m f x l mk2
-      | None   => flip m' m f x l mk2
+        else flip m' m f x l mk2 h
+      | None   => flip m' m f x l mk2 h
       end
     end
   end
@@ -200,11 +205,19 @@ match p with
     match propagate (S (nvars x1)) m1 (clear_shorts x1) with
     | (m2, x2, Some i) => resolve m2 f x2 i
     | (m2, x2, None)   =>
-      let c := skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2) in
-      if c <? nlits x2 then
-        let l := phase (phs x2) (tget (alls x2) c) in
-        Some (state ⟨m2; l⟩ f, assign (open_level x2 c) l no_reason)
-      else if Nat.eqb (tlen x2) (tlen x) then None else Some (state m2 f, with_cursor x2 c)
+      match pick (vals x2) (hr x2) (nvars x2) with
+      | (h, Some l0) =>
+        let l := phase (phs x2) l0 in
+        Some (state ⟨m2; l⟩ f, assign (open_level (with_heur x2 h) (cur x2)) l no_reason)
+      | (h, None)    =>
+        let x3 := with_heur x2 h in
+        let c := skip_from (vals x3) (alls x3) (nlits x3) (nlits x3 - cur x3) (cur x3) in
+        if c <? nlits x3 then
+          let l := phase (phs x3) (tget (alls x3) c) in
+          Some (state ⟨m2; l⟩ f, assign (open_level x3 c) l no_reason)
+        else if Nat.eqb (tlen x3) (tlen x) then None
+        else Some (state m2 f, with_cursor x3 c)
+      end
     end
   end
 end.
@@ -244,14 +257,15 @@ Qed.
 
 (* Flipping the last decision is a Backjump step, to a consistent context. *)
 Lemma flip_spec: forall (m' n: PA) (f: CNF) (x: Ctx) (l: Lit) (c: Clause)
-  (mk: Table bool) (s': State) (x': Ctx),
+  (mk: Table bool) (h: Heur) (s': State) (x': Ctx),
   StepCore ⟨m'; l ++ n⟩ f x -> NoDecisions n -> WellFormed (state ⟨m'; l ++ n⟩ f) ->
   Entails f ⟨m'; l ++ n⟩ -> c ∈ f -> c_eval ⟨m'; l ++ n⟩ c = Some false -> Unmarked mk ->
-  flip m' ⟨m'; l ++ n⟩ f x l mk = Some (s', x') ->
+  DlitIn f h -> flip m' ⟨m'; l ++ n⟩ f x l mk h = Some (s', x') ->
   state ⟨m'; l ++ n⟩ f ==>[DPLL_BJ] s' /\
   exists (m2: PA), s' = state m2 f /\ StepCore m2 f x'.
 Proof.
-  intros m' n f x l c mk s' x' Hcore Hno_dec Hwf Hentails Hc_in_f Hc_false Hmk Hflip.
+  intros m' n f x l c mk h s' x' Hcore Hno_dec Hwf Hentails Hc_in_f Hc_false Hmk Hh
+    Hflip.
   pose proof Hcore as [[[Hvals Hfresh Htrail _ _ Hdl _] _ _ _ _ _] _ _ Hsaved _ _ _ _ _].
   unfold flip in Hflip. destruct (saved x) as [|c0 st] eqn:Hsaved_x.
   - discriminate.
@@ -272,7 +286,8 @@ Proof.
         { rewrite Hdl, decisions_app, (no_decisions_zero n Hno_dec). simpl. lia. }
         rewrite Hdl'.
         apply (jump_core m' n f x l (¬l) (unassign_level (vals x) ⟨m'; l ++ n⟩) c0 st
-                 mk).
+                 mk (reinsert h (tr x) (nvars x) (PA.length m') (tlen x)
+                       (tlen x - PA.length m'))).
         -- assumption.
         -- apply (unassign_level_spec (vals x) ⟨m'; l ++ n⟩ m' l).
            ++ assumption.
@@ -284,6 +299,7 @@ Proof.
         -- assumption.
         -- assumption.
         -- assumption.
+        -- unfold DlitIn. rewrite reinsert_dlit. assumption.
         -- now left.
 Qed.
 
@@ -298,7 +314,7 @@ Lemma resolve_spec: forall (m: PA) (f: CNF) (x: Ctx) (i: nat) (ls: list Lit) (s'
   state m f ==>[DPLL_BJ] s' /\ (s' = fail \/ exists (m': PA), s' = state m' f /\ StepCore m' f x').
 Proof.
   intros m f x i ls s' x' Hcore Hwf Hentails Hi Hfalse Hres.
-  pose proof Hcore as [Hprop _ _ Hsaved _ _ Hmarks _ [Hslots _ _]].
+  pose proof Hcore as [Hprop _ _ Hsaved _ _ Hmarks _ [Hslots _ _] Hdlit].
   pose proof (sc_prop _ _ _ Hcore) as [Hcore0 _ _ _ _ _].
   pose proof Hcore0 as [Hvals Hfresh Htrail Hsound _ Hdl Htrace].
   unfold resolve in Hres. pose proof Hi as Hi'. apply Hsound in Hi' as [c [Hc_in_f Hiff]].
@@ -319,18 +335,22 @@ Proof.
   assert (Hd: dl x = S (decisions m')).
   { rewrite Hdl, decisions_app, (no_decisions_zero n Hno_dec). simpl. lia. }
   rewrite Hd in Hres.
-  destruct (analyze x i (S (decisions m')) (PA.length m')) as [[ou mk] lt] eqn:Han.
-  destruct (analyze_spec f x m' n l Hcore0 Hno_dec Hslots i ls ou mk lt Hi Hfalse Hmarks
-              Han)
+  destruct (analyze x (decay (hr x) (nvars x)) i (S (decisions m')) (PA.length m'))
+    as [[[ou mk] lt] h] eqn:Han.
+  destruct (analyze_spec f x m' n l Hcore0 Hno_dec Hslots (decay (hr x) (nvars x)) i ls ou
+              mk lt h Hi Hfalse Hmarks Han)
     as (Hmarked & Hlower & Hassert).
+  (* The analysis only bumps, so the literals to decide on stay those of f. *)
+  assert (Hh: DlitIn f h).
+  { unfold DlitIn. rewrite (analyze_dlit _ _ _ _ _ _ _ _ _ Han), decay_dlit. assumption. }
   destruct (clear_marks (lvl x) mk lt ou) as [mk2 mx] eqn:Hclear.
   destruct (clear_marks_unmarked (lvl x) mk mk2 lt ou mx Hmarked Hclear) as [Hmk2 Hle].
-  assert (Hfallback: flip m' ⟨m'; l ++ n⟩ f x l mk2 = Some (s', x') ->
+  assert (Hfallback: flip m' ⟨m'; l ++ n⟩ f x l mk2 h = Some (s', x') ->
             state ⟨m'; l ++ n⟩ f ==>[DPLL_BJ] s' /\
             (s' = fail \/ exists (m2: PA), s' = state m2 f /\ StepCore m2 f x')).
   { intros Hflip.
-    destruct (flip_spec m' n f x l c mk2 s' x' Hcore Hno_dec Hwf Hentails Hc_in_f
-                Hc_false Hmk2 Hflip) as [Hstep Hafter].
+    destruct (flip_spec m' n f x l c mk2 h s' x' Hcore Hno_dec Hwf Hentails Hc_in_f
+                Hc_false Hmk2 Hh Hflip) as [Hstep Hafter].
     split.
     - assumption.
     - now right. }
@@ -344,8 +364,8 @@ Proof.
   2: now apply Hfallback.
   destruct (skipn (S (decisions m') - S mx) (saved x)) as [|c0 st] eqn:Hskip.
   1: now apply Hfallback.
-  destruct (push_reason (jump x (unassign_segment (vals x) d n') (PA.length mt) c0 st mx
-                          mk2) u lt)
+  destruct (push_reason (jump_heur x (unassign_segment (vals x) d n') (PA.length mt) c0 st
+                          mx mk2 h) u lt)
     as [x1 r] eqn:Hpush.
   injection Hres as <- <-.
   (* The backjump: the analysed clause asserts u at level mx *)
@@ -397,13 +417,17 @@ Proof.
     + destruct (saved_c_split f (alls x) (nlits x) mt n' d (saved x) Hsaved)
         as (c1 & st1 & Hskip1 & Hc1 & Hst1).
       rewrite Hdec_n, Hskip in Hskip1. injection Hskip1 as <- <-.
-      apply (jump_core mt n' f x d u (unassign_segment (vals x) d n') c0 st mk2 x1 r).
+      apply (jump_core mt n' f x d u (unassign_segment (vals x) d n') c0 st mk2
+               (reinsert h (tr x) (nvars x) (PA.length mt) (tlen x)
+                  (tlen x - PA.length mt))
+               x1 r).
       * assumption.
       * now apply unassign_segment_spec.
       * now rewrite (unassign_segment_spec (vals x) mt n' d Hvals Hfresh u).
       * assumption.
       * assumption.
       * assumption.
+      * unfold DlitIn. rewrite reinsert_dlit. assumption.
       * right. exists lt. split.
         -- now rewrite Hdec_mt.
         -- split.
@@ -416,10 +440,10 @@ Proof.
 Qed.
 
 (* Flipping the last decision always gives a state. *)
-Lemma flip_some: forall (m' n: PA) (f: CNF) (x: Ctx) (l: Lit) (mk: Table bool),
-  StepCore ⟨m'; l ++ n⟩ f x -> NoDecisions n -> flip m' ⟨m'; l ++ n⟩ f x l mk <> None.
+Lemma flip_some: forall (m' n: PA) (f: CNF) (x: Ctx) (l: Lit) (mk: Table bool) (h: Heur),
+  StepCore ⟨m'; l ++ n⟩ f x -> NoDecisions n -> flip m' ⟨m'; l ++ n⟩ f x l mk h <> None.
 Proof.
-  intros m' n f x l mk Hcore Hno_dec. pose proof Hcore as [_ _ _ Hsaved _ _ _ _ _].
+  intros m' n f x l mk h Hcore Hno_dec. pose proof Hcore as [_ _ _ Hsaved _ _ _ _ _ _].
   unfold flip.
   destruct (saved x) as [|c0 st] eqn:Hsaved_x.
   - destruct (saved_c_split f (alls x) (nlits x) m' n l [] Hsaved)
@@ -435,7 +459,8 @@ Proof.
   intros m f x i Hcore. unfold resolve.
   destruct (split_last_decision m) as [[m' l]|] eqn:Hsplit.
   - apply PA.split_last_decision_some_iff in Hsplit as [n [-> Hno_dec]].
-    destruct (analyze x i (dl x) (PA.length m')) as [[ou mk] lt].
+    destruct (analyze x (decay (hr x) (nvars x)) i (dl x) (PA.length m'))
+      as [[[ou mk] lt] h].
     destruct (clear_marks (lvl x) mk lt ou) as [mk2 mx].
     destruct ou as [u|].
     + destruct (mx <? dl x).
@@ -509,59 +534,87 @@ Proof.
            ++ assumption.
            ++ now apply Hsome2.
            ++ assumption.
-        -- destruct (skip_from_spec (vals x2) f (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2)) as [Hc Hundef].
-           ++ lia.
-           ++ apply Hcore2.
-           ++ set (c := skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2)) in Hstep, Hc, Hundef.
-              destruct (c <? nlits x2) eqn:Hlt.
-              (* Decide *)
-              ** apply Nat.ltb_lt in Hlt. injection Hstep as <- <-.
-                 destruct (decide_spec m2 f x2 c Hcore2 (Hnone2 eq_refl) Hshorts2 Hnonempty2 Hc Hlt (Hundef Hlt))
-                   as [Hdecide Hcore3].
-                 assert (Hplus: state m f ==>+[DPLL_BJ] state ⟨m2; (phase (phs x2) (tget (alls x2) c))⟩ f).
-                 --- apply clos_rt_t with (state m2 f).
-                     +++ assumption.
-                     +++ now apply Relation_Operators.t_step.
-                 --- split.
-                     +++ assumption.
-                     +++ now apply (step_inv_after m _ f).
-              (* Only propagations *)
-              ** destruct (Nat.eqb (tlen x2) (tlen x)) eqn:Hsame.
-                 --- discriminate.
-                 --- injection Hstep as <- <-.
-                     assert (Hplus: state m f ==>+[DPLL_BJ] state m2 f).
-                     +++ apply derivation_strict.
+        -- destruct (pick (vals x2) (hr x2) (nvars x2)) as [h ol] eqn:Hpick.
+           (* The heuristic changed, but not its literals to decide on *)
+           pose proof (pick_dlit (vals x2) (hr x2) (nvars x2)) as Hd.
+           rewrite Hpick in Hd. cbn [fst] in Hd.
+           pose proof (step_core_heur m2 f x2 h Hcore2 Hd) as Hcore3.
+           destruct ol as [l0|].
+           (* Decide the literal the heap gives *)
+           ++ injection Hstep as <- <-.
+              destruct (pick_some _ _ _ _ _ Hpick) as [Hundef0 [b Hb]].
+              destruct (decide_lit_spec m2 f (with_heur x2 h) (cur x2) l0 Hcore3
+                          (Hnone2 eq_refl) Hshorts2 Hnonempty2 (sc_cursor _ _ _ Hcore2)
+                          (sc_dlit _ _ _ Hcore2 b l0 Hb) Hundef0)
+                as [Hdecide Hcore4].
+              assert (Hplus: state m f ==>+[DPLL_BJ] state ⟨m2; (phase (phs x2) l0)⟩ f).
+              ** apply clos_rt_t with (state m2 f).
+                 --- assumption.
+                 --- now apply Relation_Operators.t_step.
+              ** split.
+                 --- assumption.
+                 --- now apply (step_inv_after m _ f).
+           (* Otherwise decide by the cursor *)
+           ++ set (x3 := with_heur x2 h) in Hstep, Hcore3.
+              destruct (skip_from_spec (vals x3) f (alls x3) (nlits x3)
+                          (nlits x3 - cur x3) (cur x3)) as [Hc Hundef].
+              ** lia.
+              ** apply Hcore3.
+              ** set (c := skip_from (vals x3) (alls x3) (nlits x3) (nlits x3 - cur x3)
+                             (cur x3)) in Hstep, Hc, Hundef.
+                 destruct (c <? nlits x3) eqn:Hlt.
+                 (* Decide *)
+                 --- apply Nat.ltb_lt in Hlt. injection Hstep as <- <-.
+                     destruct (decide_spec m2 f x3 c Hcore3 (Hnone2 eq_refl) Hshorts2
+                                 Hnonempty2 Hc Hlt (Hundef Hlt))
+                       as [Hdecide Hcore4].
+                     assert (Hplus: state m f ==>+[DPLL_BJ]
+                                    state ⟨m2; (phase (phs x3) (tget (alls x3) c))⟩ f).
+                     +++ apply clos_rt_t with (state m2 f).
                          *** assumption.
-                         *** intros Heq. injection Heq as Heq.
-                             apply Nat.eqb_neq in Hsame. apply Hsame.
-                             destruct Hcore
-                               as [[[_ _ [Hlen _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _].
-                             destruct Hcore2
-                               as [[[_ _ [Hlen2 _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _].
-                             now rewrite Hlen, Hlen2, Heq.
+                         *** now apply Relation_Operators.t_step.
                      +++ split.
                          *** assumption.
-                         *** apply (step_inv_after m m2 f).
+                         *** now apply (step_inv_after m _ f).
+                 (* Only propagations *)
+                 --- destruct (Nat.eqb (tlen x3) (tlen x)) eqn:Hsame.
+                     +++ discriminate.
+                     +++ injection Hstep as <- <-.
+                         assert (Hplus: state m f ==>+[DPLL_BJ] state m2 f).
+                         *** apply derivation_strict.
                              ---- assumption.
+                             ---- intros Heq. injection Heq as Heq.
+                                 apply Nat.eqb_neq in Hsame. apply Hsame.
+                                 destruct Hcore as [[[_ _ [Hlen _] _ _ _ _] _ _ _ _ _]
+                                                    _ _ _ _ _ _ _ _ _].
+                                 destruct Hcore3 as [[[_ _ [Hlen2 _] _ _ _ _] _ _ _ _ _]
+                                                     _ _ _ _ _ _ _ _ _].
+                                 now rewrite Hlen, Hlen2, Heq.
+                         *** split.
                              ---- assumption.
-                             ---- assumption.
-                             ---- destruct Hcore2 as [Hprop2 Hcomplete2 _ Hsaved2 Hempty2
-                                    Hshort2 Hmarks2 Hbound2 Hslots2].
-                                  split.
-                                  ++++ now apply (prop_inv_ext m2 f x2).
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ apply (slots_grow f x2).
-                                       **** assumption.
-                                       **** reflexivity.
-                                       **** reflexivity.
-                                       **** reflexivity.
-                                       **** simpl. lia.
+                             ---- apply (step_inv_after m m2 f).
+                                 ++++ assumption.
+                                 ++++ assumption.
+                                 ++++ assumption.
+                                 ++++ destruct Hcore3
+                                        as [Hprop2 Hcomplete2 _ Hsaved2 Hempty2
+                                        Hshort2 Hmarks2 Hbound2 Hslots2 Hdlit2].
+                                      split.
+                                      **** now apply (prop_inv_ext m2 f x3).
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** assumption.
+                                      **** apply (slots_grow f x3).
+                                           ----- assumption.
+                                           ----- reflexivity.
+                                           ----- reflexivity.
+                                           ----- reflexivity.
+                                           ----- simpl. lia.
+                                      **** assumption.
 Qed.
 
 (* A step only stops at a final state. *)
@@ -580,26 +633,38 @@ Proof.
         as (Hder2 & Hext2 & Hcore2 & Hshorts2 & Hnonempty2 & Hnone2 & Hsome2).
       destruct r2 as [i|].
       * exfalso. now apply (resolve_some m2 f x2 i).
-      * destruct (skip_from_spec (vals x2) f (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2)) as [Hc _].
-        -- lia.
-        -- apply Hcore2.
-        -- set (c := skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2)) in Hstep, Hc.
-           destruct (c <? nlits x2) eqn:Hlt.
-           ++ discriminate.
-           ++ destruct (Nat.eqb (tlen x2) (tlen x)) eqn:Hsame.
-              ** apply Nat.eqb_eq in Hsame. apply Nat.ltb_ge in Hlt.
-                 assert (Heq: m2 = m).
-                 --- apply extends_same_length.
-                     +++ now apply extends_trans with m1.
-                     +++ destruct Hcore
-                           as [[[_ _ [Hlen _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _].
-                         destruct Hcore2
-                           as [[[_ _ [Hlen2 _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _].
-                         rewrite <- !trail_lits_length. congruence.
-                 --- subst m2. destruct (final_state m f x2 c Hcore2 (Hnone2 eq_refl) Hnonempty2 Hc) as [H1 H2].
-                     +++ lia.
-                     +++ now apply final_basic_of.
+      * destruct (pick (vals x2) (hr x2) (nvars x2)) as [h ol] eqn:Hpick.
+        pose proof (pick_dlit (vals x2) (hr x2) (nvars x2)) as Hd.
+        rewrite Hpick in Hd. cbn [fst] in Hd.
+        pose proof (step_core_heur m2 f x2 h Hcore2 Hd) as Hcore3.
+        destruct ol as [l0|].
+        -- discriminate.
+        -- set (x3 := with_heur x2 h) in Hstep, Hcore3.
+           destruct (skip_from_spec (vals x3) f (alls x3) (nlits x3) (nlits x3 - cur x3)
+                       (cur x3)) as [Hc _].
+           ++ lia.
+           ++ apply Hcore3.
+           ++ set (c := skip_from (vals x3) (alls x3) (nlits x3) (nlits x3 - cur x3)
+                          (cur x3)) in Hstep, Hc.
+              destruct (c <? nlits x3) eqn:Hlt.
               ** discriminate.
+              ** destruct (Nat.eqb (tlen x3) (tlen x)) eqn:Hsame.
+                 --- apply Nat.eqb_eq in Hsame. apply Nat.ltb_ge in Hlt.
+                    assert (Heq: m2 = m).
+                    +++ apply extends_same_length.
+                        *** now apply extends_trans with m1.
+                        *** destruct Hcore
+                              as [[[_ _ [Hlen _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _ _].
+                            destruct Hcore3
+                              as [[[_ _ [Hlen2 _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _ _].
+                            rewrite <- !trail_lits_length. congruence.
+                    +++ subst m2.
+                        destruct (final_state m f x3 c Hcore3 (Hnone2 eq_refl) Hnonempty2
+                                    Hc)
+                          as [H1 H2].
+                        *** lia.
+                        *** now apply final_basic_of.
+                 --- discriminate.
 Qed.
 
 (* The solver step is a strategy for DPLL_BJ. *)
@@ -659,11 +724,12 @@ Section Table.
   Qed.
 
   (* Flip the last decision, at trail position j0, as flip. *)
-  Definition flip_t (x: Ctx) (j0: nat) (lims0: list nat) (mk: Table bool): CResult :=
+  Definition flip_t (x: Ctx) (j0: nat) (lims0: list nat) (mk: Table bool) (h: Heur):
+    CResult :=
   match saved x with
   | c0 :: st =>
-    CNext (assign (jump x (unset_range (vals x) (tr x) j0 (tlen x - j0)) j0 c0 st
-                     (dl x - 1) mk)
+    CNext (assign (jump_heur x (unset_range (vals x) (tr x) j0 (tlen x - j0)) j0 c0 st
+                     (dl x - 1) mk h)
              (¬tget (tr x) j0) no_reason) lims0
   | []       => CStop
   end.
@@ -673,8 +739,8 @@ Section Table.
   match lims with
   | []          => CFail
   | j0 :: lims0 =>
-    match analyze x i (dl x) j0 with
-    | (ou, mk, lt) =>
+    match analyze x (decay (hr x) (nvars x)) i (dl x) j0 with
+    | (ou, mk, lt, h) =>
       match clear_marks (lvl x) mk lt ou with
       | (mk2, mx) =>
         match ou with
@@ -685,16 +751,16 @@ Section Table.
               match skipn (dl x - S mx) (saved x) with
               | c0 :: st =>
                 match push_reason
-                        (jump x (unset_range (vals x) (tr x) j (tlen x - j)) j c0 st mx
-                           mk2) u lt with
+                        (jump_heur x (unset_range (vals x) (tr x) j (tlen x - j)) j c0 st
+                           mx mk2 h) u lt with
                 | (x1, r) => CNext (assign x1 u r) (skipn (S (dl x - S mx)) lims)
                 end
-              | []       => flip_t x j0 lims0 mk2
+              | []       => flip_t x j0 lims0 mk2 h
               end
-            | None   => flip_t x j0 lims0 mk2
+            | None   => flip_t x j0 lims0 mk2 h
             end
-          else flip_t x j0 lims0 mk2
-        | None   => flip_t x j0 lims0 mk2
+          else flip_t x j0 lims0 mk2 h
+        | None   => flip_t x j0 lims0 mk2 h
         end
       end
     end
@@ -708,21 +774,29 @@ Section Table.
     match propagate_t (S (nvars x1)) (clear_shorts x1) with
     | (x2, Some i) => resolve_t x2 lims i
     | (x2, None)   =>
-      let c := skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2) in
-      if c <? nlits x2 then
-        CNext (assign (open_level x2 c) (phase (phs x2) (tget (alls x2) c)) no_reason)
+      match pick (vals x2) (hr x2) (nvars x2) with
+      | (h, Some l0) =>
+        CNext (assign (open_level (with_heur x2 h) (cur x2)) (phase (phs x2) l0)
+                 no_reason)
           (tlen x2 :: lims)
-      else if Nat.eqb (tlen x2) (tlen x) then CStop else CNext (with_cursor x2 c) lims
+      | (h, None)    =>
+        let x3 := with_heur x2 h in
+        let c := skip_from (vals x3) (alls x3) (nlits x3) (nlits x3 - cur x3) (cur x3) in
+        if c <? nlits x3 then
+          CNext (assign (open_level x3 c) (phase (phs x3) (tget (alls x3) c)) no_reason)
+            (tlen x3 :: lims)
+        else if Nat.eqb (tlen x3) (tlen x) then CStop else CNext (with_cursor x3 c) lims
+      end
     end
   end.
 
   (* Flipping on the context agrees with flip. *)
   Lemma flip_t_spec: forall (m' n: PA) (f: CNF) (x: Ctx) (l: Lit) (lims0: list nat)
-    (mk: Table bool),
+    (mk: Table bool) (h: Heur),
     TrailOf (tr x) (tlen x) ⟨m'; l ++ n⟩ -> NoDecisions n -> LimsOf lims0 m' ->
-    Agrees f (flip m' ⟨m'; l ++ n⟩ f x l mk) (flip_t x (PA.length m') lims0 mk).
+    Agrees f (flip m' ⟨m'; l ++ n⟩ f x l mk h) (flip_t x (PA.length m') lims0 mk h).
   Proof.
-    intros m' n f x l lims0 mk Htrail Hn Hlims0. unfold flip, flip_t.
+    intros m' n f x l lims0 mk h Htrail Hn Hlims0. unfold flip, flip_t.
     assert (Hlen: tlen x = S (PA.length m' + PA.length n)).
     { destruct Htrail as [Hlen _].
       rewrite Hlen, trail_lits_length, (pa_length_app ⟨m'; l⟩ n). simpl. lia. }
@@ -748,7 +822,8 @@ Section Table.
     - apply PA.split_last_decision_some_iff in Hsplit as [n [-> Hn]].
       destruct (lims_split lims m' n l Hlims) as (lims' & Hskip & Hlims' & _).
       rewrite no_decisions_zero in Hskip by assumption. simpl in Hskip. subst lims.
-      destruct (analyze x i (dl x) (PA.length m')) as [[ou mk] lt].
+      destruct (analyze x (decay (hr x) (nvars x)) i (dl x) (PA.length m'))
+        as [[[ou mk] lt] h].
       destruct (clear_marks (lvl x) mk lt ou) as [mk2 mx].
       destruct ou as [u|].
       2: now apply flip_t_spec.
@@ -799,16 +874,25 @@ Section Table.
       + apply resolve_t_spec.
         * apply Hcore2.
         * assumption.
-      + destruct (_ <? nlits x2).
-        * exists ⟨m2; (phase (phs x2) (tget (alls x2) (skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2)
-            (cur x2))))⟩. split.
+      + (* both decide alike: by the heap, or else by the cursor *)
+        assert (Hlen2: tlen x2 = PA.length m2).
+        { destruct Hcore2 as [[[_ _ [Hlen _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _ _].
+          now rewrite Hlen, trail_lits_length. }
+        destruct (pick (vals x2) (hr x2) (nvars x2)) as [h [l0|]].
+        * exists ⟨m2; (phase (phs x2) l0)⟩. split.
           -- reflexivity.
           -- simpl. split.
-             ++ destruct Hcore2 as [[[_ _ [Hlen _] _ _ _ _] _ _ _ _ _] _ _ _ _ _ _ _ _].
-                now rewrite Hlen, trail_lits_length.
              ++ assumption.
-        * destruct (Nat.eqb (tlen x2) (tlen x)).
-          -- reflexivity.
-          -- now exists m2.
+             ++ assumption.
+        * destruct (_ <? nlits (with_heur x2 h)).
+          -- exists ⟨m2; (phase (phs x2) (tget (alls x2) (skip_from (vals x2) (alls x2)
+               (nlits x2) (nlits x2 - cur x2) (cur x2))))⟩. split.
+             ++ reflexivity.
+             ++ simpl. split.
+                ** assumption.
+                ** assumption.
+          -- destruct (Nat.eqb (tlen (with_heur x2 h)) (tlen x)).
+             ++ reflexivity.
+             ++ now exists m2.
   Qed.
 End Table.

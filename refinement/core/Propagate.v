@@ -19,6 +19,7 @@ From RocqSAT Require Import Measure.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Heur.
 
 (* Unit propagation with a propagation queue, as in MiniSat: the trail is a table, and the watchers of the
    negations of the trail literals from qhead on are still to be visited. *)
@@ -103,7 +104,8 @@ Record Ctx: Type := mkCtx {
   rcl: Table (list Lit); (* the reason clauses, a stack *)
   rps: Table nat;    (* reason clause j asserted the literal at trail position rps j *)
   nr: nat;           (* the number of reason clauses *)
-  rcap: nat          (* the room for the literals of the reason clauses *)
+  rcap: nat;         (* the room for the literals of the reason clauses *)
+  hr: Heur           (* hint: the decision heuristic (Heur.v) *)
 }.
 
 (* Assign l with reason r at the current level, appending it to the trail. *)
@@ -111,13 +113,13 @@ Definition assign (x: Ctx) (l: Lit) (r: Reason): Ctx :=
 mkCtx (set_value (vals x) l) (cmap x) (wls x) (tset (tr x) (tlen x) l) (S (tlen x))
   (qhead x) (shorts x) (alls x) (nlits x) (cur x) (saved x) (tset (rsn x) (extract l) r)
   (tset (lvl x) (extract l) (dl x)) (dl x) (mrk x) (set_value (phs x) l) (nvars x)
-  (rcl x) (rps x) (nr x) (rcap x).
+  (rcl x) (rps x) (nr x) (rcap x) (hr x).
 
 (* Clause i now has the literals ls. *)
 Definition set_clause (x: Ctx) (i: nat) (ls: list Lit): Ctx :=
 mkCtx (vals x) (tset (cmap x) i (Some ls)) (wls x) (tr x) (tlen x) (qhead x) (shorts x)
   (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x)
-  (rcl x) (rps x) (nr x) (rcap x).
+  (rcl x) (rps x) (nr x) (rcap x) (hr x).
 
 (* Clause i now has the literals ls, and a watcher of it with blocker b is appended to the
    watch list of l. *)
@@ -125,19 +127,19 @@ Definition move_watch (x: Ctx) (i: nat) (ls: list Lit) (l b: Lit): Ctx :=
 mkCtx (vals x) (tset (cmap x) i (Some ls))
   (tset (wls x) (lit_key l) (watching (wls x) l ++ [(i, b)])) (tr x) (tlen x) (qhead x)
   (shorts x) (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x)
-  (nvars x) (rcl x) (rps x) (nr x) (rcap x).
+  (nvars x) (rcl x) (rps x) (nr x) (rcap x) (hr x).
 
 (* The watch list of l becomes ws. *)
 Definition set_watching (x: Ctx) (l: Lit) (ws: list Watcher): Ctx :=
 mkCtx (vals x) (cmap x) (tset (wls x) (lit_key l) ws) (tr x) (tlen x) (qhead x) (shorts x)
   (alls x) (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x)
-  (rcl x) (rps x) (nr x) (rcap x).
+  (rcl x) (rps x) (nr x) (rcap x) (hr x).
 
 (* The queue moves past one literal. *)
 Definition advance (x: Ctx): Ctx :=
 mkCtx (vals x) (cmap x) (wls x) (tr x) (tlen x) (S (qhead x)) (shorts x) (alls x)
   (nlits x) (cur x) (saved x) (rsn x) (lvl x) (dl x) (mrk x) (phs x) (nvars x)
-  (rcl x) (rps x) (nr x) (rcap x).
+  (rcl x) (rps x) (nr x) (rcap x) (hr x).
 
 (* The first literal of ls that is not false, and ls with p in its place. *)
 Fixpoint swap_watch (v: Values) (p: Lit) (ls: list Lit): option (Lit * list Lit) :=
@@ -429,7 +431,7 @@ Definition SameRest (x x': Ctx): Prop :=
   nlits x' = nlits x /\ cur x' = cur x /\ saved x' = saved x /\ dl x' = dl x /\
     mrk x' = mrk x /\
   nvars x' = nvars x /\ rcl x' = rcl x /\ rps x' = rps x /\ nr x' = nr x /\
-    rcap x' = rcap x.
+    rcap x' = rcap x /\ hr x' = hr x.
 
 Section Reorder.
   Lemma reordered_refl: forall (cm: ClauseMap), Reordered cm cm.
@@ -588,8 +590,8 @@ Qed.
 Lemma same_rest_trans: forall (x1 x2 x3: Ctx), SameRest x1 x2 -> SameRest x2 x3 -> SameRest x1 x3.
 Proof.
   intros x1 x2 x3
-    (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13 & H14)
-    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9 & G10 & G11 & G12 & G13 & G14).
+    (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13 & H14 & H15)
+    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9 & G10 & G11 & G12 & G13 & G14 & G15).
   split.
   - now apply reordered_trans with (cmap x2).
   - repeat split; congruence.
@@ -1620,12 +1622,13 @@ Definition SameFixed (x x': Ctx): Prop :=
     nlits x' = nlits x /\
   cur x' = cur x /\ saved x' = saved x /\ dl x' = dl x /\ mrk x' = mrk x /\
     nvars x' = nvars x /\ rcl x' = rcl x /\ rps x' = rps x /\ nr x' = nr x /\
-  rcap x' = rcap x.
+  rcap x' = rcap x /\ hr x' = hr x.
 
 Lemma same_fixed_trans: forall (x1 x2 x3: Ctx), SameFixed x1 x2 -> SameFixed x2 x3 -> SameFixed x1 x3.
 Proof.
-  intros x1 x2 x3 (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13)
-    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9 & G10 & G11 & G12 & G13).
+  intros x1 x2 x3
+    (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13 & H14)
+    (G1 & G2 & G3 & G4 & G5 & G6 & G7 & G8 & G9 & G10 & G11 & G12 & G13 & G14).
   split.
   - now apply reordered_trans with (cmap x2).
   - repeat split; congruence.
@@ -1633,7 +1636,8 @@ Qed.
 
 Lemma same_rest_fixed: forall (x x': Ctx), SameRest x x' -> SameFixed x x'.
 Proof.
-  intros x x' (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13 & H14).
+  intros x x'
+    (H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & H11 & H12 & H13 & H14 & H15).
   now repeat split.
 Qed.
 

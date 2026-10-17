@@ -2,12 +2,12 @@
 From Stdlib Require Import List.
 From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs Ctypes
   Ctypesdefs Cop Clight ClightBigstep.
-From RocqSAT Require Import Lit CNF Assignment Evaluation State WellFormed Trans.
-From RocqSAT.refinement Require Import Table Lookup Watches Search Propagate Step CStep
-  SolverStep.
+From RocqSAT Require Import Lit CNF Assignment Evaluation State WellFormed Trans Measure.
+From RocqSAT.refinement Require Import Table Lookup Watches Search Heur Propagate Step
+  CStep SolverStep.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep LitValue Assign Visit
-  Propagate CheckShorts SkipFrom Phase Resolve.
+From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepHeur LitValue Assign
+  Visit Propagate CheckShorts SkipFrom Phase Pick Resolve.
 Import ListNotations.
 
 Section Room.
@@ -204,14 +204,23 @@ Proof.
 Qed.
 
 (* cstep in the parts that step computes one after the other: after the short clauses
-   of x, propagation from x1; after propagation, a decision of x2 at the next unassigned
-   literal from its cursor, or a stop when nothing was assigned since x. *)
+   of x, propagation from x1; after propagation, a decision of x2 on the literal the
+   heuristic picks, or else at the next unassigned literal of x3 from its cursor, or a
+   stop when nothing was assigned since x. *)
+Definition cstep_cursor (x x3: Ctx) (lims: list nat): CResult :=
+  let c := skip_from (vals x3) (alls x3) (nlits x3) (nlits x3 - cur x3) (cur x3) in
+  if Nat.ltb c (nlits x3)
+  then CNext (assign (open_level x3 c) (phase (phs x3) (tget (alls x3) c)) no_reason)
+         (tlen x3 :: lims)
+  else if Nat.eqb (tlen x3) (tlen x) then CStop else CNext (with_cursor x3 c) lims.
+
 Definition cstep_decide (x x2: Ctx) (lims: list nat): CResult :=
-  let c := skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2) in
-  if Nat.ltb c (nlits x2)
-  then CNext (assign (open_level x2 c) (phase (phs x2) (tget (alls x2) c)) no_reason)
-         (tlen x2 :: lims)
-  else if Nat.eqb (tlen x2) (tlen x) then CStop else CNext (with_cursor x2 c) lims.
+  match pick (vals x2) (hr x2) (nvars x2) with
+  | (h, Some l0) =>
+    CNext (assign (open_level (with_heur x2 h) (cur x2)) (phase (phs x2) l0) no_reason)
+      (tlen x2 :: lims)
+  | (h, None)    => cstep_cursor x (with_heur x2 h) lims
+  end.
 
 Definition cstep_propagate (x x1: Ctx) (lims: list nat): CResult :=
   match propagate_t (Datatypes.S (nvars x1)) (clear_shorts x1) with
@@ -254,14 +263,33 @@ Definition on_conflict (t: ident) (rest: statement): statement :=
         Sskip)
       rest).
 
-(* The parts of the body of step: from s->nshorts = 0, from int k = skip_from(s), the
-   then branch of if (k < s->nlits), from its call of assign, and after that if. *)
+(* The parts of the body of step: from s->nshorts = 0, from int l0 = pick(s), the then
+   branch of if (l0 >= 0), from int k = skip_from(s), the then branch of
+   if (k < s->nlits), and after that if. *)
 Definition step_propagate: statement := drop_stmts 4 (fn_body f_step).
-Definition step_choose: statement := drop_stmts 8 (fn_body f_step).
+Definition step_pick: statement := drop_stmts 8 (fn_body f_step).
+Definition step_pick_decide: statement :=
+  then_stmt (first_stmt (drop_stmts 9 (fn_body f_step))).
+Definition step_choose: statement := drop_stmts 10 (fn_body f_step).
 Definition step_decide: statement :=
-  then_stmt (drop_stmts 1 (first_stmt (drop_stmts 9 (fn_body f_step)))).
-Definition step_assign: statement := drop_stmts 5 step_decide.
-Definition step_end: statement := drop_stmts 10 (fn_body f_step).
+  then_stmt (drop_stmts 1 (first_stmt (drop_stmts 11 (fn_body f_step)))).
+Definition step_end: statement := drop_stmts 12 (fn_body f_step).
+
+(* The end of both decisions: assign(s, l, 0) with the literal in temporary tl and its
+   result in temporary tw. *)
+Definition assign_stmt (tw tl: ident): statement :=
+  Ssequence
+    (Ssequence
+      (Scall (Some tw)
+        (Evar _assign
+          (Tfunction (tptr (Tstruct _solver noattr) :: tint :: tint :: nil) tint
+             cc_default))
+        (Etempvar _s (tptr (Tstruct _solver noattr)) :: Etempvar tl tint ::
+         Econst_int (Int.repr 0) tint :: nil))
+      (Sifthenelse (Eunop Onotbool (Etempvar tw tint) tint)
+        (Sreturn (Some (Eunop Oneg (Econst_int (Int.repr 1) tint) tint)))
+        Sskip))
+    (Sreturn (Some (Econst_int (Int.repr 2) tint))).
 
 (* The tests for a conflict found in x: out of room, or a conflict on clause i to
    resolve, or none, and then rest runs.
@@ -377,16 +405,17 @@ Qed.
        return 2;
      {{ result = 2 /\ Rep (assign xo l' no_reason) lims' }}                            *)
 Lemma step_assign_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (pm: PA)
-  (xo: Ctx) (lims': list nat) (l: Lit) (tp: nat -> Z) (le: temp_env) (m: mem),
+  (xo: Ctx) (lims': list nat) (l: Lit) (tp: nat -> Z) (tw tl: ident) (rest: statement)
+  (le: temp_env) (m: mem),
   RepB m S N lss xo lims' -> Arr m (b_wpool S) (2 * npool S) tp ->
   PoolOf S N tp (wls xo) (fun (_ _: nat) => False) -> (extract l < N)%nat ->
-  le ! _s = Some (sptr S) -> le ! _l = Some (vint (key l)) ->
-  Exec ge le m step_assign
-    (SeqK ge step_end
+  le ! _s = Some (sptr S) -> le ! tl = Some (vint (key l)) ->
+  Exec ge le m (assign_stmt tw tl)
+    (SeqK ge rest
        (Returns f_step (StepPost S N lss pm (CNext (assign xo l no_reason) lims')))).
 Proof.
-  intros S N lss pm xo lims' l tp le m HRep Apool Hpool Hl Hs Hlv.
-  unfold step_assign, step_decide, f_step. cbn [fn_body drop_stmts first_stmt then_stmt].
+  intros S N lss pm xo lims' l tp tw tl rest le m HRep Apool Hpool Hl Hs Hlv.
+  unfold assign_stmt.
   run. call assign_fun. eapply call_weaken.
   - apply (assign_correct S N lss xo lims' l no_reason tp). split.
     + assumption.
@@ -526,7 +555,7 @@ Proof.
                              pose proof (rep_store_open m m1 m2 m3 m4 S N lss x2 lims k
                                            HRep Hkle Hdl Hst1 Hst2 Hst3 Hst4)
                                as HRepo.
-                             apply (step_assign_correct S N lss pm _ _ _ tp).
+                             apply (step_assign_correct S N lss pm _ _ _ tp _t'10 _l__1).
                              ---- apply HRepo.
                              ---- assumption.
                              ---- apply Hpool.
@@ -553,7 +582,7 @@ Lemma step_choose_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (pm
   le ! _s = Some (sptr S) ->
   le ! _t0 = Some (vint (Z.of_nat (tlen x))) ->
   Exec ge le m step_choose
-    (Returns f_step (StepPost S N lss pm (cstep_decide x x2 lims))).
+    (Returns f_step (StepPost S N lss pm (cstep_cursor x x2 lims))).
 Proof.
   intros S N lss pm pm2 f x x2 lims le m HRep2 Hcore2 Hlims2 Hext Hlen Htx Hs Ht0.
   pose proof HRep2 as [HRep (tp & Apool & Hpool)].
@@ -566,7 +595,7 @@ Proof.
                 (cur x2)) as [Hc Hundef].
     { lia. }
     { apply Hcore2. }
-    unfold cstep_decide. cbv zeta.
+    unfold cstep_cursor. cbv zeta.
     remember (skip_from (vals x2) (alls x2) (nlits x2) (nlits x2 - cur x2) (cur x2))
       as k eqn:Hk.
     pose proof (proj1 Hc) as Hkn.
@@ -659,6 +688,202 @@ Proof.
                                        **** assumption.
 Qed.
 
+(* The literal the heuristic picks is an unassigned literal of f, so of an atom below
+   the number of atoms. *)
+Lemma picked_lit: forall (pm: PA) (f: CNF) (x: Ctx) (fuel: nat) (h: Heur) (l0: Lit),
+  StepCore pm f x -> pick (vals x) (hr x) fuel = (h, Some l0) ->
+  lookup (vals x) l0 = None /\ (extract l0 < nvars x)%nat.
+Proof.
+  intros pm f x fuel h l0 Hcore Hpick.
+  destruct (pick_some _ _ _ _ _ Hpick) as [Hundef [a Ha]].
+  pose proof (sc_dlit _ _ _ Hcore a l0 Ha) as Hl0.
+  pose proof (max_atom_f_le f l0 (extract l0) Hl0 eq_refl) as Hmax.
+  pose proof (sc_bound _ _ _ Hcore) as Hbound.
+  split.
+  - assumption.
+  - lia.
+Qed.
+
+(* Deciding on the unassigned literal l0 of f the heuristic picked: the decision level
+   opens at the cursor, and l0 with its phase is assigned.
+
+     {{ Rep y lims /\ l0 is unassigned, of an atom below N /\ l0 = key l0 }}
+       int l = phase(s, l0);                                           (phase_correct)
+       s->saved[s->dl] = s->cur;
+       s->lims[s->dl] = s->tlen;
+       s->dl = s->dl + 1;                                         (rep_store_open_cur)
+     {{ RepB (open_level y (cur y)) (tlen y :: lims) /\ l = key (phase ...) }}
+       ...                                                       (step_assign_correct) *)
+Lemma step_pick_decide_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
+  (pm pm2: PA) (f: CNF) (y: Ctx) (lims: list nat) (l0: Lit) (rest: statement)
+  (le: temp_env) (m: mem),
+  Rep m S N lss y lims -> StepCore pm2 f y -> LimsOf lims pm2 -> (extract l0 < N)%nat ->
+  lookup (vals y) l0 = None ->
+  le ! _s = Some (sptr S) -> le ! _l0 = Some (vint (key l0)) ->
+  Exec ge le m step_pick_decide
+    (SeqK ge rest (Returns f_step (StepPost S N lss pm
+      (CNext (assign (open_level y (cur y)) (phase (phs y) l0) no_reason)
+         (tlen y :: lims))))).
+Proof.
+  intros S N lss pm pm2 f y lims l0 rest le m [HRep (tp & Apool & Hpool)] Hcore2 Hlims2
+    Hl Hundef Hs Hl0v.
+  pose proof (lims_on_trail _ _ _ _ Hcore2 Hlims2) as [_ Hlen2].
+  pose proof HRep as HRep'. destruct HRep'.
+  destruct a_saved as (tsv & Asaved & Htsv). destruct a_lims as (tl & Alims & Htl).
+  unpack.
+  assert (Hla: (extract (phase (phs y) l0) < N)%nat)
+    by (rewrite extract_phase; assumption).
+  assert (Hlu: lookup (vals y) (phase (phs y) l0) = None)
+    by (apply phase_undef; assumption).
+  pose proof (trail_room _ _ _ N _ Hcore2 r_tr_atoms Hlu Hla) as Hroom.
+  assert (Hdl: (length lims < N)%nat) by lia.
+  assert (Hdl1: Int.add (Int.repr (Z.of_nat (length lims))) (Int.repr 1) =
+                Int.repr (Z.of_nat (Datatypes.S (length lims)))).
+  { rewrite add_repr by lia. f_equal. lia. }
+  unfold step_pick_decide, f_step. cbn [fn_body drop_stmts first_stmt then_stmt].
+  (* int l = phase(s, l0); *)
+  run. call phase_fun. eapply call_weaken.
+  - apply (phase_correct S N lss y lims l0). split.
+    + assumption.
+    + assumption.
+  - intros m' v [-> ->]. normal.
+    (* s->saved[s->dl] = s->cur; *)
+    run. eapply exec_store.
+    + evl.
+    + ev.
+    + reflexivity.
+    + reflexivity.
+    + ofs. bound.
+    + ofs. cbn [cast_int_int].
+      destruct (arr_storable m (b_saved S) N (length lims) tsv (Z.of_nat (cur y))
+                  Asaved Hdl) as [m2 Hst2].
+      exists m2. split.
+      * apply Hst2.
+      * normal. carry Hst2 r_nodup. keep_mem m2.
+        (* s->lims[s->dl] = s->tlen; *)
+        run. eapply exec_store.
+        -- evl.
+        -- ev.
+        -- reflexivity.
+        -- reflexivity.
+        -- ofs. bound.
+        -- ofs. cbn [cast_int_int].
+           destruct (arr_storable m2 (b_lims S) N (length lims) tl
+                       (Z.of_nat (tlen y)) Alims Hdl) as [m3 Hst3].
+           exists m3. split.
+           ++ apply Hst3.
+           ++ normal. carry Hst3 r_nodup. keep_mem m3.
+              (* s->dl = s->dl + 1; *)
+              run. eapply exec_store.
+              ** evl.
+              ** ev.
+              ** reflexivity.
+              ** reflexivity.
+              ** fofs. bound.
+              ** fofs. cbn [cast_int_int]. ints.
+                 destruct (fld_storable m3 (b_s S) 136 Mint32 _
+                             (vint (Z.of_nat (Datatypes.S (length lims)))) r_dl)
+                   as [m4 Hst4].
+                 exists m4. split.
+                 --- apply Hst4.
+                 --- normal. carry Hst4 r_nodup.
+                     pose proof (rep_store_open_cur m m2 m3 m4 S N lss y lims
+                                   HRep Hdl Hst2 Hst3 Hst4) as HRepo.
+                     apply (step_assign_correct S N lss pm _ _ _ tp _t'7 _l).
+                     +++ apply HRepo.
+                     +++ assumption.
+                     +++ apply Hpool.
+                     +++ assumption.
+                     +++ tmp.
+                     +++ tmp.
+Qed.
+
+(* Choosing a decision, after propagation without a conflict: the heuristic picks a
+   literal, and changes to h on the way.
+
+     {{ Rep x2 lims /\ t0 = tlen x }}
+       int l0 = pick(s);                                                (pick_correct)
+     {{ Rep (with_heur x2 h) lims /\ l0 = enc_lit ol, for pick ... = (h, ol) }}
+       if (l0 >= 0) { ... }                                 (step_pick_decide_correct)
+     {{ ol = None }}
+       ...                                                       (step_choose_correct) *)
+Lemma step_pick_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (pm pm2: PA)
+  (f: CNF) (x x2: Ctx) (lims: list nat) (le: temp_env) (m: mem),
+  Rep m S N lss x2 lims -> StepCore pm2 f x2 -> LimsOf lims pm2 -> Extends pm pm2 ->
+  PA.length pm = tlen x -> (tlen x <= N)%nat ->
+  le ! _s = Some (sptr S) ->
+  le ! _t0 = Some (vint (Z.of_nat (tlen x))) ->
+  Exec ge le m step_pick
+    (Returns f_step (StepPost S N lss pm (cstep_decide x x2 lims))).
+Proof.
+  intros S N lss pm pm2 f x x2 lims le m [HRep (tp & Apool & Hpool)] Hcore2 Hlims2 Hext
+    Hlen Htx Hs Ht0.
+  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
+  pose proof (r_nodup _ _ _ _ _ _ _ HRep) as Hnd.
+  pose proof (r_nvars _ _ _ _ _ _ _ HRep) as Hnv.
+  unfold cstep_decide. rewrite Hnv.
+  unfold step_pick, f_step. cbn [fn_body drop_stmts].
+  (* int l0 = pick(s); *)
+  run. call pick_fun. eapply call_weaken.
+  - apply (pick_correct (lt := []) S N lss x2 lims). assumption.
+  - intros m1 v Hpost. normal. eapply exec_set.
+    + ev.
+    + normal.
+      (* the heuristic changed, but not its literals to decide on *)
+      pose proof (pick_dlit (vals x2) (hr x2) N) as Hd.
+      destruct (pick (vals x2) (hr x2) N) as [h ol] eqn:Hpick.
+      cbn [fst] in Hd. destruct Hpost as (HRep1 & -> & Hun1).
+      transfer Hun1 Hnd. keep_mem m1.
+      pose proof (step_core_heur pm2 f x2 h Hcore2 Hd) as Hcore3.
+      (* if (l0 >= 0) *)
+      run. eapply (exec_if_cmp _ _ _ Cge).
+      * ev.
+      * ev.
+      * reflexivity.
+      * reflexivity.
+      * destruct ol as [l0|].
+        -- destruct (picked_lit pm2 f x2 N h l0 Hcore2 Hpick) as [_ Hl].
+           rewrite Hnv in Hl. pose proof (key_small l0 N Hl HN).
+           unfold Small. cbn [enc_lit]. lia.
+        -- unfold Small. cbn [enc_lit]. lia.
+      * unfold Small. lia.
+      * destruct ol as [l0|].
+        -- (* a literal picked: decide on it *)
+           destruct (picked_lit pm2 f x2 N h l0 Hcore2 Hpick) as [Hundef0 Hl].
+           rewrite Hnv in Hl. pose proof (key_small l0 N Hl HN) as Hkey.
+           replace (zcmp Cge (enc_lit (Some l0)) 0) with true
+             by (cbn [zcmp enc_lit]; symmetry; apply Z.leb_le; lia).
+           cbv beta iota.
+           apply (step_pick_decide_correct S N lss pm pm2 f (with_heur x2 h) lims l0).
+           ++ split.
+              ** assumption.
+              ** exists tp. split.
+                 --- assumption.
+                 --- apply Hpool.
+           ++ assumption.
+           ++ assumption.
+           ++ assumption.
+           ++ assumption.
+           ++ tmp.
+           ++ tmp.
+        -- (* nothing picked: decide by the cursor *)
+           replace (zcmp Cge (enc_lit None) 0) with false by reflexivity.
+           cbv beta iota. apply exec_skip. normal.
+           apply (step_choose_correct S N lss pm pm2 f x (with_heur x2 h) lims).
+           ++ split.
+              ** assumption.
+              ** exists tp. split.
+                 --- assumption.
+                 --- apply Hpool.
+           ++ assumption.
+           ++ assumption.
+           ++ assumption.
+           ++ assumption.
+           ++ assumption.
+           ++ tmp.
+           ++ tmp.
+Qed.
+
 (* After the short clauses, without a conflict among them: they are cleared, and
    propagation runs.
 
@@ -669,7 +894,7 @@ Qed.
        if (c < 0) return -1;
        if (c > 0) return resolve(s, c - 1);                      (on_conflict_correct)
      {{ Rep x2 lims, after propagation without a conflict }}
-       ...                                                       (step_choose_correct) *)
+       ...                                                         (step_pick_correct) *)
 Lemma step_propagate_correct: forall (S: Shape) (N: nat) (lss: list (list Lit))
   (pm pm1: PA) (f: CNF) (x x1: Ctx) (lims: list nat) (le: temp_env) (m: mem),
   Rep m S N lss x1 lims -> StepCore pm1 f x1 -> WellFormed (state pm1 f) ->
@@ -731,7 +956,7 @@ Proof.
            ++ assumption.
            ++ intros i ->. reflexivity.
            ++ intros -> HRep2.
-              apply (step_choose_correct S N lss pm pm2 f).
+              apply (step_pick_correct S N lss pm pm2 f).
               ** assumption.
               ** assumption.
               ** assumption.

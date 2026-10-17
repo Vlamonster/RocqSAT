@@ -442,7 +442,7 @@ Proof.
   cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
   (* if (lit_value(s, o) == 0) *)
   run. call lit_value_fun. eapply call_weaken.
-  - apply (lit_value_correct S N lss x1 lims o m). split.
+  - apply (lit_value_correct (lt := []) S N lss x1 lims o m). split.
     + assumption.
     + assumption.
   - intros m' v [-> ->]. normal. eapply (exec_if_cmp _ _ _ Ceq _ _ _ 0).
@@ -829,7 +829,7 @@ Proof.
   cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
   (* if (lit_value(s, o) == 1) *)
   run. call lit_value_fun. eapply call_weaken.
-  - apply (lit_value_correct S N lss x1 lims o m). split.
+  - apply (lit_value_correct (lt := []) S N lss x1 lims o m). split.
     + assumption.
     + assumption.
   - intros m' v [-> ->]. normal. eapply (exec_if_cmp _ _ _ Ceq _ _ _ 1).
@@ -1299,7 +1299,7 @@ Proof.
   run. rewrite Hk1. run. rewrite Hk2.
   (* if (lit_value(s, kb) == 1) *)
   call lit_value_fun. eapply call_weaken.
-  - apply (lit_value_correct S N lss xc lims b m). split.
+  - apply (lit_value_correct (lt := []) S N lss xc lims b m). split.
     + assumption.
     + assumption.
   - intros m' v [-> ->]. normal. eapply (exec_if_cmp _ _ _ Ceq _ _ _ 1).
