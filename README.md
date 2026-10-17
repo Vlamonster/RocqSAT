@@ -32,16 +32,17 @@ or `UNKNOWN` if it ran out of room.
 
 # Problems
 
-`./fetch_problems.sh` downloads the two assets of the `bench-v1` release, checks them against their SHA-256 and
+`./fetch_problems.sh` downloads the three assets of the `bench-v1` release, checks them against their SHA-256 and
 unpacks them into `problems/` (ignored by git). The problems are in DIMACS CNF format, grouped by their status:
 `problems/sat/` holds satisfiable problems and `problems/unsat/` unsatisfiable ones, each with a directory per
-source and a directory per family below it. The status of every problem was checked with an independent solver
-(Kissat).
+source and a directory per family below it. The status of every CNFgen and SATLIB problem was checked with an
+independent solver (Kissat); the GBD problems are filed by the status GBD records.
 
 | Location                                         | Problems | Release asset       | Source |
 |--------------------------------------------------|---------:|---------------------|--------|
 | `problems/sat/cnfgen/`, `problems/unsat/cnfgen/` |       55 | `cnfgen.tar.xz`     | CNFgen |
 | `problems/sat/satlib/`, `problems/unsat/satlib/` |     9306 | `satlib-all.tar.xz` | SATLIB |
+| `problems/sat/gbd/`, `problems/unsat/gbd/`       |      846 | `gbd.tar.xz`        | GBD    |
 
 **CNFgen.** Crafted families generated with CNFgen 0.9.6 (https://massimolauria.net/cnfgen): pigeonhole
 principle (`php`), ordering principle (`op`), parity principle (`parity`), mutilated chessboard (`mchess`), Tseitin
@@ -66,6 +67,15 @@ files (an unintended empty clause), and the 202 clauses of `dubois100` that lack
 per line) get one. The status of 12 problems could not be checked within 10 minutes (`par32-*`, `g125.17` and
 `g250.29`); those are filed as SATLIB documents them. The script that built the asset from the original archives
 is `problems/fetch_satlib.py` in commit `5e45497`.
+
+**GBD.** SAT competition problems from the Global Benchmark Database (https://benchmark-database.de), chosen
+for benchmarking the solver: problems with a known status, at most 8000 variables and 150000 clauses, a few per
+family spread over their sizes, and more of the families whose problems take the solver seconds rather than
+milliseconds or minutes. Each file is named by its GBD hash; GBD gives its original name, author and competition
+track. The files are as GBD serves them. Cite GBD as:
+
+> Ashlin Iser and Christoph Jabs. Global Benchmark Database. SAT 2024, LIPIcs, article 18.
+> https://doi.org/10.4230/LIPIcs.SAT.2024.18
 
 # Editor support
 
