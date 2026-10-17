@@ -1,0 +1,12 @@
+; The solver binary: the verified solver.c and the driver main.c, compiled with CompCert (ccomp from
+; coq-compcert), so that the binary is the program the proofs (../refinement/c)
+; are about. `dune exec rocqsat < problem.cnf`.
+(rule
+ (targets rocqsat)
+ (deps main.c solver.c solver.h)
+ (action
+  (run ccomp -O main.c solver.c -o rocqsat)))
+
+(install
+ (section bin)
+ (files rocqsat))

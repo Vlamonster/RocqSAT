@@ -1,0 +1,6 @@
+; The abstract transition system: rules, systems, termination (library RocqSAT).
+(include_subdirs qualified)
+(rocq.theory
+ (name RocqSAT)
+ (package rocqsat)
+ (theories Stdlib Equations))

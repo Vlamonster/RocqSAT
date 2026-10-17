@@ -1,2 +1,6 @@
-/code/_build/
+/_build/
 *.cache
+/problems/
+/context/
+/_opam
+/.vscode/settings.json

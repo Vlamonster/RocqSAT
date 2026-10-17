@@ -1,0 +1,5 @@
+-Q "../../_build/default/abstraction" RocqSAT
+-Q "../../_build/default/refinement/core" RocqSAT.refinement
+-Q "../../_build/default/refinement/c" RocqSAT.refinement.c
+-Q "." RocqSAT.refinement.c
+-arg -w -arg -deprecated-from-Coq,-abstract-large-number
