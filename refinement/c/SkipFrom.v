@@ -87,11 +87,7 @@ Proof.
     + apply well_founded_ltof.
     + intros c le1 m1 HI. destruct HI as [Hs Hc Hn -> Hcrange Hskip]. apply exec_seq.
       (* if (c < n) ... else break; *)
-      eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* c < n: the model looks at the literal at c *)
         intros Hlt.
         assert (Hl: (extract (tget (alls x) c) < N)%nat).
@@ -107,13 +103,8 @@ Proof.
           by (symmetry; apply Nat.ltb_lt; lia).
         (* lit_value(s, s->alls[c]) *)
         run. rewrite (Hta c) by lia.
-        eapply (exec_call_triple lit_value_fun
-                  (lit_value_correct sh N lss x (tget (alls x) c))).
-        -- reflexivity.
-        -- evs.
-        -- split.
-           ++ assumption.
-           ++ assumption.
+        call lit_value_fun (lit_value_correct sh N lss x (tget (alls x) c)).
+        -- split; assumption.
         -- intros m' v [-> ->]. normal.
            (* if (... == 0) return c; *)
            eapply (exec_if_eq _ 0).
@@ -126,13 +117,10 @@ Proof.
               assert (Hu: lookup_undef (vals x) (tget (alls x) c) = true).
               { rewrite <- enc_undef. now apply Z.eqb_eq. }
               rewrite Hu in Hskip. cbn [negb andb] in Hskip.
-              eapply exec_return.
-              ** ev.
-              ** ret. exists (vnat c). split.
-                 --- apply result_int.
-                 --- split.
-                     +++ reflexivity.
-                     +++ now rewrite Hskip.
+              return_int.
+              split.
+              ** reflexivity.
+              ** now rewrite Hskip.
            ++ (* assigned: c++; and the loop goes on *)
               intros Hnonzero.
               assert (Hu: lookup_undef (vals x) (tget (alls x) c) = false).
@@ -149,14 +137,11 @@ Proof.
                  --- assumption.
       * (* c >= n: break; return c, which is res *)
         intros Hge. apply exec_break. abrupt. apply loopk_break. normal.
-        eapply exec_return.
-        -- ev.
-        -- exists (vnat c). split.
-           ++ apply result_int.
-           ++ split.
-              ** reflexivity.
-              ** replace (nlits x - c)%nat with 0%nat in Hskip by lia.
-                 now rewrite Hskip.
+        return_int.
+        split.
+        -- reflexivity.
+        -- replace (nlits x - c)%nat with 0%nat in Hskip by lia.
+           now rewrite Hskip.
     + (* The invariant holds at the cursor. *)
       constructor.
       * tmp.

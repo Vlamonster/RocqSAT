@@ -16,6 +16,7 @@ From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import Measure.
 From RocqSAT Require Import Trans.
 From RocqSAT.rules Require Import Unit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
@@ -453,11 +454,10 @@ Section Reorder.
       + congruence.
     - destruct (H23 i) as [[H2' _]|(ls2' & ls3 & H2' & H3 & Hp23)].
       + congruence.
-      + rewrite H2 in H2'. injection H2' as <-. right. exists ls1, ls3. split.
+      + rewrite H2 in H2'. injection H2' as <-. right. exists ls1, ls3. splits.
         * assumption.
-        * split.
-          -- assumption.
-          -- now apply Permutation_trans with ls2.
+        * assumption.
+        * now apply Permutation_trans with ls2.
   Qed.
 
   (* Reordering the literals of clause i. *)
@@ -747,13 +747,12 @@ Section Traces.
       { intros Heq. apply (Hother t).
         - now left.
         - now symmetry. }
-      rewrite !tget_tset_other by assumption. split.
+      rewrite !tget_tset_other by assumption. splits.
       + assumption.
-      + split.
+      + assumption.
+      + apply IH.
+        * intros y Hy. apply Hother. now right.
         * assumption.
-        * apply IH.
-          -- intros y Hy. apply Hother. now right.
-          -- assumption.
     - destruct Htrace as (Hlv & Htrace). cbn [TraceOk].
       assert (Ht: a <> extract t).
       { intros Heq. apply (Hother t).
@@ -785,20 +784,19 @@ Section Traces.
     intros m i ls ls' Hi Hperm.
     induction m as [|m IH t|m IH t]; intros Htrace.
     - constructor.
-    - destruct Htrace as (Hlv & Hrsn & Htrace). cbn [TraceOk]. split.
+    - destruct Htrace as (Hlv & Hrsn & Htrace). cbn [TraceOk]. splits.
       + assumption.
-      + split.
-        * destruct (tget rsn (extract t)) as [|j|j]; cbn [ReasonOk] in Hrsn |- *.
-          -- constructor.
-          -- destruct Hrsn as (ls0 & Hj & Hjust). rewrite tget_tset.
-             destruct (Nat.eq_dec i j) as [<- | Hne].
-             ++ exists ls'. split.
-                ** reflexivity.
-                ** rewrite Hi in Hj. injection Hj as <-.
-                   now apply (justifies_perm m t ls).
-             ++ now exists ls0.
-          -- assumption.
-        * now apply IH.
+      + destruct (tget rsn (extract t)) as [|j|j]; cbn [ReasonOk] in Hrsn |- *.
+        * constructor.
+        * destruct Hrsn as (ls0 & Hj & Hjust). rewrite tget_tset.
+          destruct (Nat.eq_dec i j) as [<- | Hne].
+          -- exists ls'. split.
+             ++ reflexivity.
+             ++ rewrite Hi in Hj. injection Hj as <-.
+                now apply (justifies_perm m t ls).
+          -- now exists ls0.
+        * assumption.
+      + now apply IH.
     - destruct Htrace as (Hlv & Htrace). cbn [TraceOk]. split.
       + assumption.
       + now apply IH.
@@ -846,20 +844,17 @@ Proof.
   assert (Hundef: l_eval m l = None) by now rewrite <- Hvals.
   split.
   - intros y. simpl. now rewrite lookup_add, Hvals.
-  - split.
-    + assumption.
-    + assumption.
+  - split; assumption.
   - now apply trail_of_cons.
   - assumption.
   - assumption.
   - assumption.
-  - cbn [assign cmap rsn lvl rcl rps nr dl TraceOk]. rewrite !tget_tset_same. split.
+  - cbn [assign cmap rsn lvl rcl rps nr dl TraceOk]. rewrite !tget_tset_same. splits.
     + assumption.
-    + split.
+    + assumption.
+    + apply trace_other.
+      * intros y Hy. now apply (undef_atom m l y).
       * assumption.
-      * apply trace_other.
-        -- intros y Hy. now apply (undef_atom m l y).
-        -- assumption.
 Qed.
 
 (* An input clause whose other literals are false justifies l. *)
@@ -1059,22 +1054,20 @@ Section Swap.
     intros v p r ls. induction ls as [|y ls IH]; intros ls' Hswap; simpl in Hswap.
     - discriminate.
     - destruct (not_false v y) eqn:Hy.
-      + injection Hswap as <- <-. split.
+      + injection Hswap as <- <-. splits.
         * now left.
-        * split.
-          -- unfold not_false in Hy. destruct (lookup v y) as [[|]|]; easy.
-          -- apply perm_swap.
+        * unfold not_false in Hy. destruct (lookup v y) as [[|]|]; easy.
+        * apply perm_swap.
       + destruct (swap_watch v p ls) as [[r' ls1]|] eqn:Hrest.
         * injection Hswap as <- <-. destruct (IH ls1 eq_refl) as (Hin & Hnf & Hperm).
-          split.
+          splits.
           -- now right.
-          -- split.
-             ++ assumption.
-             ++ apply perm_trans with (y :: r' :: ls1).
+          -- assumption.
+          -- apply perm_trans with (y :: r' :: ls1).
+             ++ apply perm_swap.
+             ++ apply perm_trans with (y :: p :: ls).
+                ** now apply perm_skip.
                 ** apply perm_swap.
-                ** apply perm_trans with (y :: p :: ls).
-                   --- now apply perm_skip.
-                   --- apply perm_swap.
         * discriminate.
   Qed.
 
@@ -1120,11 +1113,10 @@ Section VisitSteps2.
     NoDup (o :: p :: ls) -> In r ls -> o <> p /\ r <> o /\ r <> p.
   Proof.
     intros o p r ls Hnodup Hr. inversion Hnodup as [|? ? Hnotin Hnodup'].
-    inversion Hnodup' as [|? ? Hnotin' _]. split.
+    inversion Hnodup' as [|? ? Hnotin' _]. splits.
     - intros ->. apply Hnotin. now left.
-    - split.
-      + intros ->. apply Hnotin. now right.
-      + intros ->. contradiction.
+    - intros ->. apply Hnotin. now right.
+    - intros ->. contradiction.
   Qed.
 
   (* Moving a watch reorders the clause, which keeps it a clause of f. *)
@@ -1166,11 +1158,7 @@ Section VisitSteps2.
         * assumption.
         * assumption.
         * assumption.
-        * apply (all_watch_q_reorder _ i (o :: p :: ls)).
-          -- assumption.
-          -- assumption.
-          -- assumption.
-          -- assumption.
+        * apply (all_watch_q_reorder _ i (o :: p :: ls)); assumption.
         * apply (saved_q_reorder _ m (vals x) i (o :: p :: ls)).
           -- assumption.
           -- now apply values_of_incl, Hcore.
@@ -1735,26 +1723,21 @@ Proof.
       * assumption.
       * destruct r1 as [i|].
         (* A conflict *)
-        -- injection Hprop as <- <-. exists m1. split.
+        -- injection Hprop as <- <-. exists m1. splits.
+           ++ apply Hout.
+           ++ apply Hout.
+           ++ apply same_rest_fixed, Hout.
            ++ apply Hout.
            ++ split.
               ** apply Hout.
-              ** split.
-                 --- apply same_rest_fixed, Hout.
-                 --- split.
-                     +++ apply Hout.
-                     +++ split.
-                         *** split.
-                             ---- apply Hout.
-                             ---- pose proof (vo_qhead Hout). lia.
-                             ---- apply Hout.
-                             ---- apply Hout.
-                             ---- apply Hout.
-                             ---- apply Hout.
-                         *** split.
-                             ---- intros Heq. discriminate.
-                             ---- apply Hout.
-        (* The watchers of p are done: move on *)
+              ** pose proof (vo_qhead Hout). lia.
+              ** apply Hout.
+              ** apply Hout.
+              ** apply Hout.
+              ** apply Hout.
+           ++ intros Heq. discriminate.
+           ++ apply Hout.
+      (* The watchers of p are done: move on *)
         -- pose proof (vo_rest Hout) as [[_ Hkept] Hqh].
            injection Hkept as _ _ _ _ _ _ _ Hnv _ _ _ _ _.
            assert (Hwf1: WellFormed (state m1 f)).
@@ -1785,29 +1768,24 @@ Proof.
                              ---- apply same_rest_fixed, Hout.
                              ---- apply (same_fixed_trans _ (advance x1)).
                                   ++++ split.
-                                       ***** apply reordered_refl.
-                                       ***** reflexivity.
+                                       **** apply reordered_refl.
+                                       **** reflexivity.
                                   ++++ assumption.
                          *** split.
                              ---- apply incl_trans with (vals x1).
                                   ++++ apply Hout.
                                   ++++ assumption.
                              ---- assumption.
-    + injection Hprop as <- <-. apply Nat.ltb_ge in Hlt. exists m. split.
+    + injection Hprop as <- <-. apply Nat.ltb_ge in Hlt. exists m. splits.
       * apply extends_refl.
+      * apply rt_refl.
       * split.
-        -- apply rt_refl.
-        -- split.
-           ++ split.
-              ** apply reordered_refl.
-              ** reflexivity.
-           ++ split.
-              ** apply incl_refl.
-              ** split.
-                 --- assumption.
-                 --- split.
-                     +++ intros _. destruct Hinv as [_ Hq _ _ _ _]. lia.
-                     +++ intros i Heq. discriminate.
+        -- apply reordered_refl.
+        -- reflexivity.
+      * apply incl_refl.
+      * assumption.
+      * intros _. destruct Hinv as [_ Hq _ _ _ _]. lia.
+      * intros i Heq. discriminate.
 Qed.
 
 (* Assigning an unassigned literal keeps propagation consistent: it is queued. *)
@@ -1857,36 +1835,26 @@ Lemma check_shorts_spec: forall (ss: list nat) (m: PA) (f: CNF) (x x': Ctx)
 Proof.
   intros ss.
   induction ss as [|i ss IH]; intros m f x x' r Hinv Hshort Hcheck; simpl in Hcheck.
-  - injection Hcheck as <- <-. exists m. split.
+  - injection Hcheck as <- <-. exists m. splits.
     + apply extends_refl.
-    + split.
-      * apply rt_refl.
-      * split.
-        -- apply same_rest_refl.
-        -- split.
-           ++ apply incl_refl.
-           ++ split.
-              ** assumption.
-              ** split.
-                 --- intros _ j ls [].
-                 --- intros j Heq. discriminate.
+    + apply rt_refl.
+    + apply same_rest_refl.
+    + apply incl_refl.
+    + assumption.
+    + intros _ j ls [].
+    + intros j Heq. discriminate.
   - destruct (tget (cmap x) i) as [[|a ls]|] eqn:Hi.
     (* The empty clause *)
-    + injection Hcheck as <- <-. exists m. split.
+    + injection Hcheck as <- <-. exists m. splits.
       * apply extends_refl.
-      * split.
-        -- apply rt_refl.
-        -- split.
-           ++ apply same_rest_refl.
-           ++ split.
-              ** apply incl_refl.
-              ** split.
-                 --- assumption.
-                 --- split.
-                     +++ intros Heq. discriminate.
-                     +++ intros j Heq. injection Heq as <-. exists []. split.
-                         *** assumption.
-                         *** intros y [].
+      * apply rt_refl.
+      * apply same_rest_refl.
+      * apply incl_refl.
+      * assumption.
+      * intros Heq. discriminate.
+      * intros j Heq. injection Heq as <-. exists []. split.
+        -- assumption.
+        -- intros y [].
     + assert (Hls: ls = []).
       * destruct ls as [|b ls].
         -- reflexivity.
@@ -1907,22 +1875,17 @@ Proof.
                  --- discriminate.
               ** now apply (Hnone Hr j).
         (* False *)
-        -- injection Hcheck as <- <-. exists m. split.
+        -- injection Hcheck as <- <-. exists m. splits.
            ++ apply extends_refl.
-           ++ split.
-              ** apply rt_refl.
-              ** split.
-                 --- apply same_rest_refl.
-                 --- split.
-                     +++ apply incl_refl.
-                     +++ split.
-                         *** assumption.
-                         *** split.
-                             ---- intros Heq. discriminate.
-                             ---- intros j Heq. injection Heq as <-. exists [a]. split.
-                                  ++++ assumption.
-                                  ++++ intros y [<-|[]]. assumption.
-        (* Unassigned: propagate it *)
+           ++ apply rt_refl.
+           ++ apply same_rest_refl.
+           ++ apply incl_refl.
+           ++ assumption.
+           ++ intros Heq. discriminate.
+           ++ intros j Heq. injection Heq as <-. exists [a]. split.
+              ** assumption.
+              ** intros y [<-|[]]. assumption.
+    (* Unassigned: propagate it *)
         -- destruct (IH ⟨m, a⟩ f (assign x a (input i)) x' r)
              as (m' & Hext & Hder & Hrest & Hincl & Hinv' & Hnone & Hsome).
            ++ apply prop_inv_assign.
@@ -1995,9 +1958,7 @@ Proof.
            assert (H1: SameStacks x x1) by (split; reflexivity).
            destruct (lookup_true _ (if c0 =? p then c1 else c0)).
            ++ destruct (IH ((i, if c0 =? p then c1 else c0) :: kept) x1) as [Hl Hlow].
-              destruct H1 as [Hl1 Hlow1]. split.
-              ** congruence.
-              ** congruence.
+              destruct H1 as [Hl1 Hlow1]. split; congruence.
            ++ destruct (swap_watch _ p ls) as [[r' ls']|].
               ** destruct (IH kept (move_watch x1 i ((if c0 =? p then c1 else c0) :: r'
                              :: ls') r' (if c0 =? p then c1 else c0))) as [Hl Hlow].
@@ -2026,9 +1987,7 @@ Proof.
     + pose proof (visit_stacks (¬(tget (tr x) (qhead x)))
                     (watching (wls x) (¬(tget (tr x) (qhead x)))) [] x) as [Hl Hlow].
       destruct (visit _ _ [] x) as [x1 [i|]]; cbn [fst] in Hl, Hlow.
-      * split.
-        -- assumption.
-        -- assumption.
+      * split; assumption.
       * destruct (IH (advance x1)) as [Hl' Hlow']. split.
         -- rewrite Hl'. apply Hl.
         -- rewrite Hlow'. apply Hlow.

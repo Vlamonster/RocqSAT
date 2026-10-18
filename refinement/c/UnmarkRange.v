@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -92,11 +93,7 @@ Proof.
       pose proof (r_tlen_le HRep1) as Htle.
       apply exec_seq.
       (* if (idx > lo) ... else break; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* idx > lo: unmark the negation of the literal l at idx - 1 *)
         intros Hgt.
         rewrite unmark_range_step in Hy by lia.
@@ -118,50 +115,41 @@ Proof.
         (* s->mrk[s->tr[idx - 1] ^ 1] = 0; *)
         apply exec_skip. normal. run.
         cbv beta. set (l := tget (tr y) (i - 1)) in *.
-        eapply (exec_store_arr Amrk Hnegl).
-        -- evl.
-        -- ofs.
-        -- reflexivity.
-        -- ev.
-        -- intros m2 Hst2. normal.
-           pose proof (rep_store_mrk m1 m2
-                         (lit_key (¬l)) false HRep1 Hnegl Hst2) as HRep2.
-           (* idx--; and the loop goes on *)
-           run. ints. apply loopk_next with (i - 1)%nat.
-           ++ lia.
-           ++ constructor.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** exists (y <| mrk := tset (mrk y) (lit_key (¬l)) false |>). split.
-                 --- cbn [set_mrk tlen]. lia.
-                 --- split.
-                     +++ assumption.
-                     +++ apply HRep2.
-              ** apply (store_unchanged _ _ _ _ _ _ _ _ Hun1 Hst2).
-                 intros ofs Hne. apply Hne. reflexivity.
+        store Amrk Hnegl as m2 Hst2.
+        pose proof (rep_store_mrk m1 m2
+                      (lit_key (¬l)) false HRep1 Hnegl Hst2) as HRep2.
+        (* idx--; and the loop goes on *)
+        run. ints. apply loopk_next with (i - 1)%nat.
+        -- lia.
+        -- constructor.
+           ++ tmp.
+           ++ tmp.
+           ++ tmp.
+           ++ exists (y <| mrk := tset (mrk y) (lit_key (¬l)) false |>). splits.
+              ** cbn [set_mrk tlen]. lia.
+              ** assumption.
+              ** apply HRep2.
+           ++ frame.
       * (* idx <= lo: break; the context is res *)
         intros Hle. apply exec_break. abrupt. apply loopk_break.
-        exists Vundef. split.
-        -- reflexivity.
-        -- split.
-           ++ (* nothing is left to unmark: y is res *)
-              assert (Hyres: unmark_range y i lo = y).
-              { unfold unmark_range. replace (i - lo)%nat with 0%nat by lia.
-                destruct y. reflexivity. }
-              rewrite <- Hy, Hyres. apply HRep1.
-           ++ assumption.
+        return_none.
+        split.
+        -- (* nothing is left to unmark: y is res *)
+           assert (Hyres: unmark_range y i lo = y).
+           { unfold unmark_range. replace (i - lo)%nat with 0%nat by lia.
+             destruct y. reflexivity. }
+           rewrite <- Hy, Hyres. apply HRep1.
+        -- assumption.
     + (* The invariant holds at idx, with the context x. *)
       constructor.
       * tmp.
       * tmp.
       * tmp.
-      * exists x. split.
+      * exists x. splits.
         -- assumption.
-        -- split.
-           ++ symmetry. assumption.
-           ++ apply HRep.
-      * apply Mem.unchanged_on_refl.
+        -- symmetry. assumption.
+        -- apply HRep.
+      * frame.
 Qed.
 
 Lemma unmark_range_fun: FunAt _unmark_range f_unmark_range.

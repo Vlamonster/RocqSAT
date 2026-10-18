@@ -18,6 +18,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -189,11 +190,10 @@ Section Facts.
     (length (ish (idx lss k)) <= k)%nat.
   Proof.
     intros k. induction k as [|k IH]; intros Hk.
-    - unfold idx. cbn. split.
+    - unfold idx. cbn. splits.
       + intros y i b. rewrite tget_tmake. intros [].
-      + split.
-        * intros i [].
-        * lia.
+      + intros i [].
+      + lia.
     - destruct IH as (Hwl & Hsh & Hlen).
       { lia. }
       rewrite (idx_snoc k) by lia. cbn [iwl ish]. split.
@@ -309,10 +309,7 @@ Section Loop.
     split.
     - assumption.
     - destruct (a_lits HRep) as (t & _ & Hclauses).
-      apply (clause_length sh N lss x t k).
-      + assumption.
-      + assumption.
-      + assumption.
+      apply (clause_length sh N lss x t k); assumption.
   Qed.
 
   (* The end of the loop body of clause k: a short clause is added to the array; and k++.
@@ -344,11 +341,7 @@ Section Loop.
     unfold index_short, index_body, index_loop, f_index_clauses.
     cbn [fn_body drop_stmts first_stmt loop_body Swhile].
     (* if (len <= 1) *)
-    apply exec_seq. eapply exec_if_le.
-    - ev.
-    - ev.
-    - reflexivity.
-    - lia.
+    apply exec_seq. branch.
     - (* a short clause: s->shorts[ns] = k; ns++; *)
       intros Hshort. assert (Hleb: Nat.leb (starts sh (S k) - starts sh k) 1 = true)
         by (apply Nat.leb_le; lia).
@@ -359,41 +352,37 @@ Section Loop.
       assert (Hnsk: length (ish (idx lss k)) < length lss) by lia.
       pose proof (Rep.r_nodup HRep) as Hnd.
       pose proof (Rep.r_shorts HRep) as Fsh.
-      run. eapply (exec_store_arr Ats Hnsk).
-      + evl.
-      + ofs.
-      + reflexivity.
-      + ev.
-      + intros m1 Hst1. normal. run. ints. apply loopk_next with (S k).
-        * unfold index_variant, ltof. lia.
-        * exists (fun (j: nat) =>
-                    if Nat.eqb (length (ish (idx lss k))) j then Z.of_nat k
-                    else ts j).
-          constructor.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- lia.
+      run. store Ats Hnsk as m1 Hst1.
+      run. ints. apply loopk_next with (S k).
+      + unfold index_variant, ltof. lia.
+      + exists (fun (j: nat) =>
+                  if Nat.eqb (length (ish (idx lss k))) j then Z.of_nat k
+                  else ts j).
+        constructor.
+        * tmp.
+        * tmp.
+        * tmp.
+        * lia.
+        * split.
+          -- apply (rep_store_short_entry m m1 ts
+                      (length (ish (idx lss k))) (Z.of_nat k) HRep).
+             ++ reflexivity.
+             ++ assumption.
+             ++ assumption.
+             ++ assumption.
           -- split.
-             ++ apply (rep_store_short_entry m m1 ts
-                         (length (ish (idx lss k))) (Z.of_nat k) HRep).
-                ** reflexivity.
+             ++ reflexivity.
+             ++ exists tp. split.
+                ** apply (arr_store_other Apool Hst1). neq Hnd.
                 ** assumption.
-                ** assumption.
-                ** assumption.
-             ++ split.
-                ** reflexivity.
-                ** exists tp. split.
-                   --- apply (arr_store_other Apool Hst1). neq Hnd.
-                   --- assumption.
-          -- apply (arr_store Ats Hnsk Hst1).
-          -- (* clause k is the newest short clause *)
-             intros q Hq. rewrite Hshn in Hq |- *. cbn [length rev] in Hq |- *.
-             destruct (Nat.eq_dec (length (ish (idx lss k))) q) as [<- | Hne].
-             ++ rewrite Nat.eqb_refl, <- length_rev, nth_middle. reflexivity.
-             ++ replace (Nat.eqb (length (ish (idx lss k))) q) with false
-                  by (symmetry; now apply Nat.eqb_neq).
-                rewrite app_nth1 by (rewrite length_rev; lia). apply Hts. lia.
+        * apply (arr_store Ats Hnsk Hst1).
+        * (* clause k is the newest short clause *)
+          intros q Hq. rewrite Hshn in Hq |- *. cbn [length rev] in Hq |- *.
+          destruct (Nat.eq_dec (length (ish (idx lss k))) q) as [<- | Hne].
+          -- rewrite Nat.eqb_refl, <- length_rev, nth_middle. reflexivity.
+          -- replace (Nat.eqb (length (ish (idx lss k))) q) with false
+               by (symmetry; now apply Nat.eqb_neq).
+             rewrite app_nth1 by (rewrite length_rev; lia). apply Hts. lia.
     - (* not a short clause: k++; *)
       intros Hlong. assert (Hleb: Nat.leb (starts sh (S k) - starts sh k) 1 = false)
         by (apply Nat.leb_gt; lia).
@@ -449,10 +438,7 @@ Section Loop.
     intros x k l bl tp tr ta tb le m Q HRep Apool Hpool [Hs Hta Hk Htb] Hl Hkl Hbl Hfail
       Hok.
     unfold push_stmt. apply exec_seq.
-    eapply (exec_call_triple wpush_fun
-              (wpush_correct sh N lss x l k bl tp (fun _ _ => False))).
-    - reflexivity.
-    - evs.
+    call wpush_fun (wpush_correct sh N lss x l k bl tp (fun _ _ => False)).
     - split.
       + assumption.
       + split.
@@ -463,25 +449,17 @@ Section Loop.
              ++ intros q [].
              ++ split.
                 ** assumption.
-                ** split.
-                   --- assumption.
-                   --- assumption.
+                ** split; assumption.
     - intros m' v Hv. normal.
       destruct Hv as [-> | (-> & HRep' & Apool' & Hpool' & Hun)].
       + (* out of room: return -1; *)
-        eapply exec_if_nonzero.
-        * ev.
-        * reflexivity.
-        * lia.
+        branch.
         * intros _. eapply exec_return.
           -- ev.
           -- apply Hfail.
         * (* 1 = 0 is impossible *)
           intros Hzero. lia.
-      + eapply exec_if_nonzero.
-        * ev.
-        * reflexivity.
-        * lia.
+      + branch.
         * (* 0 <> 0 is impossible *)
           intros Hnonzero. lia.
         * intros _. apply exec_skip.
@@ -537,9 +515,7 @@ Section Loop.
       - assumption.
       - assumption.
       - apply (arr_unchanged _ m m' (b_shorts sh) (length lss) ts Hun).
-        + intros ofs. split.
-          * neq Hnd.
-          * neq Hnd.
+        + intros ofs. split; neq Hnd.
         + assumption.
       - assumption. }
     assert (Hfail: forall (le': temp_env) (m': mem),
@@ -549,11 +525,7 @@ Section Loop.
     unfold index_watch, index_body, index_loop, f_index_clauses.
     cbn [fn_body drop_stmts first_stmt loop_body Swhile].
     (* if (len >= 2) *)
-    eapply exec_if_ge.
-    - ev.
-    - ev.
-    - reflexivity.
-    - lia.
+    branch.
     - (* len >= 2 *)
       intros Hge. destruct (nth k lss []) as [|c0 [|c1 ls]] eqn:Hcl.
       + (* not the empty clause *)
@@ -579,11 +551,7 @@ Section Loop.
         * assumption.
         * assumption.
         * assumption.
-        * constructor.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
+        * constructor; tmp.
         * assumption.
         * assumption.
         * assumption.
@@ -595,11 +563,7 @@ Section Loop.
           -- assumption.
           -- assumption.
           -- assumption.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
+          -- constructor; tmp.
           -- assumption.
           -- assumption.
           -- assumption.
@@ -612,15 +576,9 @@ Section Loop.
              ++ rewrite ictx_step by assumption. rewrite Hcl. apply HRep2.
              ++ assumption.
              ++ rewrite ictx_step by assumption. rewrite Hcl. apply Hpool2.
-             ++ apply (Mem.unchanged_on_trans _ m m1 m2).
-                ** assumption.
-                ** assumption.
+             ++ frame.
     - (* else if (len == 1) *)
-      intros Hlt2. eapply exec_if_eq.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      intros Hlt2. branch.
       + (* a unit clause [c0]: watched by c0 *)
         intros Hone. destruct (nth k lss []) as [|c0 [|c1 ls]] eqn:Hcl.
         * (* not the empty clause *)
@@ -635,11 +593,7 @@ Section Loop.
           -- assumption.
           -- assumption.
           -- assumption.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
+          -- constructor; tmp.
           -- assumption.
           -- assumption.
           -- assumption.
@@ -665,7 +619,7 @@ Section Loop.
           -- rewrite ictx_step by assumption. rewrite Hcl. apply HRep.
           -- assumption.
           -- rewrite ictx_step by assumption. rewrite Hcl. apply Hpool.
-          -- apply Mem.unchanged_on_refl.
+          -- frame.
         * (* not a unit clause *)
           cbn [length] in Hlen_cl. lia.
         * (* not two literals or more *)
@@ -734,11 +688,7 @@ Section Loop.
       pose proof (r_lss_small HRep) as Hlss.
       pose proof (Rep.r_ncl HRep) as Fncl.
       (* if (k < s->ncl) ... else break; *)
-      run. eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      run. branch.
       + (* k < ncl: the body *)
         intros Hlt_z. assert (Hlt: (k < length lss)%nat) by lia.
         apply exec_skip. normal. clear Fncl.
@@ -815,15 +765,12 @@ Section Loop.
           -- intros q Hq. cbn in Hq. lia.
       + intros le' m' out [[-> [ts HI]] | ->].
         * (* return ns; *)
-          destruct HI as [Hs Hk Hns Hkl HRep' Ats Hts]. normal. eapply exec_return.
-          -- ev.
-          -- exists (vnat (length (ish (idx lss (length lss))))). split.
-             ++ apply result_int.
-             ++ right. exists ts. split.
-                ** reflexivity.
-                ** split.
-                   --- assumption.
-                   --- split; assumption.
+          destruct HI as [Hs Hk Hns Hkl HRep' Ats Hts]. normal. return_int.
+          right. exists ts. split.
+          -- reflexivity.
+          -- split.
+             ++ assumption.
+             ++ split; assumption.
         * (* out of room *)
           abrupt. exists (vint (-1)). split.
           -- apply result_int.

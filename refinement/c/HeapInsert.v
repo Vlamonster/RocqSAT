@@ -40,11 +40,10 @@ Lemma insert_return_same: forall (sh: Shape) (N: nat)
   Returns f_heap_insert (fun (m': mem) (_: val) =>
     HeurPost sh N lss x m (heap_insert (hr x) N a) m') le m (Out_return None).
 Proof.
-  intros sh N lss x a le m HRep Hsame. exists Vundef. split.
-  - reflexivity.
-  - split.
-    + rewrite Hsame, set_hr_same. assumption.
-    + apply Mem.unchanged_on_refl.
+  intros sh N lss x a le m HRep Hsame. return_none.
+  split.
+  - rewrite Hsame, set_hr_same. assumption.
+  - frame.
 Qed.
 
 (* The heuristic h with atom a put at its end, in a heap one larger. *)
@@ -114,37 +113,26 @@ Proof.
                      = Int.repr (Z.of_nat (S (hsize (hr x))))).
       { rewrite add_repr. f_equal. lia. }
       (* s->hsize = n + 1; *)
-      apply exec_seq. eapply (exec_store_fld Fhsize).
-      * evl.
-      * reflexivity.
-      * ev.
-      * intros m4 Hst4. normal. cbn [cast_int_int] in Hst4. rewrite Hsucc in Hst4.
-        pose proof (rep_store_hsize m3 m4 (S (hsize (hr x)))
-                      HRep3 Hroom Hst4) as HRep4.
-        assert (Hun4: Mem.unchanged_on (HeurFrame sh) m m4).
-        { apply (store_unchanged _ m m3 m4 Mint32 (b_s sh) o_hsize
-                   (vnat (S (hsize (hr x))))).
-          - apply (Mem.unchanged_on_trans _ m m2 m3).
-            + assumption.
-            + assumption.
-          - assumption.
-          - apply s_not_frame. }
-        (* heap_up(s, n); *)
-        eapply (exec_call_triple_none heap_up_fun
-                  (heap_up_correct sh N lss (x <| hr := put_last (hr x) a |>)
-                     (hsize (hr x)))).
-        -- reflexivity.
-        -- evs.
-        -- split.
-           ++ apply HRep4.
-           ++ assumption.
-        -- intros m5 v5 [HRep5 Hun5]. exists Vundef. split.
-           ++ reflexivity.
-           ++ split.
-              ** apply HRep5.
-              ** apply (Mem.unchanged_on_trans _ m m4 m5).
-                 --- assumption.
-                 --- assumption.
+      apply exec_seq. store Fhsize as m4 Hst4.
+      cbn [cast_int_int] in Hst4. rewrite Hsucc in Hst4.
+      pose proof (rep_store_hsize m3 m4 (S (hsize (hr x)))
+                    HRep3 Hroom Hst4) as HRep4.
+      assert (Hun4: Mem.unchanged_on (HeurFrame sh) m m4).
+      { apply (store_unchanged _ m m3 m4 Mint32 (b_s sh) o_hsize
+                 (vnat (S (hsize (hr x))))).
+        - frame.
+        - assumption.
+        - apply s_not_frame. }
+      (* heap_up(s, n); *)
+      call heap_up_fun
+        (heap_up_correct sh N lss (x <| hr := put_last (hr x) a |>) (hsize (hr x))).
+      * split.
+        -- apply HRep4.
+        -- assumption.
+      * intros m5 v5 [HRep5 Hun5]. return_none.
+        split.
+        -- apply HRep5.
+        -- frame.
 Qed.
 
 (* heap_insert puts atom a at the end hs = hsize (hr x) of the heap and moves it up, if
@@ -226,11 +214,7 @@ Proof.
               pose proof (r_hsize HRep) as Fhsize.
               pose proof (r_nv HRep) as Fnv.
               (* int n = s->hsize; if (n >= s->nv) return; *)
-              run. eapply exec_if_ge.
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
+              run. branch.
               ** (* the heap is full: return *)
                  intros Hfull. apply exec_return_none. ret.
                  apply (insert_return_same sh N lss x a).

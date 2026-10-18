@@ -17,6 +17,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -129,17 +130,10 @@ Proof.
                   = Some (vnat b)).
     { rewrite PTree.gso by assumption. assumption. }
     (* th[i] = b; *)
-    eapply (exec_store_arr Aheap Hi).
-    + evl.
-    + ofs.
-    + reflexivity.
-    + ev.
-    + intros m1 Hst. apply HQ.
-      * apply (rep_store_heap m m1 i b HRep Hi Hb Hst).
-      * apply (store_unchanged _ m m m1 Mint32 (b_heap sh) (4 * Z.of_nat i) (vnat b)).
-        -- apply Mem.unchanged_on_refl.
-        -- apply Hst.
-        -- apply heap_not_frame.
+    store Aheap Hi as m1 Hst.
+    apply HQ.
+    + apply (rep_store_heap m m1 i b HRep Hi Hb Hst).
+    + frame.
 Qed.
 
 (* The store of hpos_stmt, on the memory of the heuristic h:
@@ -174,19 +168,12 @@ Proof.
                   = Some (vnat i)).
     { rewrite PTree.gso by assumption. assumption. }
     (* tp[b] = i; *)
-    eapply (exec_store_arr Ahpos Hb).
-    + evl.
-    + ofs.
-    + reflexivity.
-    + ev.
-    + intros m1 Hst. apply HQ.
-      * apply (rep_store_hpos m m1 b (Some i) HRep Hb).
-        -- intros i' Hi'. injection Hi' as <-. assumption.
-        -- apply Hst.
-      * apply (store_unchanged _ m m m1 Mint32 (b_hpos sh) (4 * Z.of_nat b) (vnat i)).
-        -- apply Mem.unchanged_on_refl.
-        -- apply Hst.
-        -- apply hpos_not_frame.
+    store Ahpos Hb as m1 Hst.
+    apply HQ.
+    + apply (rep_store_hpos m m1 b (Some i) HRep Hb).
+      * intros i' Hi'. injection Hi' as <-. assumption.
+      * apply Hst.
+    + frame.
 Qed.
 
 (* Moving atom b to position i, then going on from position j with one less fuel, as
@@ -263,11 +250,7 @@ Proof.
       (* i = j; fuel--; *)
       run. ints. apply HQ.
       * apply HRep3.
-      * apply (Mem.unchanged_on_trans _ m m2 m3).
-        -- apply (Mem.unchanged_on_trans _ m m1 m2).
-           ++ assumption.
-           ++ assumption.
-        -- assumption.
+      * frame.
 Qed.
 
 (* The atom heap_up or heap_down moves: the one at position i. *)
@@ -316,15 +299,10 @@ Proof.
     + tmp.
     + discriminate.
     + discriminate.
-    + intros m3 HRep3 Hun3. exists Vundef. split.
+    + intros m3 HRep3 Hun3. exists Vundef. splits.
       * rewrite Hvoid. reflexivity.
-      * split.
-        -- apply HRep3.
-        -- apply (Mem.unchanged_on_trans _ m m2 m3).
-           ++ apply (Mem.unchanged_on_trans _ m m1 m2).
-              ** assumption.
-              ** assumption.
-           ++ assumption.
+      * apply HRep3.
+      * frame.
 Qed.
 
 (* The statements of heap_up after its loop: heap[i] = a; hpos[a] = i. *)
@@ -431,17 +409,11 @@ Section Loop.
       + lia.
       + constructor.
         * lia.
-        * exists (place h i (tget (heap h) (parent i))), (parent i). split.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-          -- split.
-             ++ lia.
-             ++ split.
-                ** assumption.
-                ** apply HRep3.
+        * exists (place h i (tget (heap h) (parent i))), (parent i). splits.
+          -- constructor; tmp.
+          -- lia.
+          -- assumption.
+          -- apply HRep3.
         * assumption.
   Qed.
 End Loop.
@@ -504,22 +476,14 @@ Proof.
       pose proof (r_heur HRep1) as Hok1. cbn [set_hr hr] in Hok1.
       apply exec_seq.
       (* if (fuel > 0) ... else break; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * intros Hfuel_left. destruct fuel as [|fuel].
         -- (* no fuel left: impossible *)
            lia.
         -- (* fuel left *)
            apply exec_skip. normal. run. cbn [up_loop] in Hres.
            (* if (i <= 0) break; *)
-           eapply exec_if_le.
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
+           branch.
            ++ (* at the top: break; and the end *)
               intros Htop.
               replace (i <=? 0)%nat with true in Hres
@@ -532,11 +496,7 @@ Proof.
               ** assumption.
               ** symmetry. assumption.
               ** assumption.
-              ** constructor.
-                 *** tmp.
-                 *** tmp.
-                 *** tmp.
-                 *** tmp.
+              ** constructor; tmp.
            ++ (* below the top: the parent at p *)
               intros Hipos.
               replace (i <=? 0)%nat with false in Hres
@@ -564,11 +524,7 @@ Proof.
               ** normal.
                  (* int b = s->heap[p]; if (s->act[b] >= s->act[a]) break; *)
                  run.
-                 eapply exec_if_ge.
-                 --- ev.
-                 --- ev.
-                 --- reflexivity.
-                 --- lia.
+                 branch.
                  --- (* the parent is as active: break; and the end *)
                      intros Hle. apply Z.leb_le in Hle. rewrite Hle in Hres.
                      apply exec_break. abrupt.
@@ -579,11 +535,7 @@ Proof.
                      +++ assumption.
                      +++ symmetry. assumption.
                      +++ assumption.
-                     +++ constructor.
-                         ++++ tmp.
-                         ++++ tmp.
-                         ++++ tmp.
-                         ++++ tmp.
+                     +++ constructor; tmp.
                  --- (* the parent is less active: it moves down to i *)
                      intros Hgt. apply Z.leb_gt in Hgt. rewrite Hgt in Hres.
                      apply exec_skip. normal.
@@ -594,11 +546,7 @@ Proof.
                      +++ assumption.
                      +++ assumption.
                      +++ assumption.
-                     +++ constructor.
-                         *** tmp.
-                         *** tmp.
-                         *** tmp.
-                         *** tmp.
+                     +++ constructor; tmp.
                      +++ tmp.
                      +++ tmp.
       * intros Hno_fuel. destruct fuel as [|fuel].
@@ -611,28 +559,18 @@ Proof.
            ++ assumption.
            ++ symmetry. assumption.
            ++ assumption.
-           ++ constructor.
-              +++ tmp.
-              +++ tmp.
-              +++ tmp.
-              +++ tmp.
+           ++ constructor; tmp.
         -- (* fuel left: impossible *)
            lia.
     + (* The invariant holds at the start: heuristic hr x, position i0. *)
       constructor.
       * assumption.
-      * exists (hr x), i0. split.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-        -- split.
-           ++ assumption.
-           ++ split.
-              ** reflexivity.
-              ** rewrite set_hr_same. assumption.
-      * apply Mem.unchanged_on_refl.
+      * exists (hr x), i0. splits.
+        -- constructor; tmp.
+        -- assumption.
+        -- reflexivity.
+        -- rewrite set_hr_same. assumption.
+      * frame.
 Qed.
 
 Lemma heap_up_fun: FunAt _heap_up f_heap_up.

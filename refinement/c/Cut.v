@@ -69,29 +69,21 @@ Proof.
   pose proof (a_rbeg HRep) as (tb & Arbeg & Htb).
   unfold cut_drop, f_cut. cbn [fn_body drop_stmts then_stmt].
   (* s->rtop = s->rbeg[n]; *)
-  run. rewrite (Htb n) by lia. eapply (exec_store_fld Frtop).
-  - evl.
-  - reflexivity.
-  - ev.
-  - intros m1 Hst1. normal.
-    assert (Fnr1: IntAt m1 sh o_nr (nr y)).
-    { apply (fld_store_other Fnr Hst1). right.
-      unfold Mptr. cbv [Archi.ptr64]. cbn [size_chunk]. lia. }
-    (* s->nr = n; *)
-    eapply (exec_store_fld Fnr1).
-    + evl.
-    + reflexivity.
-    + ev.
-    + intros m2 Hst2. exists Vundef. split.
-      * reflexivity.
-      * split.
-        -- apply (rep_store_pop m m1 m2 n HRep).
-           ++ lia.
-           ++ apply Hst1.
-           ++ apply Hst2.
-        -- assert (Apool1: PoolArr m1 sh t).
-           { apply (arr_store_other Apool Hst1). neq Hnd. }
-           apply (arr_store_other Apool1 Hst2). neq Hnd.
+  run. rewrite (Htb n) by lia. store Frtop as m1 Hst1.
+  assert (Fnr1: IntAt m1 sh o_nr (nr y)).
+  { apply (fld_store_other Fnr Hst1). right.
+    unfold Mptr. cbv [Archi.ptr64]. cbn [size_chunk]. lia. }
+  (* s->nr = n; *)
+  store Fnr1 as m2 Hst2.
+  return_none.
+  split.
+  - apply (rep_store_pop m m1 m2 n HRep).
+    + lia.
+    + apply Hst1.
+    + apply Hst2.
+  - assert (Apool1: PoolArr m1 sh t).
+    { apply (arr_store_other Apool Hst1). neq Hnd. }
+    apply (arr_store_other Apool1 Hst2). neq Hnd.
 Qed.
 
 (* The end of cut, once the values of x are v: the trail is cut at j with an empty queue,
@@ -126,60 +118,45 @@ Proof.
   pose proof (r_qhead HRep) as Fqh.
   unfold cut_end, f_cut. cbn [fn_body drop_stmts].
   (* s->tlen = j; *)
-  run. eapply (exec_store_fld Ftlen).
-  - evl.
-  - reflexivity.
-  - ev.
-  - intros m1 Hst1. normal.
-    assert (Fqh1: IntAt m1 sh o_qhead (qhead x)).
-    { apply (fld_store_other Fqh Hst1). right.
-      unfold Mptr. cbv [Archi.ptr64]. cbn [size_chunk]. lia. }
-    (* s->qhead = j; *)
-    run. eapply (exec_store_fld Fqh1).
-    + evl.
-    + reflexivity.
-    + ev.
-    + intros m2 Hst2. normal.
-      pose proof (rep_store_cut m m1 m2 j HRep Hj Hst1 Hst2) as HRep2.
-      assert (Apool1: PoolArr m1 sh t).
-      { apply (arr_store_other Apool Hst1). neq Hnd. }
-      assert (Apool2: PoolArr m2 sh t).
-      { apply (arr_store_other Apool1 Hst2). neq Hnd. }
-      set (y := x <| vals := v |> <| tlen := j |> <| qhead := j |>) in HRep2.
-      keep_mem m2.
-      (* int n = pop_reasons(s, j); *)
-      run.
-      eapply (exec_call_triple pop_reasons_fun (pop_reasons_correct sh N lss y j)).
-      * reflexivity.
-      * evs.
-      * split.
-        -- apply HRep2.
-        -- lia.
-      * intros m3 v3 [-> ->]. normal.
-        set (n := pop_reasons (rps y) j (nr y)).
-        pose proof (pop_reasons_le (rps y) j (nr y)) as Hn.
-        pose proof (r_nr HRep2) as Fnr.
-        pose proof (r_nr_le HRep2) as Hnrle.
-        (* if (n < s->nr) ... *)
-        run.
-        eapply exec_if_lt.
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- lia.
-        -- (* some are dropped *)
-           intros Hlt. apply (cut_drop_correct sh N lss y n t).
-           ++ assumption.
-           ++ lia.
-           ++ assumption.
-           ++ tmp.
-           ++ tmp.
-        -- (* all are kept *)
-           intros Hge. apply exec_skip. exists Vundef. split.
-           ++ reflexivity.
-           ++ split.
-              ** apply (rep_nr_same m2 sh N lss y n HRep2). lia.
-              ** assumption.
+  run. store Ftlen as m1 Hst1.
+  assert (Fqh1: IntAt m1 sh o_qhead (qhead x)).
+  { apply (fld_store_other Fqh Hst1). right.
+    unfold Mptr. cbv [Archi.ptr64]. cbn [size_chunk]. lia. }
+  (* s->qhead = j; *)
+  run. store Fqh1 as m2 Hst2.
+  pose proof (rep_store_cut m m1 m2 j HRep Hj Hst1 Hst2) as HRep2.
+  assert (Apool1: PoolArr m1 sh t).
+  { apply (arr_store_other Apool Hst1). neq Hnd. }
+  assert (Apool2: PoolArr m2 sh t).
+  { apply (arr_store_other Apool1 Hst2). neq Hnd. }
+  set (y := x <| vals := v |> <| tlen := j |> <| qhead := j |>) in HRep2.
+  keep_mem m2.
+  (* int n = pop_reasons(s, j); *)
+  run.
+  call pop_reasons_fun (pop_reasons_correct sh N lss y j).
+  - split.
+    + apply HRep2.
+    + lia.
+  - intros m3 v3 [-> ->]. normal.
+    set (n := pop_reasons (rps y) j (nr y)).
+    pose proof (pop_reasons_le (rps y) j (nr y)) as Hn.
+    pose proof (r_nr HRep2) as Fnr.
+    pose proof (r_nr_le HRep2) as Hnrle.
+    (* if (n < s->nr) ... *)
+    run.
+    branch.
+    + (* some are dropped *)
+      intros Hlt. apply (cut_drop_correct sh N lss y n t).
+      * assumption.
+      * lia.
+      * assumption.
+      * tmp.
+      * tmp.
+    + (* all are kept *)
+      intros Hge. apply exec_skip. return_none.
+      split.
+      * apply (rep_nr_same m2 sh N lss y n HRep2). lia.
+      * assumption.
 Qed.
 
 (* The invariant of the loop of cut at q: the memory represents x with values v that,
@@ -233,8 +210,8 @@ Proof.
   run. clear Ftlen. unfold Swhile.
   apply exec_loop with (R := Peano.lt) (I := CutInv sh N lss x j t)
     (a := tlen x).
-  + apply lt_wf.
-  + intros q le1 m1 HI. destruct HI as [Hs Hj' Hq Hjq (v & Hv & HRepq) Apool].
+  - apply lt_wf.
+  - intros q le1 m1 HI. destruct HI as [Hs Hj' Hq Hjq (v & Hv & HRepq) Apool].
     pose proof (r_nodup HRepq) as Hnd.
     pose proof (r_tr_atoms HRepq) as Hatoms.
     pose proof (r_tr HRepq) as Ftr.
@@ -242,12 +219,8 @@ Proof.
     cbn [set_vals tr tlen] in Hatoms, Atr.
     apply exec_seq.
     (* if (q > j) ... else break; *)
-    eapply exec_if_gt.
-    * ev.
-    * ev.
-    * reflexivity.
-    * lia.
-    * (* q > j: unassign the literal at q - 1 *)
+    branch.
+    + (* q > j: unassign the literal at q - 1 *)
       intros Hgt.
       assert (Hsub: Int.sub (Int.repr (Z.of_nat q)) (Int.repr 1)
                     = Int.repr (Z.of_nat (q - 1))).
@@ -263,44 +236,44 @@ Proof.
       eapply (exec_call_triple_none set_value_fun
                 (set_value_correct sh N lss (x <| vals := v |>)
                    (extract (tget (tr x) (q - 1))) None)).
-      -- reflexivity.
-      -- unfold vint. rewrite <- Hshr. evs.
-      -- split.
-         ++ apply HRepq.
-         ++ assumption.
-      -- intros m2 v2 [HRep2 Hun2]. normal. transfer Hun2 Hnd. keep_mem m2.
-         (* q--; and the loop goes on *)
-         run. ints. apply loopk_next with (q - 1)%nat.
-         ++ lia.
-         ++ constructor.
-            ** tmp.
-            ** tmp.
-            ** tmp.
-            ** lia.
-            ** exists (unset_value v (tget (tr x) (q - 1))). split.
-               --- rewrite unset_range_last by lia. assumption.
-               --- apply HRep2.
-            ** assumption.
-    * (* q = j: break; and the cut *)
+      * reflexivity.
+      * unfold vint. rewrite <- Hshr. evs.
+      * split.
+        -- apply HRepq.
+        -- assumption.
+      * intros m2 v2 [HRep2 Hun2]. normal. transfer Hun2 Hnd. keep_mem m2.
+        (* q--; and the loop goes on *)
+        run. ints. apply loopk_next with (q - 1)%nat.
+        -- lia.
+        -- constructor.
+           ++ tmp.
+           ++ tmp.
+           ++ tmp.
+           ++ lia.
+           ++ exists (unset_value v (tget (tr x) (q - 1))). split.
+              ** rewrite unset_range_last by lia. assumption.
+              ** apply HRep2.
+           ++ assumption.
+    + (* q = j: break; and the cut *)
       intros Hle. assert (Hqj: q = j) by lia. subst q.
       apply exec_break. abrupt. apply loopk_break. normal.
       rewrite Nat.sub_diag in Hv. simpl in Hv. rewrite <- Hv.
       apply (cut_end_correct sh N lss x j v t).
-      -- assumption.
-      -- assumption.
-      -- assumption.
-      -- tmp.
-      -- tmp.
-  + (* The invariant holds at the end of the trail. *)
+      * assumption.
+      * assumption.
+      * assumption.
+      * tmp.
+      * tmp.
+  - (* The invariant holds at the end of the trail. *)
     constructor.
-    * tmp.
-    * tmp.
-    * tmp.
-    * lia.
-    * exists (vals x). split.
-      -- reflexivity.
-      -- destruct x. apply HRep.
-    * assumption.
+    + tmp.
+    + tmp.
+    + tmp.
+    + lia.
+    + exists (vals x). split.
+      * reflexivity.
+      * destruct x. apply HRep.
+    + assumption.
 Qed.
 
 (* cut first puts the atoms of the trail from j on back into the heap of the heuristic,
@@ -331,10 +304,7 @@ Proof.
   - unfold f_cut. cbn [fn_body fn_return].
     (* reinsert(s, j, s->tlen); *)
     run.
-    eapply (exec_call_triple_none reinsert_fun
-              (reinsert_correct sh N lss x j (tlen x))).
-    + reflexivity.
-    + evs.
+    call reinsert_fun (reinsert_correct sh N lss x j (tlen x)).
     + split.
       * apply HRep.
       * lia.

@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -79,11 +80,7 @@ Proof.
   cbn [fn_body drop_stmts first_stmt loop_body Swhile].
   cbn [propagate] in Hprop.
   (* if (s->qhead >= s->tlen) return 0; *)
-  run. eapply exec_if_ge.
-  - ev.
-  - ev.
-  - reflexivity.
-  - lia.
+  run. branch.
   - (* the queue is empty: return 0; *)
     intros Hge. replace (qhead xc <? tlen xc)%nat with false in Hprop
       by (symmetry; apply Nat.ltb_ge; lia).
@@ -91,15 +88,14 @@ Proof.
     + ev.
     + ret. right. exists 0. split.
       * reflexivity.
-      * right. rewrite Hprop. cbn [fst snd enc_conf]. split.
+      * right. rewrite Hprop. cbn [fst snd enc_conf]. splits.
         -- reflexivity.
         -- split.
+           ++ assumption.
            ++ split.
               ** assumption.
-              ** split.
-                 --- assumption.
-                 --- exists tp. split; assumption.
-           ++ intros i Heq. discriminate.
+              ** exists tp. split; assumption.
+        -- intros i Heq. discriminate.
   - (* a literal to visit: int c = visit(s, s->tr[s->qhead] ^ 1); *)
     intros Hlt. assert (Hq: (qhead xc < tlen xc)%nat) by lia.
     replace (qhead xc <? tlen xc)%nat with true in Hprop
@@ -126,11 +122,7 @@ Proof.
     + intros m2 v Hv. normal. forget_mem m1.
       destruct Hv as [-> | (-> & HRep2 & Hcls)].
       * (* out of room: if (c != 0) return c; with c = -1 *)
-        run. eapply exec_if_ne with (z1 := -1) (z2 := 0).
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- lia.
+        run. branch (-1) 0.
         -- intros Hne. eapply exec_return.
            ++ ev.
            ++ ret. right. exists (-1). split.
@@ -143,28 +135,18 @@ Proof.
           eqn:Hvisit; cbn [fst snd enc_conf] in HRep2 |- *.
         -- (* a conflict on clause i: if (c != 0) return c; with c = i + 1 *)
            pose proof (Hcls i eq_refl) as Hi_lt.
-           run. eapply exec_if_ne with (z1 := Z.of_nat i + 1) (z2 := 0).
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
+           run. branch (Z.of_nat i + 1) 0.
            ++ intros Hne. eapply exec_return.
               ** ev.
               ** ret. right. exists (Z.of_nat i + 1). split.
                  --- reflexivity.
                  --- right. rewrite Hprop. cbn [fst snd enc_conf]. split.
                      +++ reflexivity.
-                     +++ split.
-                         *** assumption.
-                         *** assumption.
+                     +++ split; assumption.
            ++ (* i + 1 is not 0 *)
               intros Heq. lia.
         -- (* no conflict: s->qhead = s->qhead + 1; fuel--; *)
-           run. eapply exec_if_ne with (z1 := 0) (z2 := 0).
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
+           run. branch 0 0.
            ++ (* 0 is 0 *)
               intros Hne. lia.
            ++ intros Heq.
@@ -180,31 +162,27 @@ Proof.
               assert (Hf1: Int.sub (Int.repr (Z.of_nat (S f))) (Int.repr 1)
                            = Int.repr (Z.of_nat f)).
               { rewrite sub_repr. f_equal. lia. }
-              run. eapply (exec_store_fld Fqh2).
-              ** evl.
-              ** reflexivity.
-              ** ev.
-              ** intros m3 Hst3. normal.
-                 cbn [cast_int_int] in Hst3. rewrite Hq1' in Hst3.
-                 assert (Hn: (S (qhead x1) <= tlen x1)%nat) by lia.
-                 pose proof (rep_store_qhead m2 m3 _ HRep2 Hn Hst3)
-                   as HRep3.
-                 run. ints. apply loopk_next with f.
-                 --- unfold fuel_variant, ltof. lia.
-                 --- exists (advance x1). constructor.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ lia.
+              run. store Fqh2 as m3 Hst3.
+              cbn [cast_int_int] in Hst3. rewrite Hq1' in Hst3.
+              assert (Hn: (S (qhead x1) <= tlen x1)%nat) by lia.
+              pose proof (rep_store_qhead m2 m3 _ HRep2 Hn Hst3)
+                as HRep3.
+              run. ints. apply loopk_next with f.
+              ** unfold fuel_variant, ltof. lia.
+              ** exists (advance x1). constructor.
+                 --- tmp.
+                 --- tmp.
+                 --- lia.
+                 --- split.
+                     +++ apply HRep3.
                      +++ split.
-                         *** apply HRep3.
-                         *** split.
-                             ---- (* advance keeps the lower literals *)
-                                  apply Hlower2.
-                             ---- exists tq. split.
-                                  ++++ apply (arr_store_other Apool2 Hst3).
-                                       neq Hnd2.
-                                  ++++ assumption.
-                     +++ rewrite Hprop. reflexivity.
+                         *** (* advance keeps the lower literals *)
+                             apply Hlower2.
+                         *** exists tq. split.
+                             ---- apply (arr_store_other Apool2 Hst3).
+                                  neq Hnd2.
+                             ---- assumption.
+                 --- rewrite Hprop. reflexivity.
 Qed.
 
 (* The loop of propagate, from fuel N + 1:
@@ -283,15 +261,11 @@ Proof.
       * assumption.
     + intros le' m' out [(-> & Hnone & HRep') | (z & -> & Hz)].
       * (* out of fuel: return 0; *)
-        normal. eapply exec_return.
-        -- ev.
-        -- exists (vint 0). split.
-           ++ apply result_int.
-           ++ right. split.
-              ** rewrite Hnone. reflexivity.
-              ** split.
-                 --- assumption.
-                 --- rewrite Hnone. intros i Heq. discriminate.
+        normal. return_int.
+        right. splits.
+        -- rewrite Hnone. reflexivity.
+        -- assumption.
+        -- rewrite Hnone. intros i Heq. discriminate.
       * (* a return: the outcome of res, or -1 when out of room *)
         abrupt. exists (vint z). split.
         -- apply result_int.

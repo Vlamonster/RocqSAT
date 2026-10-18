@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -99,69 +100,42 @@ Proof.
   set (v := (tget (act (hr y)) a + inc (hr y))%Z).
   unfold bump_end, f_bump. cbn [fn_body drop_stmts].
   (* s->act[a] = s->act[a] + s->inc; *)
-  run. eapply (exec_store_arr Aact Ha).
-  - evl.
-  - ofs.
-  - reflexivity.
-  - ev.
-  - intros m2 Hst. cbn [cast_int_int] in Hst. rewrite add_repr in Hst. fold v in Hst.
-    normal.
-    assert (Hv: (0 <= v < act_lim)%Z) by (unfold v; lia).
-    pose proof (rep_store_act m m2 a v HRep Ha Hv Hst) as HRep2.
-    keep_mem m2.
-    pose proof (r_hpos HRep2) as Fhpos.
-    pose proof (a_hpos HRep2) as Ahpos.
-    pose proof (ho_hpos (r_heur HRep) a) as Hpos_lt.
-    cbn [set_hr hr set_act hpos] in Fhpos, Ahpos.
-    (* int i = s->hpos[a]; *)
-    run. unfold bump_rest. cbv zeta. fold v. cbn [set_act hpos].
-    destruct (tget (hpos (hr y)) a) as [i|] eqn:Hpos.
-    + (* in the heap at i: if (i >= 0) heap_up(s, i); *)
-      assert (Hi: (i < N)%nat).
-      { apply (Hpos_lt i Ha). reflexivity. }
-      cbn [enc_pos]. eapply exec_if_ge.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
-      * intros Hi_nonneg.
-        eapply (exec_call_triple_none heap_up_fun
-                  (heap_up_correct sh N lss (y <| hr := set_act (hr y) a v |>) i)).
-        -- reflexivity.
-        -- evs.
-        -- split.
-           ++ apply HRep2.
-           ++ apply Hi.
-        -- intros m3 v3 [HRep3 Hun3]. exists Vundef. split.
-           ++ reflexivity.
-           ++ split.
-              ** apply HRep3.
-              ** apply (Mem.unchanged_on_trans _ m m2 m3).
-                 --- apply (store_unchanged _ m m m2 Mint32 (b_act sh) (4 * Z.of_nat a)
-                              (vint v)).
-                     +++ apply Mem.unchanged_on_refl.
-                     +++ assumption.
-                     +++ intros k [Hne _]. now apply Hne.
-                 --- assumption.
-      * (* i < 0 is impossible *)
-        intros Hi_neg. lia.
-    + (* not in the heap: i = -1 *)
-      cbn [enc_pos]. eapply exec_if_ge.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
-      * (* -1 >= 0 is impossible *)
-        intros Hneg_nonneg. lia.
-      * intros Hneg. apply exec_skip. exists Vundef. split.
-        -- reflexivity.
-        -- split.
-           ++ apply HRep2.
-           ++ apply (store_unchanged _ m m m2 Mint32 (b_act sh) (4 * Z.of_nat a)
-                       (vint v)).
-              ** apply Mem.unchanged_on_refl.
-              ** assumption.
-              ** intros k [Hne _]. now apply Hne.
+  run. store Aact Ha as m2 Hst.
+  cbn [cast_int_int] in Hst. rewrite add_repr in Hst. fold v in Hst.
+  normal.
+  assert (Hv: (0 <= v < act_lim)%Z) by (unfold v; lia).
+  pose proof (rep_store_act m m2 a v HRep Ha Hv Hst) as HRep2.
+  keep_mem m2.
+  pose proof (r_hpos HRep2) as Fhpos.
+  pose proof (a_hpos HRep2) as Ahpos.
+  pose proof (ho_hpos (r_heur HRep) a) as Hpos_lt.
+  cbn [set_hr hr set_act hpos] in Fhpos, Ahpos.
+  (* int i = s->hpos[a]; *)
+  run. unfold bump_rest. cbv zeta. fold v. cbn [set_act hpos].
+  destruct (tget (hpos (hr y)) a) as [i|] eqn:Hpos.
+  - (* in the heap at i: if (i >= 0) heap_up(s, i); *)
+    assert (Hi: (i < N)%nat).
+    { apply (Hpos_lt i Ha). reflexivity. }
+    cbn [enc_pos]. branch.
+    + intros Hi_nonneg.
+      call heap_up_fun (heap_up_correct sh N lss (y <| hr := set_act (hr y) a v |>) i).
+      * split.
+        -- apply HRep2.
+        -- apply Hi.
+      * intros m3 v3 [HRep3 Hun3]. return_none.
+        split.
+        -- apply HRep3.
+        -- frame.
+    + (* i < 0 is impossible *)
+      intros Hi_neg. lia.
+  - (* not in the heap: i = -1 *)
+    cbn [enc_pos]. branch.
+    + (* -1 >= 0 is impossible *)
+      intros Hneg_nonneg. lia.
+    + intros Hneg. apply exec_skip. return_none.
+      split.
+      * apply HRep2.
+      * frame.
 Qed.
 
 (* bump rescales when the activity of a would reach act_lim, and then does the rest.
@@ -209,10 +183,7 @@ Proof.
     + (* rescale(s, s->inc); *)
       intros Hge. unfold bump.
       apply Z.leb_le in Hge as Hleb. rewrite Hleb.
-      run. eapply (exec_call_triple_none rescale_fun
-                     (rescale_correct sh N lss x (inc (hr x)))).
-      * reflexivity.
-      * evs.
+      run. call rescale_fun (rescale_correct sh N lss x (inc (hr x))).
       * split.
         -- apply HRep.
         -- lia.
@@ -227,13 +198,10 @@ Proof.
             + assumption.
           - tmp.
           - tmp. }
-        intros le' m' out [v' [Hres [HRep' Hun']]]. exists v'. split.
+        intros le' m' out [v' [Hres [HRep' Hun']]]. exists v'. splits.
         -- assumption.
-        -- split.
-           ++ apply HRep'.
-           ++ apply (Mem.unchanged_on_trans _ m m1 m').
-              ** assumption.
-              ** assumption.
+        -- apply HRep'.
+        -- frame.
     + (* no rescale *)
       intros Hlt. unfold bump.
       apply Z.leb_gt in Hlt as Hleb. rewrite Hleb.

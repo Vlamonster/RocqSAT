@@ -80,11 +80,7 @@ Proof.
     + apply lt_wf.
     + intros n le1 m1 HI. destruct HI as [Hs Hj' Hn -> Hnle Hpop]. apply exec_seq.
       (* if (n > 0) ... else break; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* n > 0: the model looks at clause n - 1 *)
         intros Hpos. destruct n as [|n].
         -- (* 0 is not positive *)
@@ -96,22 +92,15 @@ Proof.
            cbn [pop_reasons] in Hpop.
            (* s->rpos[n - 1] < j *)
            run. rewrite (Htp n) by lia.
-           eapply exec_if_lt.
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
+           branch.
            ++ (* below j: return n, which is res *)
               intros Hlt.
               assert (Hbelow: (tget (rps x) n <? j)%nat = true)
                 by (apply Nat.ltb_lt; lia).
-              rewrite Hbelow in Hpop. eapply exec_return.
-              ** ev.
-              ** ret. exists (vnat (S n)). split.
-                 --- apply result_int.
-                 --- split.
-                     +++ reflexivity.
-                     +++ now rewrite Hpop.
+              rewrite Hbelow in Hpop. return_int.
+              split.
+              ** reflexivity.
+              ** now rewrite Hpop.
            ++ (* not below j: n--; and the loop goes on *)
               intros Hge.
               assert (Hbelow: (tget (rps x) n <? j)%nat = false)
@@ -129,13 +118,10 @@ Proof.
       * (* n = 0: break; return n, which is res *)
         intros Hzero. assert (Hn0: n = 0%nat) by lia. subst n.
         apply exec_break. abrupt. apply loopk_break. normal.
-        eapply exec_return.
-        -- ev.
-        -- exists (vint (Z.of_nat 0)). split.
-           ++ apply result_int.
-           ++ split.
-              ** reflexivity.
-              ** now rewrite Hpop.
+        return_int.
+        split.
+        -- reflexivity.
+        -- now rewrite Hpop.
     + (* The invariant holds at the number of reason clauses. *)
       constructor.
       * tmp.

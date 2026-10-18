@@ -755,9 +755,7 @@ Section Stores.
       + split.
         * apply (r_wls_cls HRep (lit_key l) j c); assumption.
         * apply (r_wls_blk HRep (lit_key l) j c); assumption.
-      + injection Heq as <- <-. split.
-        * assumption.
-        * assumption.
+      + injection Heq as <- <-. split; assumption.
     - rewrite Hlen. assumption.
   Qed.
 
@@ -942,12 +940,7 @@ Lemma rep_store_open {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}:
 Proof.
   intros m m1 m2 m3 m4 c HRep Hc Hroom Hst1 Hst2 Hst3 Hst4.
   pose proof (rep_store_cur m m1 c HRep Hc Hst1) as HRep1.
-  apply (rep_store_open_cur m1 m2 m3 m4 (x := x <| cur := c |>)).
-  - assumption.
-  - assumption.
-  - assumption.
-  - assumption.
-  - assumption.
+  apply (rep_store_open_cur m1 m2 m3 m4 (x := x <| cur := c |>)); assumption.
 Qed.
 
 (* The value C keeps for a literal: the value of its atom, negated for a negative
@@ -1046,9 +1039,7 @@ Proof.
     cbv beta in Hmap. rewrite Hmap, seq_nth by lia. rewrite Hl. apply lit_of_key.
   - rewrite Hnth. split.
     + assumption.
-    + split.
-      * assumption.
-      * assumption.
+    + split; assumption.
 Qed.
 
 (* The length of clause i is the length of its range. *)

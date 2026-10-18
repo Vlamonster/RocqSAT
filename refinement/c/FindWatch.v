@@ -48,9 +48,7 @@ Proof.
   - assumption.
   - split.
     + reflexivity.
-    + split.
-      * assumption.
-      * assumption.
+    + split; assumption.
 Qed.
 
 (* The invariant of the loop of find_watch at literal d of clause i with literals cls,
@@ -112,11 +110,7 @@ Proof.
     + intros d le1 m1 HI. destruct HI as [Hs Hq He -> Hdrange Hbefore].
       apply exec_seq.
       (* if (q < e) ... else break; *)
-      eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* q < e: if (lit_value(s, s->clits[q]) != -1) return q; *)
         intros Hlt. assert (Hdlt: (d < length cls)%nat) by lia.
         destruct (clause_lit m sh N lss x t i d cls HRep Hclauses Hi Hcls Hdlt)
@@ -127,13 +121,8 @@ Proof.
                        = Int.repr (Z.of_nat (starts sh i + S d))).
         { rewrite add_repr. f_equal. lia. }
         run. rewrite Ht.
-        eapply (exec_call_triple lit_value_fun
-                  (lit_value_correct sh N lss x y)).
-        -- reflexivity.
-        -- evs.
-        -- split.
-           ++ assumption.
-           ++ assumption.
+        call lit_value_fun (lit_value_correct sh N lss x y).
+        -- split; assumption.
         -- intros m' v [-> ->]. normal.
            eapply (exec_if_ne _ (-1)).
            ++ ev.
@@ -144,17 +133,14 @@ Proof.
               intros Hnot_false.
               assert (Hnf: not_false (vals x) y = true).
               { rewrite <- enc_not_false. apply negb_true_iff. now apply Z.eqb_neq. }
-              eapply exec_return.
-              ** ev.
-              ** ret. exists (vnat (starts sh i + d)). split.
-                 --- apply result_int.
-                 --- split.
-                     +++ reflexivity.
-                     +++ apply found_watch_at.
-                         *** lia.
-                         *** unfold not_false in Hnf. fold y.
-                             destruct (lookup (vals x) y) as [[|]|]; easy.
-                         *** assumption.
+              return_int.
+              split.
+              ** reflexivity.
+              ** apply found_watch_at.
+                 --- lia.
+                 --- unfold not_false in Hnf. fold y.
+                     destruct (lookup (vals x) y) as [[|]|]; easy.
+                 --- assumption.
            ++ (* y is false: q++; *)
               intros Hfalse.
               assert (Hnf: not_false (vals x) y = false).
@@ -173,15 +159,12 @@ Proof.
                      +++ apply Hbefore. lia.
       * (* q >= e: break; return -1; every literal from d0 on is false *)
         intros Hge. apply exec_break. abrupt. apply loopk_break. normal.
-        eapply exec_return.
-        -- ev.
-        -- exists (vint (-1)). split.
-           ++ apply result_int.
-           ++ split.
-              ** reflexivity.
-              ** left. split.
-                 --- reflexivity.
-                 --- intros d' Hd'. apply Hbefore. lia.
+        return_int.
+        split.
+        -- reflexivity.
+        -- left. split.
+           ++ reflexivity.
+           ++ intros d' Hd'. apply Hbefore. lia.
     + (* The invariant holds at literal d0. *)
       constructor.
       * tmp.

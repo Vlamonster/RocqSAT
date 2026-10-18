@@ -46,13 +46,10 @@ Proof.
   - reflexivity.
   - unfold f_lit_value. cbn [fn_body fn_return]. destruct HRep. unfold key in *.
     (* return s->vals[l]; *)
-    run. eapply exec_return.
-    + ev.
-    + exists (vint (key_value (vals x) (lit_key l))). split.
-      * apply result_int.
-      * split.
-        -- reflexivity.
-        -- now rewrite key_value_lookup.
+    run. return_int.
+    split.
+    + reflexivity.
+    + now rewrite key_value_lookup.
 Qed.
 
 Lemma lit_value_fun: FunAt _lit_value f_lit_value.

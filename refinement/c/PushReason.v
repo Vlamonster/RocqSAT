@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -40,9 +41,7 @@ Proof.
   intros t t' rc n Hin Hext j k Hj Hk.
   assert (Hle: (reasons_size rc (S j) <= reasons_size rc n)%nat).
   { apply reasons_size_le. lia. }
-  cbn [reasons_size] in Hle. rewrite Hext by lia. apply Hin.
-  - assumption.
-  - assumption.
+  cbn [reasons_size] in Hle. rewrite Hext by lia. apply Hin; assumption.
 Qed.
 
 (* The literals of c after the first n reason clauses make c reason clause n. *)
@@ -150,44 +149,27 @@ Proof.
   { rewrite Int.neg_repr. f_equal. cbn [enc_reason]. lia. }
   unfold push_fields, f_push_reason. cbn [fn_body drop_stmts].
   (* s->rtop = b + n + 1; *)
-  run. eapply (exec_store_fld Frtop).
-  - evl.
-  - reflexivity.
+  run. store Frtop as m2 Hst2.
+  cbn [cast_int_int] in Hst2. rewrite Hsize in Hst2. normal.
+  assert (Fnr2: IntAt m2 sh o_nr (nr x)).
+  { apply (fld_store_other Fnr Hst2). right.
+    unfold Mptr. cbv [Archi.ptr64]. cbn [size_chunk]. lia. }
+  (* s->nr = j + 1; *)
+  run. store Fnr2 as m3 Hst3.
+  cbn [cast_int_int] in Hst3. rewrite Hj1 in Hst3. normal.
+  (* return -(j + 1); *)
+  eapply exec_return.
   - ev.
-  - intros m2 Hst2. cbn [cast_int_int] in Hst2. rewrite Hsize in Hst2. normal.
-    assert (Fnr2: IntAt m2 sh o_nr (nr x)).
-    { apply (fld_store_other Fnr Hst2). right.
-      unfold Mptr. cbv [Archi.ptr64]. cbn [size_chunk]. lia. }
-    (* s->nr = j + 1; *)
-    run. eapply (exec_store_fld Fnr2).
-    + evl.
-    + reflexivity.
-    + ev.
-    + intros m3 Hst3. cbn [cast_int_int] in Hst3. rewrite Hj1 in Hst3. normal.
-      (* return -(j + 1); *)
-      eapply exec_return.
-      * ev.
-      * cbn [cast_int_int]. ints.
-        exists (vint (enc_reason (learnt (nr x)))). split.
-        -- apply result_int.
-        -- unfold PushPost. rewrite Hpush. split.
-           ++ apply (rep_store_push m m1 m2 m3 (u :: lower x) trl tb tn tp
-                       HRep Hnr Hroom Hc Hun Arl Htrl Arb Htb Arn Htn Arp Htp Hst2 Hst3).
-           ++ split.
-              ** reflexivity.
-              ** split.
-                 --- cbn [ReasonBelow]. assumption.
-                 --- (* only the reason clauses and the struct changed *)
-                     apply (store_unchanged _ m m2 m3 Mint32 (b_s sh) o_nr
-                              (vnat (S (nr x)))).
-                     +++ apply (store_unchanged _ m m1 m2 Mint32 (b_s sh) o_rtop
-                                  (vint (Z.of_nat (rtop x + length (u :: lower x))))).
-                         *** apply (Mem.unchanged_on_implies _ _ m m1 Hun).
-                             intros b' ofs' Hb' _. repeat split; apply Hb'.
-                         *** assumption.
-                         *** intros i (_ & _ & _ & _ & Hi). now apply Hi.
-                     +++ assumption.
-                     +++ intros i (_ & _ & _ & _ & Hi). now apply Hi.
+  - cbn [cast_int_int]. ints.
+    exists (vint (enc_reason (learnt (nr x)))). split.
+    + apply result_int.
+    + unfold PushPost. rewrite Hpush. splits.
+      * apply (rep_store_push m m1 m2 m3 (u :: lower x) trl tb tn tp
+                 HRep Hnr Hroom Hc Hun Arl Htrl Arb Htb Arn Htn Arp Htp Hst2 Hst3).
+      * reflexivity.
+      * cbn [ReasonBelow]. assumption.
+      * (* only the reason clauses and the struct changed *)
+        frame.
 Qed.
 
 (* The statements of push_reason after the loop: the start, length and trail position of
@@ -235,81 +217,56 @@ Proof.
   { rewrite add_repr. f_equal. cbn [length]. lia. }
   unfold push_end, f_push_reason. cbn [fn_body drop_stmts].
   (* s->rbeg[j] = b; *)
-  run. eapply (exec_store_arr Arb Hnr).
-  - evl.
-  - ofs.
-  - reflexivity.
-  - ev.
-  - intros m2 Hst2. normal. pose proof (arr_store Arb Hnr Hst2) as Arb2.
-    clear Arb. carry Hst2 Hnd.
-    (* s->rlen[j] = n + 1; *)
-    run. eapply (exec_store_arr Arn Hnr).
-    + evl.
-    + ofs.
+  run. store Arb Hnr as m2 Hst2.
+  pose proof (arr_store Arb Hnr Hst2) as Arb2.
+  clear Arb. carry Hst2 Hnd.
+  (* s->rlen[j] = n + 1; *)
+  run. store Arn Hnr as m3 Hst3.
+  cbn [cast_int_int] in Hst3. rewrite Hn1 in Hst3. normal.
+  pose proof (arr_store Arn Hnr Hst3) as Arn3.
+  clear Arn. carry Hst3 Hnd.
+  (* s->rpos[j] = s->tlen; *)
+  run. store Arp Hnr as m4 Hst4.
+  pose proof (arr_store Arp Hnr Hst4) as Arp4.
+  clear Arp. carry Hst4 Hnd.
+  (* Only the four blocks of the reason clauses changed since the call. *)
+  assert (Hun4: Mem.unchanged_on (ReasonFrame sh) m m4).
+  { apply (store_unchanged _ m m3 m4 Mint32 (b_rpos sh)
+             (4 * Z.of_nat (nr x)) (vnat (tlen x))).
+    - frame.
+    - assumption.
+    - intros i (_ & _ & _ & Hi). now apply Hi. }
+  (* the fields, and the result *)
+  eapply (push_fields_correct sh N lss x u t _ _ _ _ m m4).
+  - assumption.
+  - assumption.
+  - assumption.
+  - (* the atoms of u :: lower x are below N *)
+    intros y [<- | Hy].
+    + assumption.
+    + apply Hatoms. assumption.
+  - assumption.
+  - assumption.
+  - assumption.
+  - apply Arb2.
+  - (* the starts: b for clause j *)
+    intros j Hj'. cbv beta.
+    destruct (Nat.eqb_spec (nr x) j) as [<- | Hne].
     + reflexivity.
-    + ev.
-    + intros m3 Hst3. cbn [cast_int_int] in Hst3. rewrite Hn1 in Hst3. normal.
-      pose proof (arr_store Arn Hnr Hst3) as Arn3.
-      clear Arn. carry Hst3 Hnd.
-      (* s->rpos[j] = s->tlen; *)
-      run. eapply (exec_store_arr Arp Hnr).
-      * evl.
-      * ofs.
-      * reflexivity.
-      * ev.
-      * intros m4 Hst4. normal. pose proof (arr_store Arp Hnr Hst4) as Arp4.
-        clear Arp. carry Hst4 Hnd.
-        (* Only the four blocks of the reason clauses changed since the call. *)
-        assert (Hun4: Mem.unchanged_on (ReasonFrame sh) m m4).
-        { apply (store_unchanged _ m m3 m4 Mint32 (b_rpos sh)
-                   (4 * Z.of_nat (nr x)) (vnat (tlen x))).
-          - apply (store_unchanged _ m m2 m3 Mint32 (b_rlen sh)
-                     (4 * Z.of_nat (nr x)) (vnat (length (u :: lower x)))).
-            + apply (store_unchanged _ m m1 m2 Mint32 (b_rbeg sh)
-                       (4 * Z.of_nat (nr x)) (vnat (rtop x))).
-              * apply (Mem.unchanged_on_implies _ _ m m1 Hun).
-                intros b' ofs' (Hb' & _) _. assumption.
-              * assumption.
-              * intros i (_ & Hi & _). now apply Hi.
-            + assumption.
-            + intros i (_ & _ & Hi & _). now apply Hi.
-          - assumption.
-          - intros i (_ & _ & _ & Hi). now apply Hi. }
-        (* the fields, and the result *)
-        eapply (push_fields_correct sh N lss x u t _ _ _ _ m m4).
-        -- assumption.
-        -- assumption.
-        -- assumption.
-        -- (* the atoms of u :: lower x are below N *)
-           intros y [<- | Hy].
-           ++ assumption.
-           ++ apply Hatoms. assumption.
-        -- assumption.
-        -- assumption.
-        -- assumption.
-        -- apply Arb2.
-        -- (* the starts: b for clause j *)
-           intros j Hj'. cbv beta.
-           destruct (Nat.eqb_spec (nr x) j) as [<- | Hne].
-           ++ reflexivity.
-           ++ apply Htb. lia.
-        -- apply Arn3.
-        -- (* the lengths: that of u :: lower x for clause j *)
-           intros j Hj'. cbv beta. cbn [add_reason rcl].
-           destruct (Nat.eqb_spec (nr x) j) as [<- | Hne].
-           ++ rewrite tget_tset_same. reflexivity.
-           ++ rewrite tget_tset_other by assumption. apply Htn. lia.
-        -- apply Arp4.
-        -- (* the trail positions: the end of the trail for clause j *)
-           intros j Hj'. cbv beta. cbn [add_reason rps].
-           destruct (Nat.eqb_spec (nr x) j) as [<- | Hne].
-           ++ rewrite tget_tset_same. reflexivity.
-           ++ rewrite tget_tset_other by assumption. apply Htp. lia.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
+    + apply Htb. lia.
+  - apply Arn3.
+  - (* the lengths: that of u :: lower x for clause j *)
+    intros j Hj'. cbv beta. cbn [add_reason rcl].
+    destruct (Nat.eqb_spec (nr x) j) as [<- | Hne].
+    + rewrite tget_tset_same. reflexivity.
+    + rewrite tget_tset_other by assumption. apply Htn. lia.
+  - apply Arp4.
+  - (* the trail positions: the end of the trail for clause j *)
+    intros j Hj'. cbv beta. cbn [add_reason rps].
+    destruct (Nat.eqb_spec (nr x) j) as [<- | Hne].
+    + rewrite tget_tset_same. reflexivity.
+    + rewrite tget_tset_other by assumption. apply Htp. lia.
+  - constructor; tmp.
 Qed.
 
 (* The keys t of block rlits hold the reason clauses of x, then u at rtop x and the
@@ -408,116 +365,83 @@ Proof.
   assert (Hbr: (rtop x < rcap x)%nat) by (cbn [length] in Hroom; lia).
   unfold push_stores, f_push_reason. cbn [fn_body drop_stmts].
   (* s->rlits[b] = u; *)
-  run. eapply (exec_store_arr Arl Hbr).
-  - evl.
-  - ofs.
-  - reflexivity.
-  - ev.
-  - intros m1 Hst1. normal. pose proof (arr_store Arl Hbr Hst1) as Arl1. clear Arl.
-    (* int q = 0; *)
-    run. unfold Swhile.
-    apply exec_loop with (R := ltof nat (fun (q: nat) => length (lower x) - q)%nat)
-      (I := PushInv m sh x u) (a := 0%nat).
-    + apply well_founded_ltof.
-    + intros q le1 m2 HI.
-      destruct HI as [HT Hq Hqle (t & Arl2 & HP) Hun].
-      pose proof HT as [Hs1 Hj1 Hb1 Hn1]. pose proof HP as [Hold Hfirst Hlits].
-      clear Arl1.
-      apply exec_seq.
-      (* if (q < n) ... else break; *)
-      eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
-      * (* q < n: s->rlits[b + 1 + q] = s->lt[q]; q++; *)
-        intros Hlt. assert (Hq_lt: (q < length (lower x))%nat) by lia.
-        pose proof (r_lt HRep) as Flt.
-        pose proof (a_lt HRep) as (tlt & Alt & Htlt).
-        transfer Hun Hnd.
-        assert (Hidx: Int.add (Int.add (Int.repr (Z.of_nat (rtop x))) (Int.repr 1))
-                        (Int.repr (Z.of_nat q))
-                      = Int.repr (Z.of_nat (rtop x + 1 + q))).
-        { rewrite !add_repr. f_equal. lia. }
-        assert (Hadd: Int.add (Int.repr (Z.of_nat q)) (Int.repr 1)
-                      = Int.repr (Z.of_nat (S q))).
-        { rewrite add_repr. f_equal. lia. }
-        assert (Hk: (rtop x + 1 + q < rcap x)%nat)
-          by (cbn [length] in Hroom; lia).
-        apply exec_skip. normal. run.
-        rewrite (Htlt q) by assumption.
-        eapply (exec_store_arr Arl2 Hk).
-        -- evl.
-        -- ofs.
-        -- reflexivity.
-        -- ev.
-        -- intros m3 Hst3. normal. run. ints.
-           apply loopk_next with (S q).
-           ++ unfold ltof. lia.
-           ++ apply (push_inv_next m m3 sh x u q _ t).
-              ** assumption.
-              ** assumption.
-              ** apply (arr_store Arl2 Hk Hst3).
-              ** apply (store_unchanged _ m m2 m3 Mint32 (b_rlits sh)
-                          (4 * Z.of_nat (rtop x + 1 + q))
-                          (vint (key (nth q (lower x) (Pos 0%nat))))).
-                 --- assumption.
-                 --- assumption.
-                 --- intros i Hi. now apply Hi.
-              ** constructor.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-              ** tmp.
-      * (* q = n: break; and the end, with u :: lower x as clause j *)
-        intros Hge.
-        apply exec_break. abrupt. apply loopk_break. normal.
-        apply (push_end_correct sh N lss x u t _ m m2).
+  run. store Arl Hbr as m1 Hst1.
+  pose proof (arr_store Arl Hbr Hst1) as Arl1. clear Arl.
+  (* int q = 0; *)
+  run. unfold Swhile.
+  apply exec_loop with (R := ltof nat (fun (q: nat) => length (lower x) - q)%nat)
+    (I := PushInv m sh x u) (a := 0%nat).
+  - apply well_founded_ltof.
+  - intros q le1 m2 HI.
+    destruct HI as [HT Hq Hqle (t & Arl2 & HP) Hun].
+    pose proof HT as [Hs1 Hj1 Hb1 Hn1]. pose proof HP as [Hold Hfirst Hlits].
+    clear Arl1.
+    apply exec_seq.
+    (* if (q < n) ... else break; *)
+    branch.
+    + (* q < n: s->rlits[b + 1 + q] = s->lt[q]; q++; *)
+      intros Hlt. assert (Hq_lt: (q < length (lower x))%nat) by lia.
+      pose proof (r_lt HRep) as Flt.
+      pose proof (a_lt HRep) as (tlt & Alt & Htlt).
+      transfer Hun Hnd.
+      assert (Hidx: Int.add (Int.add (Int.repr (Z.of_nat (rtop x))) (Int.repr 1))
+                      (Int.repr (Z.of_nat q))
+                    = Int.repr (Z.of_nat (rtop x + 1 + q))).
+      { rewrite !add_repr. f_equal. lia. }
+      assert (Hadd: Int.add (Int.repr (Z.of_nat q)) (Int.repr 1)
+                    = Int.repr (Z.of_nat (S q))).
+      { rewrite add_repr. f_equal. lia. }
+      assert (Hk: (rtop x + 1 + q < rcap x)%nat)
+        by (cbn [length] in Hroom; lia).
+      apply exec_skip. normal. run.
+      rewrite (Htlt q) by assumption.
+      store Arl2 Hk as m3 Hst3.
+      run. ints.
+      apply loopk_next with (S q).
+      * unfold ltof. lia.
+      * apply (push_inv_next m m3 sh x u q _ t).
         -- assumption.
         -- assumption.
+        -- apply (arr_store Arl2 Hk Hst3).
+        -- frame.
+        -- constructor; tmp.
+        -- tmp.
+    + (* q = n: break; and the end, with u :: lower x as clause j *)
+      intros Hge.
+      apply exec_break. abrupt. apply loopk_break. normal.
+      apply (push_end_correct sh N lss x u t _ m m2).
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * cbn [add_reason rcl nr]. apply reasons_in_add.
         -- assumption.
-        -- assumption.
-        -- assumption.
-        -- assumption.
-        -- cbn [add_reason rcl nr]. apply reasons_in_add.
-           ++ assumption.
-           ++ intros k Hk. destruct k as [|k].
-              ** rewrite Nat.add_0_r. assumption.
-              ** cbn [nth]. cbn [length] in Hk.
-                 replace (rtop x + S k)%nat
-                   with (rtop x + 1 + k)%nat by lia.
-                 apply Hlits. lia.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-    + (* The invariant holds at q = 0, with u at b. *)
-      constructor.
+        -- intros k Hk. destruct k as [|k].
+           ++ rewrite Nat.add_0_r. assumption.
+           ++ cbn [nth]. cbn [length] in Hk.
+              replace (rtop x + S k)%nat
+                with (rtop x + 1 + k)%nat by lia.
+              apply Hlits. lia.
+      * constructor; tmp.
+  - (* The invariant holds at q = 0, with u at b. *)
+    constructor.
+    + constructor; tmp.
+    + tmp.
+    + lia.
+    + eexists. split.
+      * apply Arl1.
       * constructor.
-        -- tmp.
-        -- tmp.
-        -- tmp.
-        -- tmp.
-      * tmp.
-      * lia.
-      * eexists. split.
-        -- apply Arl1.
-        -- constructor.
-           ++ apply (reasons_in_ext trl).
-              ** assumption.
-              ** intros k Hk.
-                 replace (Nat.eqb (rtop x) k) with false
-                   by (symmetry; apply Nat.eqb_neq; lia).
-                 reflexivity.
-           ++ rewrite Nat.eqb_refl. reflexivity.
-           ++ intros k Hk. lia.
-      * apply (store_unchanged _ m m m1 Mint32 (b_rlits sh)
-                 (4 * Z.of_nat (rtop x)) (vint (key u))).
-        -- apply Mem.unchanged_on_refl.
-        -- assumption.
-        -- intros i Hi. now apply Hi.
+        -- apply (reasons_in_ext trl).
+           ++ assumption.
+           ++ intros k Hk.
+              replace (Nat.eqb (rtop x) k) with false
+                by (symmetry; apply Nat.eqb_neq; lia).
+              reflexivity.
+        -- rewrite Nat.eqb_refl. reflexivity.
+        -- intros k Hk. lia.
+    + frame.
 Qed.
 
 (* Without room, push_reason keeps x and gives no reason, which C returns as 0. *)
@@ -526,13 +450,11 @@ Lemma push_none: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   RepL m sh N lss x -> push_reason x u = (x, no_reason) ->
   PushPost m sh N lss x u m (vint 0).
 Proof.
-  intros sh N lss x u m HRep Hpush. unfold PushPost. rewrite Hpush. split.
+  intros sh N lss x u m HRep Hpush. unfold PushPost. rewrite Hpush. splits.
   - assumption.
-  - split.
-    + reflexivity.
-    + split.
-      * cbn [ReasonBelow]. apply I.
-      * apply Mem.unchanged_on_refl.
+  - reflexivity.
+  - cbn [ReasonBelow]. apply I.
+  - frame.
 Qed.
 
 (* push_reason stores u :: lower x as a new reason clause, for the literal at the end of
@@ -576,20 +498,13 @@ Proof.
     (* int j = s->nr; int b = s->rtop; int n = s->ltlen; *)
     run.
     (* if (j >= s->nv) return 0; *)
-    eapply exec_if_ge.
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
+    branch.
     + (* no room for one more clause: return 0; *)
-      intros Hfull. eapply exec_return.
-      * ev.
-      * ret. exists (vint 0). split.
-        -- apply result_int.
-        -- apply (push_none sh N lss x u m HRep).
-           unfold push_reason. rewrite Hnv.
-           replace (nr x <? N)%nat with false by (symmetry; apply Nat.ltb_ge; lia).
-           reflexivity.
+      intros Hfull. return_int.
+      apply (push_none sh N lss x u m HRep).
+      unfold push_reason. rewrite Hnv.
+      replace (nr x <? N)%nat with false by (symmetry; apply Nat.ltb_ge; lia).
+      reflexivity.
     + (* room for one more clause *)
       intros Hnr_z. assert (Hnr: (nr x < N)%nat) by lia.
       apply exec_skip. normal.
@@ -608,15 +523,12 @@ Proof.
         intros Hover_z.
         assert (Hover: (rcap x < rtop x + length (u :: lower x))%nat)
           by (cbn [length]; lia).
-        eapply exec_return.
-        -- ev.
-        -- ret. exists (vint 0). split.
-           ++ apply result_int.
-           ++ apply (push_none sh N lss x u m HRep).
-              unfold push_reason.
-              replace (rtop x + S (length (lower x)) <=? rcap x)%nat
-                with false by (symmetry; apply Nat.leb_gt; assumption).
-              rewrite andb_false_r. reflexivity.
+        return_int.
+        apply (push_none sh N lss x u m HRep).
+        unfold push_reason.
+        replace (rtop x + S (length (lower x)) <=? rcap x)%nat
+          with false by (symmetry; apply Nat.leb_gt; assumption).
+        rewrite andb_false_r. reflexivity.
       * (* room for its literals: the stores *)
         intros Hroom_z.
         assert (Hroom: (rtop x + length (u :: lower x) <= rcap x)%nat)
@@ -627,11 +539,7 @@ Proof.
         -- assumption.
         -- assumption.
         -- assumption.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
+        -- constructor; tmp.
         -- tmp.
 Qed.
 

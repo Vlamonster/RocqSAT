@@ -19,6 +19,7 @@ From RocqSAT Require Import Measure.
 From RocqSAT Require Import Rule.
 From RocqSAT Require Import Trans.
 From RocqSAT.rules Require Import Decide.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
@@ -167,11 +168,10 @@ Section Lims.
       + contradiction.
       + destruct Hlims as [_ Hlims].
         destruct (IH lims Hlims) as (lims' & Hskip & Hlims' & Hlen). exists lims'.
-        simpl. split.
+        simpl. splits.
         * assumption.
-        * split.
-          -- assumption.
-          -- lia.
+        * assumption.
+        * lia.
   Qed.
 
   (* Without decisions, no positions. *)
@@ -542,48 +542,45 @@ Proof.
   destruct (check_shorts_spec (shorts x) m f x x1 r Hprop Hshorts Hcheck)
     as (m1 & Hext & Hder & ([Hcm Hkept] & _) & Hincl & Hprop1 & Hnone & Hsome).
   injection Hkept as Hsh Hal Hnl Hcur Hsv _ Hmk Hnv Hrcl Hrps Hnr _ Hhr.
-  exists m1. split.
+  exists m1. splits.
+  - assumption.
   - assumption.
   - split.
     + assumption.
-    + split.
-      * split.
+    + now apply (reordered_complete f (cmap x)).
+    + rewrite Hal, Hnl, Hcur. apply (cursor_incl (vals x)).
+      * intros l. now apply incl_undef.
+      * assumption.
+    + rewrite Hal, Hnl, Hsv. destruct Hext as [n [-> Hn]]. now apply saved_c_extends.
+    + intros i Hi. rewrite Hsh. apply Hempty.
+      now apply (reordered_empty (cmap x) (cmap x1)).
+    + intros i ls Hin Hi. rewrite Hsh in Hin.
+      destruct (reordered_length (cmap x) (cmap x1) i ls Hcm Hi) as [ls0 [Hi0 ->]].
+      now apply (Hshorts i).
+    + now rewrite Hmk.
+    + now rewrite Hnv.
+    + apply (slots_grow f x).
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * apply (core_tlen_extends m m1 f).
+        -- apply Hprop.
+        -- apply Hprop1.
         -- assumption.
-        -- now apply (reordered_complete f (cmap x)).
-        -- rewrite Hal, Hnl, Hcur. apply (cursor_incl (vals x)).
-           ++ intros l. now apply incl_undef.
-           ++ assumption.
-        -- rewrite Hal, Hnl, Hsv. destruct Hext as [n [-> Hn]]. now apply saved_c_extends.
-        -- intros i Hi. rewrite Hsh. apply Hempty.
-           now apply (reordered_empty (cmap x) (cmap x1)).
-        -- intros i ls Hin Hi. rewrite Hsh in Hin.
-           destruct (reordered_length (cmap x) (cmap x1) i ls Hcm Hi) as [ls0 [Hi0 ->]].
-           now apply (Hshorts i).
-        -- now rewrite Hmk.
-        -- now rewrite Hnv.
-        -- apply (slots_grow f x).
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ apply (core_tlen_extends m m1 f).
-              ** apply Hprop.
-              ** apply Hprop1.
-              ** assumption.
-        -- unfold DlitIn. rewrite Hhr. assumption.
-        -- (* checking keeps the positions of the decisions *)
-           pose proof (check_shorts_stacks (shorts x) x) as [Hl _]. rewrite Hcheck in Hl.
-           cbn [fst] in Hl. rewrite Hl. now apply (lims_extends (lims x) m).
-        -- (* and leaves no lower literals *)
-           pose proof (check_shorts_stacks (shorts x) x) as [_ Hlo].
-           rewrite Hcheck in Hlo.
-           cbn [fst] in Hlo. rewrite Hlo. assumption.
-      * split.
-        -- intros Hr i Hi. apply (Hnone Hr i []).
-           ++ apply Hempty. now apply (reordered_empty (cmap x) (cmap x1)).
-           ++ assumption.
-           ++ reflexivity.
-        -- assumption.
+    + unfold DlitIn. rewrite Hhr. assumption.
+    + (* checking keeps the positions of the decisions *)
+      pose proof (check_shorts_stacks (shorts x) x) as [Hl _]. rewrite Hcheck in Hl.
+      cbn [fst] in Hl. rewrite Hl. now apply (lims_extends (lims x) m).
+    + (* and leaves no lower literals *)
+      pose proof (check_shorts_stacks (shorts x) x) as [_ Hlo].
+      rewrite Hcheck in Hlo.
+      cbn [fst] in Hlo. rewrite Hlo. assumption.
+  - intros Hr i Hi. apply (Hnone Hr i []).
+    + apply Hempty. now apply (reordered_empty (cmap x) (cmap x1)).
+    + assumption.
+    + reflexivity.
+  - assumption.
 Qed.
 
 (* Propagation is a derivation to a consistent context, and empties the queue unless a
@@ -715,22 +712,21 @@ Section Jumps.
     intros cm rsn lv rcl rps nr nr' m.
     induction m as [|m IH t|m IH t]; cbn [TraceOk]; intros Htrace Hkeep.
     - constructor.
-    - destruct Htrace as (Hlv & Hreason & Htrace). split.
+    - destruct Htrace as (Hlv & Hreason & Htrace). splits.
       + assumption.
-      + split.
-        * destruct (tget rsn (extract t)) as [|i|j]; cbn [ReasonOk] in Hreason |- *.
-          -- constructor.
-          -- assumption.
-          -- destruct Hreason as (Hj & Hpos & Hjust). split.
-             ++ apply Hkeep.
-                ** assumption.
-                ** cbn [PA.length]. lia.
-             ++ now split.
-        * apply IH.
-          -- assumption.
-          -- intros j Hj Hpos. apply Hkeep.
+      + destruct (tget rsn (extract t)) as [|i|j]; cbn [ReasonOk] in Hreason |- *.
+        * constructor.
+        * assumption.
+        * destruct Hreason as (Hj & Hpos & Hjust). split.
+          -- apply Hkeep.
              ++ assumption.
              ++ cbn [PA.length]. lia.
+          -- now split.
+      + apply IH.
+        * assumption.
+        * intros j Hj Hpos. apply Hkeep.
+          -- assumption.
+          -- cbn [PA.length]. lia.
     - destruct Htrace as (Hlv & Htrace). split.
       + assumption.
       + apply IH.
@@ -750,17 +746,16 @@ Section Jumps.
     intros cm rsn lv rcl rps nr m c p.
     induction m as [|m IH t|m IH t]; cbn [TraceOk]; intros Htrace.
     - constructor.
-    - destruct Htrace as (Hlv & Hreason & Htrace). split.
+    - destruct Htrace as (Hlv & Hreason & Htrace). splits.
       + assumption.
-      + split.
-        * destruct (tget rsn (extract t)) as [|i|j]; cbn [ReasonOk] in Hreason |- *.
-          -- constructor.
-          -- assumption.
-          -- destruct Hreason as (Hj & Hpos & Hjust).
-             rewrite !tget_tset_other by lia. split.
-             ++ lia.
-             ++ now split.
-        * now apply IH.
+      + destruct (tget rsn (extract t)) as [|i|j]; cbn [ReasonOk] in Hreason |- *.
+        * constructor.
+        * assumption.
+        * destruct Hreason as (Hj & Hpos & Hjust).
+          rewrite !tget_tset_other by lia. split.
+          -- lia.
+          -- now split.
+      + now apply IH.
     - destruct Htrace as (Hlv & Htrace). split.
       + assumption.
       + now apply IH.
@@ -778,14 +773,7 @@ Section Jumps.
       [[Hvals Hfresh Htrail Hsound Hnodup Hdl _] Hq Hwatch Hsaved Hlisted Hblocked]
       Htrace.
     split.
-    - split.
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
+    - split; assumption.
     - assumption.
     - assumption.
     - assumption.
@@ -918,9 +906,7 @@ Section Jumps.
                                  (tset (rps xj) (nr xj) (tlen xj)) (S (nr xj)) mt).
           { now apply trace_push. }
           split.
-          * apply prop_inv_reasons.
-            -- assumption.
-            -- assumption.
+          * apply prop_inv_reasons; assumption.
           * unfold xj, add_reason in *.
             cbn [vals cmap wls tr tlen qhead shorts alls nlits cur saved rsn lvl dl mrk
               lower phs nvars rcl rps nr rcap] in *.
@@ -1049,10 +1035,7 @@ Proof.
         -- now apply phase_in.
         -- unfold Undef. now rewrite <- Hvals.
     + split.
-      * apply prop_inv_decide.
-        -- assumption.
-        -- assumption.
-        -- assumption.
+      * apply prop_inv_decide; assumption.
       * assumption.
       * apply (cursor_incl (vals x)).
         -- intros y Hy.
@@ -1362,19 +1345,14 @@ Section Initial.
     induction lss as
       [|ls lss IH]; intros k cm cm' wl wl' sh sh' Hfresh Hwfresh Hbelow Hlisted Hblocked
       Hempty Hshort Hindex; simpl in Hindex.
-    - injection Hindex as <- <- <-. split.
+    - injection Hindex as <- <- <-. splits.
       + assumption.
-      + split.
-        * assumption.
-        * split.
-          -- assumption.
-          -- split.
-             ++ assumption.
-             ++ split.
-                ** intros i' ls' Hi. now left.
-                ** split.
-                   --- intros ls' [].
-                   --- now intros i' ls' Hi.
+      + assumption.
+      + assumption.
+      + assumption.
+      + intros i' ls' Hi. now left.
+      + intros ls' [].
+      + now intros i' ls' Hi.
     - assert (Hk: tget cm k = None).
       + destruct (tget cm k) as [ls'|] eqn:Hk.
         * apply Hfresh in Hk. lia.
@@ -1420,27 +1398,22 @@ Section Initial.
                 ** now apply (Hshort i).
              ++ now apply (Hshort i).
         * assumption.
-        * split.
+        * splits.
           -- assumption.
-          -- split.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+          -- intros i ls' Hi. destruct (Hsound i ls' Hi) as [Hi'|Hin].
+             ++ rewrite tget_tset in Hi'. destruct (Nat.eq_dec k i) as [<-|Hne].
+                ** injection Hi' as ->. right. now left.
+                ** now left.
+             ++ right. now right.
+          -- intros ls' [<-|Hin].
+             ++ exists k. apply Hkeep. apply tget_tset_same.
+             ++ now apply Hcomplete.
+          -- intros i ls' Hi. apply Hkeep. rewrite tget_tset_other.
              ++ assumption.
-             ++ split.
-                ** assumption.
-                ** split.
-                   --- assumption.
-                   --- split.
-                       +++ intros i ls' Hi. destruct (Hsound i ls' Hi) as [Hi'|Hin].
-                           *** rewrite tget_tset in Hi'. destruct (Nat.eq_dec k i) as [<-|Hne].
-                               ---- injection Hi' as ->. right. now left.
-                               ---- now left.
-                           *** right. now right.
-                       +++ split.
-                           *** intros ls' [<-|Hin].
-                               ---- exists k. apply Hkeep. apply tget_tset_same.
-                               ---- now apply Hcomplete.
-                           *** intros i ls' Hi. apply Hkeep. rewrite tget_tset_other.
-                               ---- assumption.
-                               ---- intros ->. congruence.
+             ++ intros ->. congruence.
   Qed.
 
   (* Fill a table with the literals ls from position k on. *)
@@ -1546,9 +1519,7 @@ Section Initial.
                 ** cbn [cur nlits]. split.
                    --- apply Nat.le_0_l.
                    --- assumption.
-                ** simpl. rewrite <- (Nat.add_0_l j), fill_spec.
-                   --- assumption.
-                   --- assumption.
+                ** simpl. rewrite <- (Nat.add_0_l j), fill_spec; assumption.
         * reflexivity.
         * assumption.
         * assumption.
@@ -1659,13 +1630,11 @@ Proof.
   destruct (check_shorts (shorts x) x) as [x1 r1] eqn:Hcheck. cbn [fst snd].
   destruct (check_shorts_step m f x x1 r1 Hcore Hcheck)
     as (m1 & Hder1 & Hext1 & Hcore1 & Hnone1 & _).
-  rewrite <- (step_core_trail Hcore1). split.
+  rewrite <- (step_core_trail Hcore1). splits.
   - assumption.
-  - split.
-    + assumption.
-    + split.
-      * now apply (derivation_well_formed DPLL_BJ m m1 f f).
-      * assumption.
+  - assumption.
+  - now apply (derivation_well_formed DPLL_BJ m m1 f f).
+  - assumption.
 Qed.
 
 (* After propagate, the context agrees with its trail, which extends m1. *)
@@ -1679,9 +1648,7 @@ Proof.
     as [x2 r2] eqn:Hprop. cbn [fst].
   destruct (propagate_step m1 f x1 x2 r2 Hcore1 Hwf1 Hnonempty Hprop)
     as (m2 & _ & Hext2 & Hcore2 & _).
-  rewrite <- (step_core_trail Hcore2). split.
-  - assumption.
-  - assumption.
+  rewrite <- (step_core_trail Hcore2). split; assumption.
 Qed.
 
 (* The positions of the decisions are on the trail. *)

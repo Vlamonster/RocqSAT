@@ -77,9 +77,7 @@ Proof.
     + tmp.
     + tmp.
     + lia.
-    + exists h. split.
-      * assumption.
-      * assumption.
+    + exists h. split; assumption.
     + assumption.
 Qed.
 
@@ -151,17 +149,10 @@ Proof.
     assert (Hl: (extract l < N)%nat).
     { apply (Hdl l Ha). reflexivity. }
     pose proof (key_small l N Hl HN) as Hkey.
-    cbn [enc_lit]. eapply exec_if_ge.
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
+    cbn [enc_lit]. branch.
     + (* if (lit_value(s, l) == 0) return l; *)
       intros Hpos. run.
-      eapply (exec_call_triple lit_value_fun
-                (lit_value_correct sh N lss (x <| hr := h1 |>) l)).
-      * reflexivity.
-      * evs.
+      call lit_value_fun (lit_value_correct sh N lss (x <| hr := h1 |>) l).
       * split.
         -- apply HRep2.
         -- assumption.
@@ -176,15 +167,12 @@ Proof.
         -- (* unassigned: return l, as the model does *)
            intros Hz. assert (Hu: lookup_undef (vals x) l = true).
            { rewrite <- enc_undef. now apply Z.eqb_eq. }
-           rewrite Hu in Hres. eapply exec_return.
-           ++ ev.
-           ++ ret. exists (vint (key l)). split.
-              ** apply result_int.
-              ** unfold PickPost. rewrite <- Hres. split.
-                 --- split.
-                     +++ apply HRep2.
-                     +++ assumption.
-                 --- reflexivity.
+           rewrite Hu in Hres. return_int.
+           unfold PickPost. rewrite <- Hres. split.
+           ++ split.
+              ** apply HRep2.
+              ** assumption.
+           ++ reflexivity.
         -- (* assigned: the loop goes on *)
            intros Hz. assert (Hu: lookup_undef (vals x) l = false).
            { rewrite <- enc_undef. now apply Z.eqb_neq. }
@@ -199,11 +187,7 @@ Proof.
     + (* a literal has a key of at least 0 *)
       intros Hneg. lia.
   - (* no literal: the loop goes on *)
-    cbn [enc_lit]. eapply exec_if_ge.
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
+    cbn [enc_lit]. branch.
     + (* -1 is not at least 0 *)
       intros Hpos. lia.
     + intros Hneg. apply exec_skip. normal.
@@ -267,11 +251,7 @@ Proof.
       pose proof (r_heur HRep1) as Hok. cbn [set_hr hr] in Hok.
       apply exec_seq.
       (* if (fuel > 0) ... else break; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * intros Hpos. destruct f as [|f].
         -- (* fuel 0 is not positive *)
            lia.
@@ -280,33 +260,23 @@ Proof.
            cbn [set_hr hr] in Fhsize.
            pose proof (ho_hsize Hok) as Hhs.
            (* if (s->hsize <= 0) return -1; *)
-           run. eapply exec_if_le.
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
+           run. branch.
            ++ (* the heap is empty: return -1, as the model gives (h, None) *)
               intros Hempty. replace (hsize h <=? 0)%nat with true in Hres
                 by (symmetry; apply Nat.leb_le; lia).
-              eapply exec_return.
-              ** ev.
-              ** ret. exists (vint (-1)). split.
-                 --- apply result_int.
-                 --- unfold PickPost. rewrite <- Hres. split.
-                     +++ split.
-                         *** apply HRep1.
-                         *** assumption.
-                     +++ reflexivity.
+              return_int.
+              unfold PickPost. rewrite <- Hres. split.
+              ** split.
+                 --- apply HRep1.
+                 --- assumption.
+              ** reflexivity.
            ++ (* int b = heap_pop(s); *)
               intros Hsize. replace (hsize h <=? 0)%nat with false in Hres
                 by (symmetry; apply Nat.leb_gt; lia).
               assert (Hb: (snd (heap_pop h) < N)%nat).
               { rewrite heap_pop_snd. apply (ho_heap Hok). lia. }
               run.
-              eapply (exec_call_triple heap_pop_fun
-                        (heap_pop_correct sh N lss (x <| hr := h |>))).
-              ** reflexivity.
-              ** evs.
+              call heap_pop_fun (heap_pop_correct sh N lss (x <| hr := h |>)).
               ** split.
                  --- apply HRep1.
                  --- cbn [set_hr hr]. lia.
@@ -317,8 +287,8 @@ Proof.
                  cbv beta iota in Hres.
                  assert (Hframe2: Mem.unchanged_on (HeurFrame sh) m m2).
                  { apply (Mem.unchanged_on_trans _ m m1 m2).
-                   + assumption.
-                   + assumption. }
+                   - assumption.
+                   - assumption. }
                  eapply exec_set.
                  --- ev.
                  --- (* the rest of the loop (pick_rest_correct) *)
@@ -335,15 +305,12 @@ Proof.
         intros Hle. assert (Hf0: f = 0%nat) by lia. subst f.
         apply exec_break. abrupt. apply loopk_break.
         unfold PickExit. normal. unfold pick_ret, f_pick. cbn [fn_body drop_stmts].
-        eapply exec_return.
-        -- ev.
-        -- exists (vint (-1)). split.
-           ++ apply result_int.
-           ++ unfold PickPost. cbn [pick] in Hres. rewrite <- Hres. split.
-              ** split.
-                 --- apply HRep1.
-                 --- assumption.
-              ** reflexivity.
+        return_int.
+        unfold PickPost. cbn [pick] in Hres. rewrite <- Hres. split.
+        -- split.
+           ++ apply HRep1.
+           ++ assumption.
+        -- reflexivity.
     + (* The invariant holds at N. *)
       constructor.
       * tmp.
@@ -352,7 +319,7 @@ Proof.
       * exists (hr x). split.
         -- reflexivity.
         -- destruct x. apply HRep.
-      * apply Mem.unchanged_on_refl.
+      * frame.
 Qed.
 
 Lemma pick_fun: FunAt _pick f_pick.

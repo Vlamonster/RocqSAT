@@ -83,11 +83,7 @@ Proof.
     + apply lt_wf.
     + intros i le1 m1 HI. destruct HI as [Hs Hi Hlo' -> Hile Hprev]. apply exec_seq.
       (* if (idx > lo) ... else break; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* idx > lo: the model looks at the literal l at idx - 1 *)
         intros Hgt.
         replace (i - lo)%nat with (S (i - 1 - lo)) in Hprev by lia.
@@ -113,13 +109,10 @@ Proof.
         -- (* ¬l is marked: return idx, which is res *)
            intros Hmarked. unfold enc_mark in Hmarked.
            destruct (tget (mrk x) (lit_key (¬l))).
-           ++ eapply exec_return.
-              ** ev.
-              ** ret. exists (vnat i). split.
-                 --- apply result_int.
-                 --- split.
-                     +++ reflexivity.
-                     +++ now rewrite Hprev.
+           ++ return_int.
+              split.
+              ** reflexivity.
+              ** now rewrite Hprev.
            ++ lia.
         -- (* ¬l is not marked: idx--; and the loop goes on *)
            intros Hunmarked. unfold enc_mark in Hunmarked.
@@ -136,14 +129,11 @@ Proof.
                  --- assumption.
       * (* idx <= lo: break; return idx, which is res *)
         intros Hle. apply exec_break. abrupt. apply loopk_break. normal.
-        eapply exec_return.
-        -- ev.
-        -- exists (vnat i). split.
-           ++ apply result_int.
-           ++ split.
-              ** reflexivity.
-              ** replace (i - lo)%nat with 0%nat in Hprev by lia.
-                 now rewrite Hprev.
+        return_int.
+        split.
+        -- reflexivity.
+        -- replace (i - lo)%nat with 0%nat in Hprev by lia.
+           now rewrite Hprev.
     + (* The invariant holds at idx. *)
       constructor.
       * tmp.

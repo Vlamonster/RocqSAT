@@ -23,6 +23,7 @@ From RocqSAT Require Import State.
 From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import Measure.
 From RocqSAT Require Import Trans.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
@@ -186,16 +187,9 @@ Section Parts.
     intros x y r cr t rest v le m Hs Hc Hv Hon Hres Hrest.
     unfold on_conflict. destruct Hv as [-> | (-> & HRep & Hcls)].
     - (* c = -1: out of room; return -1; *)
-      run. eapply (exec_if_lt (-1) 0).
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
-      + intros _. eapply exec_return.
-        * ev.
-        * ret. exists (vint (-1)). split.
-          -- apply result_int.
-          -- now left.
+      run. branch (-1) 0.
+      + intros _. return_int.
+        now left.
       + intros Hge. lia.
     - destruct r as [i|]; cbn [enc_conf].
       + (* c = i + 1: a conflict on clause i; return resolve(s, c - 1); *)
@@ -205,17 +199,9 @@ Section Parts.
         assert (Hi: Int.sub (Int.repr (enc_conf (Some i))) (Int.repr 1)
                     = Int.repr (Z.of_nat i)).
         { cbn [enc_conf]. rewrite sub_repr. f_equal. lia. }
-        run. eapply (exec_if_lt (Z.of_nat i + 1) 0).
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
+        run. branch (Z.of_nat i + 1) 0.
         * intros Hlt. lia.
-        * intros _. run. eapply (exec_if_gt (Z.of_nat i + 1) 0).
-          -- ev.
-          -- ev.
-          -- reflexivity.
-          -- lia.
+        * intros _. run. branch (Z.of_nat i + 1) 0.
           -- intros _.
              run. eapply (exec_call_triple resolve_fun
                             (resolve_correct sh N lss y i
@@ -225,32 +211,19 @@ Section Parts.
                 unfold vnat, vint. rewrite <- Hi. evs.
              ++ split.
                 ** assumption.
-                ** split.
-                   --- assumption.
-                   --- assumption.
+                ** split; assumption.
              ++ intros m' v Hv. normal.
                 assert (Hz: exists (z: Z), v = vint z).
                 { destruct Hv as [-> | Hv].
                   - now exists (-1).
                   - now apply coutcome_vint in Hv. }
-                destruct Hz as [z ->]. eapply exec_return.
-                ** ev.
-                ** ret. exists (vint z). split.
-                   --- apply result_int.
-                   --- assumption.
+                destruct Hz as [z ->]. return_int.
+                assumption.
           -- intros Hle. lia.
       + (* c = 0: no conflict; the rest runs *)
-        run. eapply (exec_if_lt 0 0).
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
+        run. branch 0 0.
         * intros Hlt. lia.
-        * intros _. run. eapply (exec_if_gt 0 0).
-          -- ev.
-          -- ev.
-          -- reflexivity.
-          -- lia.
+        * intros _. run. branch 0 0.
           -- intros Hgt. lia.
           -- intros _. run. apply Hrest.
              ++ reflexivity.
@@ -276,49 +249,31 @@ Section Parts.
     intros x xo l tp tw tl rest le m HRep Hlow Apool Hpool Hl Hs Hlv.
     unfold assign_stmt.
     run.
-    eapply (exec_call_triple assign_fun (assign_correct sh N lss xo l no_reason tp)).
-    - reflexivity.
-    - evs.
-    - split.
+    call assign_fun (assign_correct sh N lss xo l no_reason tp).
+    - splits.
       + assumption.
-      + split.
-        * assumption.
-        * split.
-          -- (* a decision has no reason *)
-             cbn [ReasonBelow]. constructor.
-          -- assumption.
+      + assumption.
+      + (* a decision has no reason *)
+        cbn [ReasonBelow]. constructor.
+      + assumption.
     - intros m' v Hv. normal. destruct Hv as [-> | (-> & HRep' & Apool')].
       + (* assign gave up: return -1; *)
-        eapply (exec_if_nonzero 1).
-        * ev.
-        * reflexivity.
-        * lia.
-        * intros _. eapply exec_return.
-          -- ev.
-          -- ret. exists (vint (-1)). split.
-             ++ apply result_int.
-             ++ now left.
+        branch 1.
+        * intros _. return_int.
+          now left.
         * intros Heq. lia.
       + (* return 2; *)
-        eapply (exec_if_nonzero 0).
-        * ev.
-        * reflexivity.
-        * lia.
+        branch 0.
         * intros Hne. lia.
-        * intros _. run. eapply exec_return.
-          -- ev.
-          -- ret. exists (vint 2). split.
-             ++ apply result_int.
-             ++ right. split.
-                ** reflexivity.
-                ** split.
-                   --- assumption.
-                   --- split.
-                       +++ (* assign keeps the lower literals *)
-                           cbn [assign lower]. assumption.
-                       +++ exists tp. split.
-                           *** assumption.
-                           *** assumption.
+        * intros _. run. return_int.
+          right. split.
+          -- reflexivity.
+          -- split.
+             ++ assumption.
+             ++ split.
+                ** (* assign keeps the lower literals *)
+                   cbn [assign lower]. assumption.
+                ** exists tp. split; assumption.
   Qed.
 
   (* Deciding at the unassigned literal of alls at the cursor k: the decision level
@@ -362,52 +317,34 @@ Section Parts.
     unfold step_decide, f_step. cbn [fn_body drop_stmts first_stmt then_stmt].
     (* int l = phase(s, s->alls[k]); *)
     run. rewrite (Hta k) by lia.
-    eapply (exec_call_triple phase_fun (phase_correct sh N lss x2 (tget (alls x2) k))).
-    - reflexivity.
-    - evs.
-    - split.
-      + assumption.
-      + assumption.
+    call phase_fun (phase_correct sh N lss x2 (tget (alls x2) k)).
+    - split; assumption.
     - intros m' v [-> ->]. normal. run.
       (* s->cur = k; *)
-      eapply (exec_store_fld r_cur).
-      + evl.
-      + reflexivity.
-      + ev.
-      + intros m1 Hst1. normal. carry Hst1 r_nodup. keep_mem m1.
-        (* s->saved[s->dl] = k; *)
-        run. eapply (exec_store_arr Asaved Hdl).
-        * evl.
-        * ofs.
-        * reflexivity.
-        * ev.
-        * intros m2 Hst2. normal. carry Hst2 r_nodup. keep_mem m2.
-          (* s->lims[s->dl] = s->tlen; *)
-          run. eapply (exec_store_arr Alims Hdl).
-          -- evl.
-          -- ofs.
-          -- reflexivity.
-          -- ev.
-          -- intros m3 Hst3. normal. carry Hst3 r_nodup. keep_mem m3.
-             (* s->dl = s->dl + 1; *)
-             run. eapply (exec_store_fld r_dl).
-             ++ evl.
-             ++ reflexivity.
-             ++ ev.
-             ++ intros m4 Hst4. cbn [cast_int_int] in Hst4. rewrite Hdl1 in Hst4.
-                normal. carry Hst4 r_nodup.
-                pose proof (rep_store_open m m1 m2 m3 m4 k
-                              HRep Hkle Hdl Hst1 Hst2 Hst3 Hst4)
-                  as HRepo.
-                apply (step_assign_correct x _ _ tp _t'10 _l__1).
-                ** apply HRepo.
-                ** (* opening a level keeps the lower literals *)
-                   cbn [open_level lower]. assumption.
-                ** assumption.
-                ** apply Hpool.
-                ** assumption.
-                ** tmp.
-                ** tmp.
+      store r_cur as m1 Hst1.
+      carry Hst1 r_nodup. keep_mem m1.
+      (* s->saved[s->dl] = k; *)
+      run. store Asaved Hdl as m2 Hst2.
+      carry Hst2 r_nodup. keep_mem m2.
+      (* s->lims[s->dl] = s->tlen; *)
+      run. store Alims Hdl as m3 Hst3.
+      carry Hst3 r_nodup. keep_mem m3.
+      (* s->dl = s->dl + 1; *)
+      run. store r_dl as m4 Hst4.
+      cbn [cast_int_int] in Hst4. rewrite Hdl1 in Hst4.
+      normal. carry Hst4 r_nodup.
+      pose proof (rep_store_open m m1 m2 m3 m4 k
+                    HRep Hkle Hdl Hst1 Hst2 Hst3 Hst4)
+        as HRepo.
+      apply (step_assign_correct x _ _ tp _t'10 _l__1).
+      + apply HRepo.
+      + (* opening a level keeps the lower literals *)
+        cbn [open_level lower]. assumption.
+      + assumption.
+      + apply Hpool.
+      + assumption.
+      + tmp.
+      + tmp.
   Qed.
 
   (* Choosing a decision, after propagation without a conflict:
@@ -429,9 +366,7 @@ Section Parts.
     pose proof HRep2 as (HRep & Hlow & tp & Apool & Hpool).
     unfold step_choose, f_step. cbn [fn_body drop_stmts].
     (* int k = skip_from(s); *)
-    run. eapply (exec_call_triple skip_from_fun (skip_from_correct sh N lss x2)).
-    - reflexivity.
-    - evs.
+    run. call skip_from_fun (skip_from_correct sh N lss x2).
     - assumption.
     - intros m' v [-> ->]. normal.
       destruct (next_undef_spec f x2 (sc_cursor Hcore2)) as [Hc Hundef].
@@ -440,11 +375,7 @@ Section Parts.
       pose proof (proj1 Hc) as Hkn.
       pose proof HRep as HRep'. destruct HRep'. unpack.
       (* if (k < s->nlits) *)
-      run. eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      run. branch.
       + (* a literal to decide on *)
         intros Hlt.
         replace (Nat.ltb k (nlits x2)) with true by (symmetry; apply Nat.ltb_lt; lia).
@@ -460,57 +391,44 @@ Section Parts.
         replace (Nat.ltb k (nlits x2)) with false by (symmetry; apply Nat.ltb_ge; lia).
         run.
         (* if (s->tlen == t0) return 0; *)
-        eapply exec_if_eq.
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
+        branch.
         * (* nothing was assigned: the trail is that of x *)
           intros Htlen. assert (Heq: tlen x2 = tlen x) by lia.
           replace (Nat.eqb (tlen x2) (tlen x)) with true
             by (symmetry; now apply Nat.eqb_eq).
-          eapply exec_return.
-          -- ev.
-          -- ret. exists (vint 0). split.
-             ++ apply result_int.
-             ++ assert (Htrail: trail x2 = trail x).
-                { apply extends_same_length.
-                  - assumption.
-                  - rewrite !trail_length. assumption. }
-                destruct (core_trail (core_of_step Hcore2)) as [_ Htr2].
-                right. split.
-                ** reflexivity.
-                ** rewrite <- Htrail. split.
-                   --- rewrite trail_length. assumption.
-                   --- exists (fun (j: nat) => key (tget (tr x2) j)). split.
-                       +++ assumption.
-                       +++ intros j Hj. rewrite trail_length in Hj.
-                           cbv beta. rewrite Htr2 by lia.
-                           reflexivity.
+          return_int.
+          assert (Htrail: trail x2 = trail x).
+          { apply extends_same_length.
+            - assumption.
+            - rewrite !trail_length. assumption. }
+          destruct (core_trail (core_of_step Hcore2)) as [_ Htr2].
+          right. split.
+          -- reflexivity.
+          -- rewrite <- Htrail. split.
+             ++ rewrite trail_length. assumption.
+             ++ exists (fun (j: nat) => key (tget (tr x2) j)). split.
+                ** assumption.
+                ** intros j Hj. rewrite trail_length in Hj.
+                   cbv beta. rewrite Htr2 by lia.
+                   reflexivity.
         * (* s->cur = k; return 2; *)
           intros Htlen.
           replace (Nat.eqb (tlen x2) (tlen x)) with false
             by (symmetry; apply Nat.eqb_neq; lia).
-          run. eapply (exec_store_fld r_cur).
-          -- evl.
+          run. store r_cur as m1 Hst1.
+          return_int.
+          right. split.
           -- reflexivity.
-          -- ev.
-          -- intros m1 Hst1. normal. eapply exec_return.
-             ++ ev.
-             ++ exists (vint 2). split.
-                ** apply result_int.
-                ** right. split.
-                   --- reflexivity.
-                   --- split.
-                       +++ apply (rep_store_cur m m1 k HRep).
-                           *** lia.
-                           *** assumption.
-                       +++ split.
-                           *** (* setting the cursor keeps the lower literals *)
-                               cbn [set_cur lower]. assumption.
-                           *** exists tp. split.
-                               ---- apply (arr_store_other Apool Hst1). neq r_nodup.
-                               ---- assumption.
+          -- split.
+             ++ apply (rep_store_cur m m1 k HRep).
+                ** lia.
+                ** assumption.
+             ++ split.
+                ** (* setting the cursor keeps the lower literals *)
+                   cbn [set_cur lower]. assumption.
+                ** exists tp. split.
+                   --- apply (arr_store_other Apool Hst1). neq r_nodup.
+                   --- assumption.
   Qed.
 
   (* Deciding on the unassigned literal l0 of f the heuristic picked: the decision level
@@ -549,45 +467,30 @@ Section Parts.
     { rewrite add_repr by lia. f_equal. lia. }
     unfold step_pick_decide, f_step. cbn [fn_body drop_stmts first_stmt then_stmt].
     (* int l = phase(s, l0); *)
-    run. eapply (exec_call_triple phase_fun (phase_correct sh N lss y l0)).
-    - reflexivity.
-    - evs.
-    - split.
-      + assumption.
-      + assumption.
+    run. call phase_fun (phase_correct sh N lss y l0).
+    - split; assumption.
     - intros m' v [-> ->]. normal.
       (* s->saved[s->dl] = s->cur; *)
-      run. eapply (exec_store_arr Asaved Hdl).
-      + evl.
-      + ofs.
-      + reflexivity.
-      + ev.
-      + intros m2 Hst2. normal. carry Hst2 r_nodup. keep_mem m2.
-        (* s->lims[s->dl] = s->tlen; *)
-        run. eapply (exec_store_arr Alims Hdl).
-        * evl.
-        * ofs.
-        * reflexivity.
-        * ev.
-        * intros m3 Hst3. normal. carry Hst3 r_nodup. keep_mem m3.
-          (* s->dl = s->dl + 1; *)
-          run. eapply (exec_store_fld r_dl).
-          -- evl.
-          -- reflexivity.
-          -- ev.
-          -- intros m4 Hst4. cbn [cast_int_int] in Hst4. rewrite Hdl1 in Hst4.
-             normal. carry Hst4 r_nodup.
-             pose proof (rep_store_open_cur m m2 m3 m4
-                           HRep Hdl Hst2 Hst3 Hst4) as HRepo.
-             apply (step_assign_correct x _ _ tp _t'7 _l).
-             ++ apply HRepo.
-             ++ (* opening a level keeps the lower literals *)
-                cbn [open_level lower]. assumption.
-             ++ assumption.
-             ++ apply Hpool.
-             ++ assumption.
-             ++ tmp.
-             ++ tmp.
+      run. store Asaved Hdl as m2 Hst2.
+      carry Hst2 r_nodup. keep_mem m2.
+      (* s->lims[s->dl] = s->tlen; *)
+      run. store Alims Hdl as m3 Hst3.
+      carry Hst3 r_nodup. keep_mem m3.
+      (* s->dl = s->dl + 1; *)
+      run. store r_dl as m4 Hst4.
+      cbn [cast_int_int] in Hst4. rewrite Hdl1 in Hst4.
+      normal. carry Hst4 r_nodup.
+      pose proof (rep_store_open_cur m m2 m3 m4
+                    HRep Hdl Hst2 Hst3 Hst4) as HRepo.
+      apply (step_assign_correct x _ _ tp _t'7 _l).
+      + apply HRepo.
+      + (* opening a level keeps the lower literals *)
+        cbn [open_level lower]. assumption.
+      + assumption.
+      + apply Hpool.
+      + assumption.
+      + tmp.
+      + tmp.
   Qed.
 
   (* Choosing a decision, after propagation without a conflict: the heuristic picks a
@@ -610,9 +513,7 @@ Section Parts.
     unfold cstep_decide. rewrite Hnv.
     unfold step_pick, f_step. cbn [fn_body drop_stmts].
     (* int l0 = pick(s); *)
-    run. eapply (exec_call_triple pick_fun (pick_correct sh N lss x2)).
-    - reflexivity.
-    - evs.
+    run. call pick_fun (pick_correct sh N lss x2).
     - assumption.
     - intros m1 v Hpost. normal. eapply exec_set.
       + ev.
@@ -699,53 +600,46 @@ Section Parts.
     unfold cstep_propagate. rewrite Hnv in Hcore2, Hext2 |- *.
     unfold step_propagate, f_step. cbn [fn_body drop_stmts].
     (* s->nshorts = 0; *)
-    run. eapply (exec_store_fld Fns).
-    - evl.
-    - reflexivity.
-    - ev.
-    - intros m1 Hst1. normal.
-      assert (HRep1: RepL m1 sh N lss (x1 <| shorts := [] |>)).
-      { apply (rep_store_shorts m m1 [] tsh HRep Ash).
-        - intros q Hq. cbn [length] in Hq. lia.
-        - cbn [length]. lia.
-        - intros i [].
-        - apply Hst1. }
-      assert (Apool1: PoolArr m1 sh tp).
-      { apply (arr_store_other Apool Hst1). neq Hnd. }
-      (* c = propagate(s); *)
-      run. eapply (exec_call_triple propagate_fun
-                     (propagate_correct sh N lss (x1 <| shorts := [] |>))).
-      + reflexivity.
-      + evs.
+    run. store Fns as m1 Hst1.
+    assert (HRep1: RepL m1 sh N lss (x1 <| shorts := [] |>)).
+    { apply (rep_store_shorts m m1 [] tsh HRep Ash).
+      - intros q Hq. cbn [length] in Hq. lia.
+      - cbn [length]. lia.
+      - intros i [].
+      - apply Hst1. }
+    assert (Apool1: PoolArr m1 sh tp).
+    { apply (arr_store_other Apool Hst1). neq Hnd. }
+    (* c = propagate(s); *)
+    run. call propagate_fun (propagate_correct sh N lss (x1 <| shorts := [] |>)).
+    - split.
+      + assumption.
       + split.
+        * (* clearing the short clauses keeps the lower literals *)
+          cbn [set_shorts lower]. assumption.
+        * exists tp. split.
+          -- assumption.
+          -- apply Hpool.
+    - intros m2 v Hv. normal. eapply exec_set.
+      + ev.
+      + normal.
+        destruct (propagate (S N) (x1 <| shorts := [] |>)) as [x2 r2] eqn:Hp.
+        cbn [fst snd] in *.
+        pose proof (lims_on_trail Hcore2) as [Hon2 _].
+        (* if (c < 0) return -1; if (c > 0) return resolve(s); *)
+        apply (on_conflict_correct x x2 r2 _ _ _ v).
+        * tmp.
+        * tmp.
         * assumption.
-        * split.
-          -- (* clearing the short clauses keeps the lower literals *)
-             cbn [set_shorts lower]. assumption.
-          -- exists tp. split.
-             ++ assumption.
-             ++ apply Hpool.
-      + intros m2 v Hv. normal. eapply exec_set.
-        * ev.
-        * normal.
-          destruct (propagate (S N) (x1 <| shorts := [] |>)) as [x2 r2] eqn:Hp.
-          cbn [fst snd] in *.
-          pose proof (lims_on_trail Hcore2) as [Hon2 _].
-          (* if (c < 0) return -1; if (c > 0) return resolve(s); *)
-          apply (on_conflict_correct x x2 r2 _ _ _ v).
-          -- tmp.
-          -- tmp.
+        * assumption.
+        * intros i ->. reflexivity.
+        * intros -> HRep2.
+          apply (step_pick_correct f x x2). constructor.
           -- assumption.
           -- assumption.
-          -- intros i ->. reflexivity.
-          -- intros -> HRep2.
-             apply (step_pick_correct f x x2). constructor.
-             ++ assumption.
-             ++ assumption.
-             ++ now apply extends_trans with (trail x1).
-             ++ assumption.
-             ++ tmp.
-             ++ tmp.
+          -- now apply extends_trans with (trail x1).
+          -- assumption.
+          -- tmp.
+          -- tmp.
   Qed.
 
   (* step makes the step of cstep on the represented context x, or gives up: it returns
@@ -776,9 +670,7 @@ Section Parts.
       pose proof (r_tlen (proj1 HRep)) as Ftlen.
       (* int t0 = s->tlen; int c = check_shorts(s); *)
       run. clear Ftlen.
-      eapply (exec_call_triple check_shorts_fun (check_shorts_correct sh N lss x)).
-      + reflexivity.
-      + evs.
+      call check_shorts_fun (check_shorts_correct sh N lss x).
       + assumption.
       + intros m1 v Hv. normal. eapply exec_set.
         * ev.

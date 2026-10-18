@@ -272,9 +272,7 @@ Section Dlit.
 
   Lemma decay_dlit: forall (h: Heur) (n: nat), dlit (decay h n) = dlit h.
   Proof.
-    intros h n. unfold decay. destruct (_ <=? _)%Z.
-    - reflexivity.
-    - reflexivity.
+    intros h n. unfold decay. destruct (_ <=? _)%Z; reflexivity.
   Qed.
 
   Lemma pick_dlit: forall (v: Values) (h: Heur) (fuel: nat),
@@ -415,13 +413,7 @@ Section Setters.
 
   Lemma heur_ok_inc: forall (v: Z), (1 <= v < act_lim / 2)%Z -> HeurOk n (set_inc h v).
   Proof.
-    intros v Hv. destruct Hok as [Hact Hinc Hheap Hhpos Hhsize Hdlit]. split.
-    - assumption.
-    - assumption.
-    - assumption.
-    - assumption.
-    - assumption.
-    - assumption.
+    intros v Hv. destruct Hok as [Hact Hinc Hheap Hhpos Hhsize Hdlit]. split; assumption.
   Qed.
 
   Lemma heur_ok_heap: forall (i b: nat), b < n -> HeurOk n (set_heap h i b).
@@ -455,13 +447,7 @@ Section Setters.
 
   Lemma heur_ok_hsize: forall (k: nat), k <= n -> HeurOk n (set_hsize h k).
   Proof.
-    intros k Hk. destruct Hok as [Hact Hinc Hheap Hhpos Hhsize Hdlit]. split.
-    - assumption.
-    - assumption.
-    - assumption.
-    - assumption.
-    - assumption.
-    - assumption.
+    intros k Hk. destruct Hok as [Hact Hinc Hheap Hhpos Hhsize Hdlit]. split; assumption.
   Qed.
 
   Lemma heur_ok_dlit: forall (a: nat) (o: option Lit),
@@ -486,18 +472,14 @@ Lemma child_lt: forall (h: Heur) (n i: nat), (S (2 * i) < n)%nat ->
 Proof.
   intros h n i Hi. unfold child.
   destruct (Nat.ltb_spec (S (S (2 * i))) n).
-  - destruct (_ <? _)%Z.
-    + assumption.
-    + assumption.
+  - destruct (_ <? _)%Z; assumption.
   - assumption.
 Qed.
 
 (* The atom heap_pop takes out is the one at the top. *)
 Lemma heap_pop_snd: forall (h: Heur), snd (heap_pop h) = tget (heap h) 0.
 Proof.
-  intros h. unfold heap_pop. destruct (0 <? hsize h - 1)%nat.
-  - reflexivity.
-  - reflexivity.
+  intros h. unfold heap_pop. destruct (0 <? hsize h - 1)%nat; reflexivity.
 Qed.
 
 (* Reinserting from q > j on is inserting the atom at q - 1 and reinserting from q - 1

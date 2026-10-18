@@ -15,6 +15,7 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import Model.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
@@ -560,9 +561,7 @@ Section Analysis.
           -- apply analysed_trans with (mark x y).
              ++ apply mark_analysed.
              ++ apply analysed_trans with ((mark x y) <| lower := lower x ++ [y] |>).
-                ** split.
-                   --- reflexivity.
-                   --- reflexivity.
+                ** split; reflexivity.
                 ** now apply IH in Hadd.
   Qed.
 
@@ -570,9 +569,7 @@ Section Analysis.
   Lemma unmark_range_analysed: forall (x: Ctx) (idx lo: nat),
     Analysed x (unmark_range x idx lo).
   Proof.
-    intros x idx lo. split.
-    - reflexivity.
-    - reflexivity.
+    intros x idx lo. split; reflexivity.
   Qed.
 
   (* The walk of the analysis only changes the marks, the lower literals and the
@@ -765,25 +762,22 @@ Section Marked.
        tget mk (lit_key (¬tget tr (prev_marked tr mk lo idx n - 1))) = true).
   Proof.
     intros tr mk lo n. induction n as [|n IH]; intros idx Hidx; cbn [prev_marked].
-    - split.
+    - splits.
       + lia.
-      + split.
-        * intros q Hq. lia.
-        * intros Hlt. lia.
+      + intros q Hq. lia.
+      + intros Hlt. lia.
     - destruct (tget mk (lit_key (¬tget tr (idx - 1)))) eqn:Htop.
-      + split.
+      + splits.
         * lia.
-        * split.
-          -- intros q Hq. lia.
-          -- intros _. assumption.
+        * intros q Hq. lia.
+        * intros _. assumption.
       + assert (Hidx1: idx - 1 = lo + n) by lia.
-        destruct (IH (idx - 1) Hidx1) as (Hrange & Hnone & Hmarked). split.
+        destruct (IH (idx - 1) Hidx1) as (Hrange & Hnone & Hmarked). splits.
         * lia.
-        * split.
-          -- intros q Hq. destruct (Nat.eq_dec q (idx - 1)) as [-> | Hne].
-             ++ assumption.
-             ++ apply Hnone. lia.
+        * intros q Hq. destruct (Nat.eq_dec q (idx - 1)) as [-> | Hne].
           -- assumption.
+          -- apply Hnone. lia.
+        * assumption.
   Qed.
 
   (* Unmarking only clears marks. *)
@@ -806,9 +800,7 @@ Section Marked.
     - lia.
     - destruct (Nat.eq_dec q (idx - 1)) as [-> | Hne].
       + apply unmark_trail_false. apply tget_tset_same.
-      + apply IH.
-        * lia.
-        * lia.
+      + apply IH; lia.
   Qed.
 End Marked.
 
@@ -860,9 +852,7 @@ Section AnalysisSpec.
     intros q Hq.
     apply (trace_last_level m0 n0 l0 _ Htrace).
     - assumption.
-    - apply (seg_nth (tr x) (tlen x) m0).
-      + assumption.
-      + assumption.
+    - apply (seg_nth (tr x) (tlen x) m0); assumption.
   Qed.
 
   (* The trail literals before lo have a lower level. *)
@@ -983,36 +973,32 @@ Section AnalysisSpec.
     intros ys t.
     induction ys as [|y ys IH]; intros idx mk lt h pathc x' r Hinv Hys Hadd;
       cbn [add_lits set_mrk set_lower set_hr mrk lower lvl nvars] in Hadd.
-    - injection Hadd as <- <-. split.
+    - injection Hadd as <- <-. splits.
       + apply Hinv.
-      + split.
-        * easy.
-        * intros p Hp. injection Hp as <-. split.
-          -- assumption.
-          -- intros y [].
+      + easy.
+      + intros p Hp. injection Hp as <-. split.
+        * assumption.
+        * intros y [].
     - assert (Hys': forall (z: Lit), In z ys -> is_lit t z = false -> Addable idx z).
       { intros z Hz. apply Hys. now right. }
       destruct (is_lit t y || tget mk (lit_key y)) eqn:Hskip.
       (* y is t, or marked already *)
       + destruct (IH idx mk lt h pathc x' r Hinv Hys' Hadd)
           as (Hmarks & Hmono & Hsome).
-        split.
+        splits.
         * assumption.
-        * split.
+        * assumption.
+        * intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin]. split.
           -- assumption.
-          -- intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin]. split.
-             ++ assumption.
-             ++ intros z [<- | Hz] Hz_t.
-                ** apply Hmono. rewrite Hz_t in Hskip. cbn [orb] in Hskip.
-                   destruct (am_marked (ai_marks Hinv) y Hskip)
-                     as [Hlt | (q & Hq & Hy)].
-                   --- apply in_or_app. now left.
-                   --- apply in_or_app. right. apply cur_lits_in. exists q. split.
-                       +++ lia.
-                       +++ split.
-                           *** assumption.
-                           *** assumption.
-                ** now apply Hin.
+          -- intros z [<- | Hz] Hz_t.
+             ++ apply Hmono. rewrite Hz_t in Hskip. cbn [orb] in Hskip.
+                destruct (am_marked (ai_marks Hinv) y Hskip)
+                  as [Hlt | (q & Hq & Hy)].
+                ** apply in_or_app. now left.
+                ** apply in_or_app. right. apply cur_lits_in. exists q. split.
+                   --- lia.
+                   --- split; assumption.
+             ++ now apply Hin.
       + apply orb_false_iff in Hskip as [Hy_t Hy_mk].
         destruct (Hys y (or_introl eq_refl) Hy_t) as [Hy_false Hy_pos].
         destruct Hinv as [Hrange [Hmarked Hlower] Hcount].
@@ -1020,11 +1006,10 @@ Section AnalysisSpec.
         (* y is of the current level: mark it and count it *)
         * apply Nat.eqb_eq in Hlv. destruct (Hy_pos Hlv) as (q0 & Hq0 & Hy_q0).
           destruct (nvars x <=? pathc).
-          -- injection Hadd as <- <-. split.
+          -- injection Hadd as <- <-. splits.
              ++ now split.
-             ++ split.
-                ** easy.
-                ** intros p Hp. discriminate.
+             ++ easy.
+             ++ intros p Hp. discriminate.
           --              assert (Huniq: forall (q: nat), lo <= q < lo + (idx - lo) ->
                               ¬tget (tr x) q = y -> q = q0).
              { intros q Hq Heq. apply distinct_pos.
@@ -1053,25 +1038,23 @@ Section AnalysisSpec.
                - now rewrite Hlen, Hcount. }
              destruct (IH idx _ lt _ (S pathc) x' r Hinv1 Hys' Hadd)
                as (Hmarks & Hmono & Hsome).
-             split.
+             splits.
              ++ assumption.
-             ++ split.
-                ** intros z Hz. apply Hmono. unfold aclause in Hz |- *.
-                   apply in_app_iff in Hz as [Hz | Hz].
-                   --- apply in_or_app. now left.
-                   --- apply in_or_app. right. apply Hin. now right.
-                ** intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin']. split.
-                   --- assumption.
-                   --- intros z [<- | Hz] Hz_t.
-                       +++ apply Hmono. apply in_or_app. right. apply Hin. now left.
-                       +++ now apply Hin'.
-        (* y is of a lower level: mark it and keep it *)
+             ++ intros z Hz. apply Hmono. unfold aclause in Hz |- *.
+                apply in_app_iff in Hz as [Hz | Hz].
+                ** apply in_or_app. now left.
+                ** apply in_or_app. right. apply Hin. now right.
+             ++ intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin']. split.
+                ** assumption.
+                ** intros z [<- | Hz] Hz_t.
+                   --- apply Hmono. apply in_or_app. right. apply Hin. now left.
+                   --- now apply Hin'.
+    (* y is of a lower level: mark it and keep it *)
         * apply Nat.eqb_neq in Hlv. destruct (nvars x <=? length lt).
-          -- injection Hadd as <- <-. split.
+          -- injection Hadd as <- <-. splits.
              ++ now split.
-             ++ split.
-                ** easy.
-                ** intros p Hp. discriminate.
+             ++ easy.
+             ++ intros p Hp. discriminate.
           -- assert (Hnot_cur: forall (q: nat), lo <= q < lo + (idx - lo) ->
                        tget (tset mk (lit_key y) true) (lit_key (¬tget (tr x) q)) =
                        tget mk (lit_key (¬tget (tr x) q))).
@@ -1103,19 +1086,18 @@ Section AnalysisSpec.
                - now rewrite Hsame. }
              destruct (IH idx _ (lt ++ [y]) _ pathc x' r Hinv1 Hys' Hadd)
                as (Hmarks & Hmono & Hsome).
-             split.
+             splits.
              ++ assumption.
-             ++ split.
-                ** intros z Hz. apply Hmono. unfold aclause in Hz |- *. rewrite Hsame.
-                   apply in_app_iff in Hz as [Hz | Hz].
-                   --- apply in_or_app. left. apply in_or_app. now left.
-                   --- apply in_or_app. now right.
-                ** intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin']. split.
-                   --- assumption.
-                   --- intros z [<- | Hz] Hz_t.
-                       +++ apply Hmono. apply in_or_app. left. apply in_or_app. right.
-                           now left.
-                       +++ now apply Hin'.
+             ++ intros z Hz. apply Hmono. unfold aclause in Hz |- *. rewrite Hsame.
+                apply in_app_iff in Hz as [Hz | Hz].
+                ** apply in_or_app. left. apply in_or_app. now left.
+                ** apply in_or_app. now right.
+             ++ intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin']. split.
+                ** assumption.
+                ** intros z [<- | Hz] Hz_t.
+                   --- apply Hmono. apply in_or_app. left. apply in_or_app. right.
+                       now left.
+                   --- now apply Hin'.
   Qed.
 
   (* Without a literal to assert, clearing the marks of the current level below idx
@@ -1175,9 +1157,7 @@ Section AnalysisSpec.
     induction fuel as [|fuel IH]; intros idx mk lt h pathc x' ou Hinv Hent Hfuel Hloop;
       cbn [analyze_loop] in Hloop; rewrite ?reason_lits_analysed in Hloop;
       cbn [set_mrk set_lower set_hr mrk lower tr rsn] in Hloop.
-    - injection Hloop as <- <-. apply (aresult_fail idx).
-      + apply Hinv.
-      + apply Hinv.
+    - injection Hloop as <- <-. apply (aresult_fail idx); apply Hinv.
     - pose proof Hinv as [Hrange Hmarks Hcount].
       destruct (Nat.eqb pathc 0) eqn:Hzero.
       + injection Hloop as <- <-. now apply (aresult_fail idx).
@@ -1467,9 +1447,7 @@ Section Reasons.
   Proof.
     intros rps len n. induction n as [|n IH]; simpl.
     - lia.
-    - destruct (tget rps n <? len).
-      + lia.
-      + lia.
+    - destruct (tget rps n <? len); lia.
   Qed.
 End Reasons.
 
@@ -1496,33 +1474,27 @@ Section Results.
           -- easy.
           -- split.
              ++ intros y [].
-             ++ split.
-                ** easy.
-                ** easy.
+             ++ split; easy.
     - destruct (IH _ _ _ _ Hun) as (Hx' & Hcleared & Hother & Hle & Hmx & Hleast).
-      cbn [set_mrk mrk lvl] in Hother, Hle, Hleast. split.
+      cbn [set_mrk mrk lvl] in Hother, Hle, Hleast. splits.
       + rewrite Hx' at 1. reflexivity.
-      + split.
-        * intros z [-> | Hz].
-          -- destruct (in_dec Lit.eq_dec z ys) as [Hin | Hnot_in].
-             ++ now apply Hcleared.
-             ++ rewrite Hother.
-                ** apply tget_tset_same.
-                ** intros z' Hz' Heq. apply lit_key_inj in Heq. congruence.
+      + intros z [-> | Hz].
+        * destruct (in_dec Lit.eq_dec z ys) as [Hin | Hnot_in].
           -- now apply Hcleared.
-        * split.
-          -- intros k Hk. rewrite Hother.
-             ++ apply tget_tset_other. apply Hk. now left.
-             ++ intros z Hz. apply Hk. now right.
-          -- split.
-             ++ intros z [-> | Hz].
-                ** lia.
-                ** now apply Hle.
-             ++ split.
-                ** lia.
-                ** intros b Hb Hlt. apply Hleast.
-                   --- pose proof (Hlt y (or_introl eq_refl)). lia.
-                   --- intros z Hz. apply Hlt. now right.
+          -- rewrite Hother.
+             ++ apply tget_tset_same.
+             ++ intros z' Hz' Heq. apply lit_key_inj in Heq. congruence.
+        * now apply Hcleared.
+      + intros k Hk. rewrite Hother.
+        * apply tget_tset_other. apply Hk. now left.
+        * intros z Hz. apply Hk. now right.
+      + intros z [-> | Hz].
+        * lia.
+        * now apply Hle.
+      + lia.
+      + intros b Hb Hlt. apply Hleast.
+        * pose proof (Hlt y (or_introl eq_refl)). lia.
+        * intros z Hz. apply Hlt. now right.
   Qed.
 
   (* With positions in increasing order, pop_reasons keeps exactly the reason clauses
@@ -1551,9 +1523,7 @@ Section Results.
         * split.
           -- lia.
           -- intros j Hj. destruct (Nat.eq_dec j n) as [-> | Hne].
-             ++ split.
-                ** lia.
-                ** lia.
+             ++ split; lia.
              ++ apply Hiff. lia.
   Qed.
 End Results.
@@ -1583,9 +1553,7 @@ Qed.
 (* Pushing a reason clause keeps the watch lists. *)
 Lemma push_reason_wls: forall (x: Ctx) (u: Lit), wls (fst (push_reason x u)) = wls x.
 Proof.
-  intros x u. unfold push_reason. destruct (_ && _).
-  - reflexivity.
-  - reflexivity.
+  intros x u. unfold push_reason. destruct (_ && _); reflexivity.
 Qed.
 
 (* The highest level unmark_lower finds is at most a bound on the levels of the lower

@@ -104,11 +104,8 @@ Proof.
         intros Hv'. run. unfold phase. destruct (tget (phs x) (extract l)) as [[|]|].
         -- simpl in Hv. lia.
         -- simpl in Hv'. lia.
-        -- eapply exec_return.
-           ++ ev.
-           ++ exists (vint (key l)). split.
-              ** apply result_int.
-              ** split; reflexivity.
+        -- return_int.
+           split; reflexivity.
 Qed.
 
 Lemma phase_fun: FunAt _phase f_phase.

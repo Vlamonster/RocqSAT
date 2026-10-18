@@ -290,7 +290,7 @@ Lemma lits_clause_mem: forall (m: mem) (sh: Shape) (N: nat)
 Proof.
   intros m sh N lss zl ta tm HP. constructor.
   - apply (lp_clauses HP).
-  - apply Mem.unchanged_on_refl.
+  - frame.
 Qed.
 
 
@@ -343,11 +343,7 @@ Section Loops.
       destruct HI as [Hs Hn Hnl He Hq Hqle HM (tm & Am & Hm)].
       pose proof HM as [[Fnv Fncl Fcs Fcl Fm As Al] Hun].
       (* while (q < e) *)
-      apply exec_seq. eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      apply exec_seq. branch.
       + (* s->mrk[s->clits[q]] = 1; q++; *)
         intros Hlt. assert (Hq_lt: (q < nclits sh)%nat) by lia.
         pose proof (Hat q Hq_lt) as Hy.
@@ -356,24 +352,20 @@ Section Loops.
         assert (Hadd: Int.add (Int.repr (Z.of_nat q)) (Int.repr 1)
                       = Int.repr (Z.of_nat (S q))).
         { apply incr_nat. lia. }
-        apply exec_skip. normal. run. eapply (exec_store_arr Am Hky).
-        * evl.
-        * ofs.
-        * reflexivity.
-        * ev.
-        * intros m3 Hst. normal. run. ints. apply loopk_next with (S q).
-          -- unfold ltof. lia.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ lia.
-             ++ apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM Hst).
-             ++ eexists. split.
-                ** apply (arr_store Am Hky Hst).
-                ** rewrite span_snoc by lia. apply marks_add. assumption.
+        apply exec_skip. normal. run. store Am Hky as m3 Hst.
+        run. ints. apply loopk_next with (S q).
+        * unfold ltof. lia.
+        * constructor.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- lia.
+          -- apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM Hst).
+          -- eexists. split.
+             ++ apply (arr_store Am Hky Hst).
+             ++ rewrite span_snoc by lia. apply marks_add. assumption.
       + (* q >= e: break *)
         intros Hge. apply exec_break. abrupt. apply loopk_break. split.
         * reflexivity.
@@ -385,9 +377,7 @@ Section Loops.
           -- tmp.
           -- lia.
           -- assumption.
-          -- exists tm. split.
-             ++ assumption.
-             ++ assumption.
+          -- exists tm. split; assumption.
     - assumption.
   Qed.
 
@@ -461,40 +451,36 @@ Section Loops.
         assert (Hadd: Int.add (Int.repr (Z.of_nat k)) (Int.repr 1)
                       = Int.repr (Z.of_nat (S k))).
         { apply incr_nat. lia. }
-        run. eapply (exec_store_arr Am Hky).
-        * evl.
-        * ofs.
-        * reflexivity.
-        * ev.
-        * intros m3 Hst. normal. run. ints. apply loopk_next with (S k).
-          -- unfold list_variant, ltof. lia.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
+        run. store Am Hky as m3 Hst.
+        run. ints. apply loopk_next with (S k).
+        * unfold list_variant, ltof. lia.
+        * constructor.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- lia.
+          -- (* the key at k is not negative *)
+             intros j Hj. destruct (Nat.eq_dec j k) as [-> | Hne].
              ++ lia.
-             ++ (* the key at k is not negative *)
-                intros j Hj. destruct (Nat.eq_dec j k) as [-> | Hne].
-                ** lia.
-                ** apply Hkeys. lia.
-             ++ (* y' was not done yet *)
-                rewrite decoded_snoc, <- Hy'. apply NoDup_app.
-                ** assumption.
+             ++ apply Hkeys. lia.
+          -- (* y' was not done yet *)
+             rewrite decoded_snoc, <- Hy'. apply NoDup_app.
+             ++ assumption.
+             ++ constructor.
+                ** easy.
                 ** constructor.
-                   --- easy.
-                   --- constructor.
-                ** intros l Hl [<- | []]. contradiction.
-             ++ (* y' is a clause literal *)
-                rewrite decoded_snoc, <- Hy'. intros l Hl.
-                apply in_app_or in Hl as [Hl | [<- | []]].
-                ** apply Hin. assumption.
-                ** assumption.
-             ++ apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM Hst).
-             ++ eexists. split.
-                ** apply (arr_store Am Hky Hst).
-                ** rewrite decoded_snoc, <- Hy'. apply marks_unmark. assumption.
+             ++ intros l Hl [<- | []]. contradiction.
+          -- (* y' is a clause literal *)
+             rewrite decoded_snoc, <- Hy'. intros l Hl.
+             apply in_app_or in Hl as [Hl | [<- | []]].
+             ++ apply Hin. assumption.
+             ++ assumption.
+          -- apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM Hst).
+          -- eexists. split.
+             ++ apply (arr_store Am Hky Hst).
+             ++ rewrite decoded_snoc, <- Hy'. apply marks_unmark. assumption.
       + (* the mark is 0 here, but the test said it was not *)
         exfalso. apply Hmarked. reflexivity.
   Qed.
@@ -526,32 +512,20 @@ Section Loops.
       pose proof HM as [[Fnv Fncl Fcs Fcl Fm As Al] Hun].
       destruct (alls_kept m m2 sh N lss ta Hnd HM Fal Aal) as [Fal2 Aal2].
       (* while (k < nl) *)
-      apply exec_seq. eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      apply exec_seq. branch.
       + intros Hlt. apply exec_skip. normal.
         (* int y = s->alls[k]; *)
         run.
         (* if (y < 0) return 0; *)
         assert (Hsmall_k: Small (ta k)) by (apply Hsmall; lia).
-        eapply exec_if_lt.
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
+        branch.
         * (* not a literal *)
           intros _. eapply exec_return.
           -- ev.
           -- ret. right. apply (lits_reject m m2 sh N lss tm HM Am).
         * intros Hpos. apply exec_skip. normal. apply exec_seq.
           (* if (y >= n) return 0; *)
-          eapply exec_if_ge.
-          -- ev.
-          -- ev.
-          -- reflexivity.
-          -- lia.
+          branch.
           -- (* an atom not below N *)
              intros _. eapply exec_return.
              ++ ev.
@@ -577,9 +551,7 @@ Section Loops.
           -- assumption.
           -- assumption.
           -- assumption.
-          -- exists tm. split.
-             ++ assumption.
-             ++ assumption.
+          -- exists tm. split; assumption.
     - assumption.
   Qed.
 
@@ -622,11 +594,7 @@ Section Loops.
       destruct HI as [Hs He Hq Hqle Hcover HM (tm & Am & Hm)].
       pose proof HM as [[Fnv Fncl Fcs Fcl Fm As Al] Hun].
       (* while (q < e) *)
-      apply exec_seq. eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      apply exec_seq. branch.
       + intros Hlt. assert (Hq_lt: (q < nclits sh)%nat) by lia.
         pose proof (Hat q Hq_lt) as Hy.
         assert (Hky: (lit_key (lits sh q) < 2 * N)%nat)
@@ -675,9 +643,7 @@ Section Loops.
                            apply existsb_key in Hrem. congruence.
                    --- apply Hcover. lia.
                 ** assumption.
-                ** exists tm. split.
-                   --- assumption.
-                   --- assumption.
+                ** exists tm. split; assumption.
       + (* q >= e: break *)
         intros Hge. apply exec_break. abrupt. apply loopk_break. left. split.
         * reflexivity.
@@ -688,9 +654,7 @@ Section Loops.
           -- lia.
           -- assumption.
           -- assumption.
-          -- exists tm. split.
-             ++ assumption.
-             ++ assumption.
+          -- exists tm. split; assumption.
     - assumption.
   Qed.
 
@@ -725,9 +689,7 @@ Section Loops.
       + tmp.
       + lia.
       + assumption.
-      + exists tm0. split.
-        * assumption.
-        * assumption.
+      + exists tm0. split; assumption.
     - intros le1 m1 out [-> HI1]. normal.
       destruct HI1 as [Hs1 Hn1 Hnl1 He1 Hq1 _ HM1 (tm1 & Am1 & Hm1)].
       (* k = 0; the loop over alls *)
@@ -759,37 +721,28 @@ Section Loops.
              ++ lia.
              ++ intros q' Hq'. lia.
              ++ assumption.
-             ++ exists tm2. split.
-                ** assumption.
-                ** assumption.
+             ++ exists tm2. split; assumption.
           -- intros le3 m3 out [[-> HI3] | (-> & Hmk3 & Hun3)].
              ++ (* return 1; *)
                 normal. destruct HI3 as [Hs3 He3 Hq3 _ Hcover HM3 (tm3 & Am3 & Hm3)].
-                eapply exec_return.
-                ** ev.
-                ** exists (vint 1). split.
-                   --- apply result_int.
-                   --- apply (lits_post_accept m m3 sh N ta tm3 nz).
-                       +++ assumption.
-                       +++ apply (cm_frame HM3).
-                       +++ assumption.
-                       +++ assumption.
-                       +++ assumption.
-                       +++ assumption.
-                       +++ assumption.
-                       +++ assumption.
+                return_int.
+                apply (lits_post_accept m m3 sh N ta tm3 nz).
+                ** assumption.
+                ** apply (cm_frame HM3).
+                ** assumption.
+                ** assumption.
+                ** assumption.
+                ** assumption.
+                ** assumption.
+                ** assumption.
              ++ (* return 0 in the last loop *)
                 ret. exists (vint 0). split.
                 ** apply result_int.
-                ** apply lits_post_reject.
-                   --- assumption.
-                   --- assumption.
+                ** apply lits_post_reject; assumption.
         * (* return 0 in the loop over alls *)
           ret. exists (vint 0). split.
           -- apply result_int.
-          -- apply lits_post_reject.
-             ++ assumption.
-             ++ assumption.
+          -- apply lits_post_reject; assumption.
   Qed.
 End Loops.
 
@@ -823,32 +776,18 @@ Proof.
     (* int n = 2 * s->nv; int nl = s->nlits; int e = s->cstart[s->ncl]; *)
     run. ints. rewrite Hend.
     (* if (nl < 0) return 0; *)
-    eapply exec_if_lt.
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
-    + intros _. eapply exec_return.
-      * ev.
-      * ret. exists (vint 0). split.
-        -- apply result_int.
-        -- apply (lits_post_reject m m sh N zl ta).
-           ++ exists tm. assumption.
-           ++ apply Mem.unchanged_on_refl.
+    branch.
+    + intros _. return_int.
+      apply (lits_post_reject m m sh N zl ta).
+      * exists tm. assumption.
+      * frame.
     + intros Hpos. apply exec_skip. normal. apply exec_seq.
       (* if (nl > n) return 0; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
-      * intros _. eapply exec_return.
-        -- ev.
-        -- ret. exists (vint 0). split.
-           ++ apply result_int.
-           ++ apply (lits_post_reject m m sh N zl ta).
-              ** exists tm. assumption.
-              ** apply Mem.unchanged_on_refl.
+      branch.
+      * intros _. return_int.
+        apply (lits_post_reject m m sh N zl ta).
+        -- exists tm. assumption.
+        -- frame.
       * (* nl is some nz at most 2 N: the loops *)
         intros Hsm. apply exec_skip. normal.
         assert (Hz: zl = Z.of_nat (Z.to_nat zl)) by lia.

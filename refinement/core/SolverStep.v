@@ -17,6 +17,7 @@ From RocqSAT Require Import Strategy.
 From RocqSAT.rules Require Import Fail.
 From RocqSAT.rules Require Import Backtrack.
 From RocqSAT.rules Require Import Backjump.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.
@@ -347,9 +348,7 @@ Proof.
         destruct (lims_split (lims x) m' n l Hlims) as (lims' & Hskip_l & Hlims' & _).
         rewrite no_decisions_zero in Hskip_l by assumption. simpl in Hskip_l.
         now rewrite Hskip_l.
-      * left. split.
-        -- reflexivity.
-        -- reflexivity.
+      * left. split; reflexivity.
 Qed.
 
 (* Resolving a conflict on a false clause is a Fail or Backjump step, to a consistent
@@ -492,15 +491,14 @@ Proof.
     + assumption.
     + assumption.
     + assumption.
-    + right. split.
+    + right. splits.
       * now rewrite Hdec_mt.
-      * split.
-        -- apply (entailed_incl f (lower x2 ++ [u])).
-           ++ assumption.
-           ++ intros y Hy. apply in_app_iff in Hy as [Hy | [<- | []]].
-              ** right. apply Hy.
-              ** now left.
-        -- apply Hlt_false.
+      * apply (entailed_incl f (lower x2 ++ [u])).
+        -- assumption.
+        -- intros y Hy. apply in_app_iff in Hy as [Hy | [<- | []]].
+           ++ right. apply Hy.
+           ++ now left.
+      * apply Hlt_false.
 Qed.
 
 (* Resolving a conflict reached by a derivation from m is a step from m. *)

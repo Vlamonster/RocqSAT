@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -126,40 +127,30 @@ Section Loop.
         * assumption.
         * split.
           -- assumption.
-          -- split.
-             ++ assumption.
-             ++ assumption.
+          -- split; assumption.
       + intros m3 v Hassign. normal.
         destruct Hassign as [-> | (-> & HRep3 & Apool3)].
         * (* out of room: return -1; *)
-          eapply (exec_if_nonzero 1).
-          -- ev.
-          -- reflexivity.
-          -- lia.
+          branch 1.
           -- intros Hnonzero. eapply exec_return.
              ++ ev.
              ++ right. reflexivity.
           -- intros Hzero. lia.
-        * eapply (exec_if_nonzero 0).
-          -- ev.
-          -- reflexivity.
-          -- lia.
+        * branch 0.
           -- intros Hnonzero. lia.
-          -- intros Hzero. apply exec_skip. left. split.
+          -- intros Hzero. apply exec_skip. left. splits.
              ++ reflexivity.
-             ++ split.
-                ** tmp.
+             ++ tmp.
+             ++ tmp.
+             ++ exists (assign xc a (input i)). split.
                 ** split.
-                   --- tmp.
-                   --- exists (assign xc a (input i)). split.
-                       +++ split.
-                           *** assumption.
-                           *** split.
-                               ---- cbn [assign lower]. assumption.
-                               ---- exists tp. split; assumption.
-                       +++ split.
-                           *** assumption.
-                           *** rewrite Hl in Hcheck. assumption.
+                   --- assumption.
+                   --- split.
+                       +++ cbn [assign lower]. assumption.
+                       +++ exists tp. split; assumption.
+                ** split.
+                   --- assumption.
+                   --- rewrite Hl in Hcheck. assumption.
     - (* a is true: nothing to do *)
       intros Hassigned.
       assert (Hl: lookup (vals xc) a = Some true).
@@ -167,17 +158,15 @@ Section Loop.
         - reflexivity.
         - exfalso. apply Hnotfalse. reflexivity.
         - exfalso. apply Hassigned. reflexivity. }
-      apply exec_skip. left. split.
+      apply exec_skip. left. splits.
       + reflexivity.
-      + split.
-        * tmp.
+      + tmp.
+      + tmp.
+      + exists xc. split.
+        * assumption.
         * split.
-          -- tmp.
-          -- exists xc. split.
-             ++ assumption.
-             ++ split.
-                ** assumption.
-                ** rewrite Hl in Hcheck. assumption.
+          -- assumption.
+          -- rewrite Hl in Hcheck. assumption.
   Qed.
 
   (* One pass of the loop, for the short clause i at position q - 1:
@@ -233,11 +222,7 @@ Section Loop.
     { rewrite add_repr. f_equal. lia. }
     cbn [check_shorts] in Hcheck. rewrite (proj2 Hlits i Hi_lt) in Hcheck.
     (* int b = s->cstart[i]; if (b == s->cstart[i + 1]) return i + 1; *)
-    run. eapply exec_if_eq.
-    - ev.
-    - ev.
-    - reflexivity.
-    - lia.
+    run. branch.
     - (* clause i is empty: a conflict, return i + 1; *)
       intros Hempty.
       assert (Heq: starts sh i = starts sh (S i)) by lia.
@@ -246,11 +231,10 @@ Section Loop.
       + ev.
       + ret. right. exists (enc_conf (Some i)). split.
         * cbn [cast_int_int]. rewrite enc_conf_some. reflexivity.
-        * right. rewrite Hcheck. cbn [fst snd]. split.
+        * right. rewrite Hcheck. cbn [fst snd]. splits.
           -- reflexivity.
-          -- split.
-             ++ assumption.
-             ++ intros i' Hsome. injection Hsome as <-. assumption.
+          -- assumption.
+          -- intros i' Hsome. injection Hsome as <-. assumption.
     - (* clause i has a first literal a: int a = s->clits[b]; int v = lit_value(s, a); *)
       intros Hne.
       replace (starts sh (S i) - starts sh i)%nat
@@ -263,13 +247,8 @@ Section Loop.
       rewrite Hta, lit_of_key in Hcheck.
       pose proof (key_small _ N Ha HN) as Hka.
       run. rewrite Hta.
-      eapply (exec_call_triple lit_value_fun
-                (lit_value_correct sh N lss xc a)).
-      + reflexivity.
-      + evs.
-      + split.
-        * assumption.
-        * assumption.
+      call lit_value_fun (lit_value_correct sh N lss xc a).
+      + split; assumption.
       + intros m2 v [-> ->]. normal. run.
         (* if (v == -1) return i + 1; *)
         eapply (exec_if_eq _ (-1)).
@@ -291,11 +270,10 @@ Section Loop.
           -- ev.
           -- ret. right. exists (enc_conf (Some i)). split.
              ++ cbn [cast_int_int]. rewrite enc_conf_some. reflexivity.
-             ++ right. rewrite Hcheck. cbn [fst snd]. split.
+             ++ right. rewrite Hcheck. cbn [fst snd]. splits.
                 ** reflexivity.
-                ** split.
-                   --- assumption.
-                   --- intros i' Hsome. injection Hsome as <-. assumption.
+                ** assumption.
+                ** intros i' Hsome. injection Hsome as <-. assumption.
         * (* a is true or unassigned *)
           intros Hnotfalse. run.
           (* if (v == 0) { if (!assign(s, a, i + 1)) return -1; } ends with a context
@@ -356,11 +334,7 @@ Section Loop.
       pose proof (r_lss_small HRepc) as Hlss.
       rewrite Hsh in Hshle. apply exec_seq.
       (* if (q > 0) ... else break; *)
-      eapply (exec_if_gt _ 0).
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      branch _ 0.
       + (* q > 0: the body *)
         intros Hpos. destruct q as [|q].
         * lia.
@@ -413,15 +387,11 @@ Proof.
       * rewrite Nat.sub_diag. assumption.
     + intros le' m' out [(-> & Hnone & HRep') | (z & -> & Hz)].
       * (* no conflict: return 0; *)
-        normal. eapply exec_return.
-        -- ev.
-        -- exists (vint 0). split.
-           ++ apply result_int.
-           ++ right. split.
-              ** rewrite Hnone. reflexivity.
-              ** split.
-                 --- assumption.
-                 --- rewrite Hnone. intros i Heq. discriminate.
+        normal. return_int.
+        right. splits.
+        -- rewrite Hnone. reflexivity.
+        -- assumption.
+        -- rewrite Hnone. intros i Heq. discriminate.
       * (* a return: i + 1 on a conflict on clause i, or -1 when out of room *)
         abrupt. exists (vint z). split.
         -- apply result_int.

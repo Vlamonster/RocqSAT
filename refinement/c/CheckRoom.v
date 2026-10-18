@@ -15,6 +15,7 @@ From compcert Require Import Cop.
 From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement.c Require Import Arrays.
 From RocqSAT.refinement.c Require Import Logic.
 From RocqSAT.refinement.c Require Import Common.
@@ -119,11 +120,7 @@ Proof.
     + intros q le1 m1 [off HI]. destruct HI as [Hs Hn Hoff Hq -> Hqn Hoffr Hfits Horder].
       apply exec_seq.
       (* if (q < n) ... else break; *)
-      eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* q < n: int o = s->woff[q]; int c = s->wcap[q]; *)
         intros Hlt. assert (Hq_lt: (q < 2 * N)%nat) by lia.
         destruct (Hsmall q Hq_lt) as [Hsw Hsc].
@@ -132,32 +129,18 @@ Proof.
         { rewrite add_repr by lia. f_equal. lia. }
         run.
         (* if (o < off) return 0; *)
-        eapply exec_if_lt.
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- lia.
-        -- intros _. eapply exec_return.
-           ++ ev.
-           ++ ret. exists (vint 0). split.
-              ** apply result_int.
-              ** split.
-                 --- reflexivity.
-                 --- now left.
+        branch.
+        -- intros _. return_int.
+           split.
+           ++ reflexivity.
+           ++ now left.
         -- (* if (c < 0) return 0; *)
            intros Hlo. run.
-           eapply exec_if_lt.
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
-           ++ intros _. eapply exec_return.
-              ** ev.
-              ** ret. exists (vint 0). split.
-                 --- apply result_int.
-                 --- split.
-                     +++ reflexivity.
-                     +++ now left.
+           branch.
+           ++ intros _. return_int.
+              split.
+              ** reflexivity.
+              ** now left.
            ++ (* if (c > s->npool - o) return 0; *)
               intros Hlc. run.
               eapply exec_if_gt.
@@ -169,13 +152,10 @@ Proof.
                      reflexivity.
               ** reflexivity.
               ** lia.
-              ** intros _. eapply exec_return.
-                 --- ev.
-                 --- ret. exists (vint 0). split.
-                     +++ apply result_int.
-                     +++ split.
-                         *** reflexivity.
-                         *** now left.
+              ** intros _. return_int.
+                 split.
+                 --- reflexivity.
+                 --- now left.
               ** (* off = o + c; q++; and the list at q extends the invariant *)
                  intros Hlr.
                  assert (Hoc: Int.add (Int.repr (tw q)) (Int.repr (tc q))
@@ -198,18 +178,14 @@ Proof.
                      +++ assumption.
       * (* q >= n: break; return 1; every list fits, in order *)
         intros Hge. apply exec_break. abrupt. apply loopk_break. normal.
-        eapply exec_return.
-        -- ev.
-        -- exists (vint 1). split.
-           ++ apply result_int.
-           ++ split.
-              ** reflexivity.
-              ** right. split.
-                 --- reflexivity.
-                 --- split.
-                     +++ intros k Hk. assert (Hkq: (k < q)%nat) by lia.
-                         specialize (Hfits k Hkq). lia.
-                     +++ intros k k' Hk. apply Horder. lia.
+        return_int.
+        split.
+        -- reflexivity.
+        -- right. splits.
+           ++ reflexivity.
+           ++ intros k Hk. assert (Hkq: (k < q)%nat) by lia.
+              specialize (Hfits k Hkq). lia.
+           ++ intros k k' Hk. apply Horder. lia.
     + (* The invariant holds at q = 0, with off = 0. *)
       exists 0. constructor.
       * tmp.

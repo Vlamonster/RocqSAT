@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -232,9 +233,7 @@ Proof.
       * exists i. split.
         -- lia.
         -- assumption.
-    + exists n. split.
-      * lia.
-      * lia.
+    + exists n. split; lia.
 Qed.
 
 (* The clause literals, at the positions below nclits sh, are the literals of the
@@ -497,10 +496,7 @@ Section Phases.
       + intros j y Hj. cbn [ictx nr] in Hj. lia.
       + intros j Hj. cbn [ictx nr] in Hj. lia.
       + (* the empty heuristic *)
-        apply empty_heur_ok.
-        * assumption.
-        * assumption.
-        * assumption.
+        apply empty_heur_ok; assumption.
     - split.
       + (* no lower literals *)
         reflexivity.
@@ -541,36 +537,20 @@ Section Phases.
     pose proof (r_lss_small (proj1 HRep0)) as Hlss.
     unfold init_index, f_init. cbn [fn_body drop_stmts].
     (* int ns = index_clauses(s); *)
-    run. eapply (exec_call_triple index_clauses_fun
-                   (index_clauses_correct S' N lss al (length acc) rc tsh)).
-    - reflexivity.
-    - evs.
+    run. call index_clauses_fun (index_clauses_correct S' N lss al (length acc) rc tsh).
     - split.
       + assumption.
-      + split.
-        * assumption.
-        * assumption.
+      + split; assumption.
     - intros m1 v Hv. normal. run.
       destruct Hv as [-> | (tsh' & -> & [HRep1 Hpool1] & Ash1 & Htsh1)].
       + (* out of room: if (ns < 0) return 0; *)
-        eapply (exec_if_lt (-1) 0).
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
-        * intros _. eapply exec_return.
-          -- ev.
-          -- ret. exists (vint 0). split.
-             ++ apply result_int.
-             ++ now left.
+        branch (-1) 0.
+        * intros _. return_int.
+          now left.
         * intros Hge. lia.
       + (* the short clauses ns: s->nshorts = ns; return 1; *)
         pose proof (idx_lists lss (length lss) (le_n _)) as (_ & Hshc & Hshl).
-        eapply (exec_if_lt _ 0).
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
+        branch _ 0.
         * intros Hlt. lia.
         * intros _. keep_mem m1.
           pose proof (Rep.r_nodup HRep1) as Hnd.
@@ -578,49 +558,34 @@ Section Phases.
           unfold S', room_shape, with_room in *.
           cbn [b_s b_shorts b_wpool b_act b_heap b_hpos b_dlit] in Fns1, Ash1, Hnd,
             Hpool1.
-          run. eapply (exec_store_fld Fns1).
-          -- evl.
-          -- reflexivity.
-          -- ev.
-          -- intros m2 Hst2. normal.
-             pose proof (rep_store_shorts m1 m2 _ tsh' HRep1 Ash1
-                           Htsh1 Hshl Hshc Hst2) as HRep2.
-             destruct Hpool1 as [_ [tp [Apool1 Hpool1]]].
-             assert (Apool2: Arr m2 (b_wpool sh) (2 * npool S') tp).
-             { apply (arr_store_other Apool1 Hst2). neq Hnd. }
-             keep_mem m2.
-             (* add_atoms(s); *)
-             run. eapply (exec_call_triple_none add_atoms_fun
-                            (add_atoms_correct S' N lss _)).
+          run. store Fns1 as m2 Hst2.
+          pose proof (rep_store_shorts m1 m2 _ tsh' HRep1 Ash1
+                        Htsh1 Hshl Hshc Hst2) as HRep2.
+          destruct Hpool1 as [_ [tp [Apool1 Hpool1]]].
+          assert (Apool2: Arr m2 (b_wpool sh) (2 * npool S') tp).
+          { apply (arr_store_other Apool1 Hst2). neq Hnd. }
+          keep_mem m2.
+          (* add_atoms(s); *)
+          run. call add_atoms_fun (add_atoms_correct S' N lss _).
+          -- apply HRep2.
+          -- intros m3 v3 [HRep3 Hun3]. normal. unfold HeurFrame, S' in Hun3.
+             cbn [b_act b_heap b_hpos b_dlit b_s] in Hun3.
+             transfer Hun3 Hnd. keep_mem m3.
+             (* return 1; *)
+             return_int.
+             right. splits.
              ++ reflexivity.
-             ++ evs.
-             ++ apply HRep2.
-             ++ intros m3 v3 [HRep3 Hun3]. normal. unfold HeurFrame, S' in Hun3.
-                cbn [b_act b_heap b_hpos b_dlit b_s] in Hun3.
-                transfer Hun3 Hnd. keep_mem m3.
-                (* return 1; *)
-                eapply exec_return.
-                ** ev.
-                ** exists (vint 1). split.
-                   --- apply result_int.
-                   --- right. split.
-                       +++ reflexivity.
-                       +++ split.
-                           *** assumption.
-                           *** exists (fun (k: nat) => Z.to_nat (tw k)),
-                                 (fun (k: nat) => Z.to_nat (tc k)), acc.
-                               split.
-                               ---- rewrite initial_of_idx. split.
-                                    ++++ apply HRep3.
-                                    ++++ split.
-                                         ----- (* no lower literals *)
-                                               reflexivity.
-                                         ----- exists tp. split.
-                                               +++++ assumption.
-                                               +++++ assumption.
-                               ---- split.
-                                    ++++ assumption.
-                                    ++++ assumption.
+             ++ assumption.
+             ++ exists (fun (k: nat) => Z.to_nat (tw k)),
+                  (fun (k: nat) => Z.to_nat (tc k)), acc.
+                split.
+                ** rewrite initial_of_idx. split.
+                   --- apply HRep3.
+                   --- split.
+                       +++ (* no lower literals *)
+                           reflexivity.
+                       +++ exists tp. split; assumption.
+                ** split; assumption.
   Qed.
 
   (* The checks, after the tables and fields are cleared:
@@ -653,112 +618,72 @@ Section Phases.
     assert (HF: ClauseFlds sh N lss m) by (constructor; assumption).
     unfold init_checks, f_init. cbn [fn_body drop_stmts].
     (* if (!check_clauses(s)) return 0; *)
-    run. eapply (exec_call_triple check_clauses_fun
-                   (check_clauses_correct sh N lss zeros)).
-    - reflexivity.
-    - evs.
+    run. call check_clauses_fun (check_clauses_correct sh N lss zeros).
     - repeat (split; [assumption | ]). intros k Hk. reflexivity.
     - intros m1 v Hv. normal. run.
       destruct Hv as [-> | (-> & Hat & Hndc & (tm1 & Amrk1 & Hm1) & Hun1)].
       + (* a literal out of range or twice in a clause: return 0; *)
-        eapply (exec_if_nonzero 1).
-        * ev.
-        * reflexivity.
-        * lia.
-        * intros _. eapply exec_return.
-          -- ev.
-          -- ret. exists (vint 0). split.
-             ++ apply result_int.
-             ++ now left.
+        branch 1.
+        * intros _. return_int.
+          now left.
         * intros Heq. lia.
-      + eapply (exec_if_nonzero 0).
-        * ev.
-        * reflexivity.
-        * lia.
+      + branch 0.
         * intros Hne. lia.
         * intros _. clear HF. transfer Hun1 Hnd'. keep_mem m1.
           assert (HF1: ClauseFlds sh N lss m1) by (constructor; assumption).
           (* the literals of the clauses have atoms below N *)
           pose proof (clause_lits_atoms sh N lss Hly Hat) as Hlat.
           (* if (!check_lits(s)) return 0; *)
-          run. eapply (exec_call_triple check_lits_fun
-                         (check_lits_correct sh N lss zl (t_alls tb) tm1)).
-          -- reflexivity.
-          -- evs.
+          run. call check_lits_fun (check_lits_correct sh N lss zl (t_alls tb) tm1).
           -- constructor; assumption.
           -- intros m2 v ((tm2 & Amrk2) & Hun2 & Hv). normal. clear HF1.
              transfer Hun2 Hnd'. keep_mem m2. run.
              destruct Hv
                as [-> | (-> & Amrk0 & acc & Hzacc & Hndacc & Hlacc & Hacc & Hta2)].
              ++ (* alls is not the clause literals, once each: return 0; *)
-                eapply (exec_if_nonzero 1).
-                ** ev.
-                ** reflexivity.
-                ** lia.
-                ** intros _. eapply exec_return.
-                   --- ev.
-                   --- ret. exists (vint 0). split.
-                       +++ apply result_int.
-                       +++ now left.
+                branch 1.
+                ** intros _. return_int.
+                   now left.
                 ** intros Heq. lia.
-             ++ eapply (exec_if_nonzero 0).
-                ** ev.
-                ** reflexivity.
-                ** lia.
+             ++ branch 0.
                 ** intros Hne. lia.
                 ** intros _. apply exec_skip. normal. subst zl.
                    (* s->inc = s->nlits + 1; *)
-                   run. eapply (exec_store_fld Finc).
-                   --- evl.
-                   --- reflexivity.
-                   --- ev.
-                   --- intros m3 Hst3. normal.
-                       pose proof (fld_store Finc Hst3) as Finc3. clear Finc.
-                       carry Hst3 Hnd'. cbn [Val.load_result cast_int_int] in Finc3.
-                       rewrite add_repr in Finc3.
-                       (* if (!check_room(s)) return 0; *)
-                       run. eapply (exec_call_triple check_room_fun
-                                      (check_room_correct sh N tw tc)).
-                       +++ reflexivity.
-                       +++ evs.
-                       +++ repeat (split; [assumption | ]). assumption.
-                       +++ intros m4 v [-> Hv]. normal. run.
-                           destruct Hv as [-> | (-> & Hroom & Horder)].
-                           *** (* the watch lists do not fit: return 0; *)
-                               eapply (exec_if_nonzero 1).
-                               ---- ev.
-                               ---- reflexivity.
-                               ---- lia.
-                               ---- intros _. eapply exec_return.
-                                    ++++ ev.
-                                    ++++ ret. exists (vint 0). split.
-                                         **** apply result_int.
-                                         **** now left.
-                               ---- intros Heq. lia.
-                           *** (* the memory represents ictx: index the clauses *)
-                               eapply (exec_if_nonzero 0).
-                               ---- ev.
-                               ---- reflexivity.
-                               ---- lia.
-                               ---- intros Hne. lia.
-                               ---- intros _. apply exec_skip. normal.
-                                    apply (init_index_correct acc (t_shorts tb)).
+                   run. store Finc as m3 Hst3.
+                   pose proof (fld_store Finc Hst3) as Finc3. clear Finc.
+                   carry Hst3 Hnd'. cbn [Val.load_result cast_int_int] in Finc3.
+                   rewrite add_repr in Finc3.
+                   (* if (!check_room(s)) return 0; *)
+                   run. call check_room_fun (check_room_correct sh N tw tc).
+                   --- repeat (split; [assumption | ]). assumption.
+                   --- intros m4 v [-> Hv]. normal. run.
+                       destruct Hv as [-> | (-> & Hroom & Horder)].
+                       +++ (* the watch lists do not fit: return 0; *)
+                           branch 1.
+                           *** intros _. return_int.
+                               now left.
+                           *** intros Heq. lia.
+                       +++ (* the memory represents ictx: index the clauses *)
+                           branch 0.
+                           *** intros Hne. lia.
+                           *** intros _. apply exec_skip. normal.
+                               apply (init_index_correct acc (t_shorts tb)).
+                               ---- assumption.
+                               ---- assumption.
+                               ---- intros l. rewrite Hacc.
+                                    now apply clause_lits_iff.
+                               ---- apply (setup_rep _ tb acc).
+                                    ++++ assumption.
+                                    ++++ constructor; assumption.
                                     ++++ assumption.
                                     ++++ assumption.
-                                    ++++ intros l. rewrite Hacc.
-                                         now apply clause_lits_iff.
-                                    ++++ apply (setup_rep _ tb acc).
-                                         **** assumption.
-                                         **** constructor; assumption.
-                                         **** assumption.
-                                         **** assumption.
-                                         **** assumption.
-                                         **** assumption.
-                                         **** assumption.
-                                         **** assumption.
-                                         **** assumption.
                                     ++++ assumption.
-                                    ++++ tmp.
+                                    ++++ assumption.
+                                    ++++ assumption.
+                                    ++++ assumption.
+                                    ++++ assumption.
+                               ---- assumption.
+                               ---- tmp.
   Qed.
 
   (* Setting the fields of an empty trail, queue, short clauses, cursor, decisions,
@@ -791,84 +716,48 @@ Section Phases.
     pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
     unfold init_fields, f_init. cbn [fn_body drop_stmts].
     (* s->tlen = 0; *)
-    run. eapply (exec_store_fld Ftlen).
-    - evl.
-    - reflexivity.
-    - ev.
-    - intros m1 Hst1. normal.
-      pose proof (fld_store Ftlen Hst1) as Ftlen1. clear Ftlen.
-      carry Hst1 Hnd'.
-      (* s->qhead = 0; *)
-      run. eapply (exec_store_fld Fqh).
-      + evl.
-      + reflexivity.
-      + ev.
-      + intros m2 Hst2. normal.
-        pose proof (fld_store Fqh Hst2) as Fqh2. clear Fqh.
-        carry Hst2 Hnd'.
-        (* s->nshorts = 0; *)
-        run. eapply (exec_store_fld Fns).
-        * evl.
-        * reflexivity.
-        * ev.
-        * intros m3 Hst3. normal.
-          pose proof (fld_store Fns Hst3) as Fns3. clear Fns.
-          carry Hst3 Hnd'.
-          (* s->cur = 0; *)
-          run. eapply (exec_store_fld Fcur).
-          -- evl.
-          -- reflexivity.
-          -- ev.
-          -- intros m4 Hst4. normal.
-             pose proof (fld_store Fcur Hst4) as Fcur4. clear Fcur.
-             carry Hst4 Hnd'.
-             (* s->dl = 0; *)
-             run. eapply (exec_store_fld Fdl).
-             ++ evl.
-             ++ reflexivity.
-             ++ ev.
-             ++ intros m5 Hst5. normal.
-                pose proof (fld_store Fdl Hst5) as Fdl5. clear Fdl.
-                carry Hst5 Hnd'.
-                (* s->ltlen = 0; *)
-                run. eapply (exec_store_fld Fltlen).
-                ** evl.
-                ** reflexivity.
-                ** ev.
-                ** intros m6 Hst6. normal.
-                   pose proof (fld_store Fltlen Hst6) as Fltlen6. clear Fltlen.
-                   carry Hst6 Hnd'.
-                   (* s->rtop = 0; *)
-                   run. eapply (exec_store_fld Frtop).
-                   --- evl.
-                   --- reflexivity.
-                   --- ev.
-                   --- intros m7 Hst7. normal.
-                       pose proof (fld_store Frtop Hst7) as Frtop7. clear Frtop.
-                       carry Hst7 Hnd'.
-                       (* s->nr = 0; *)
-                       run. eapply (exec_store_fld Fnr).
-                       +++ evl.
-                       +++ reflexivity.
-                       +++ ev.
-                       +++ intros m8 Hst8. normal.
-                           pose proof (fld_store Fnr Hst8) as Fnr8. clear Fnr.
-                           carry Hst8 Hnd'.
-                           (* s->hsize = 0; *)
-                           run. eapply (exec_store_fld Fhsize).
-                           *** evl.
-                           *** reflexivity.
-                           *** ev.
-                           *** intros m9 Hst9. normal.
-                               pose proof (fld_store Fhsize Hst9) as Fhsize9.
-                               clear Fhsize.
-                               carry Hst9 Hnd'.
-                               cbn [Val.load_result] in Ftlen1, Fqh2, Fns3, Fcur4, Fdl5,
-                                 Fltlen6, Frtop7, Fnr8, Fhsize9.
-                               apply (init_checks_correct zl tb (v_inc fl)).
-                               ---- assumption.
-                               ---- constructor; assumption.
-                               ---- tmp.
+    run. store Ftlen as m1 Hst1.
+    pose proof (fld_store Ftlen Hst1) as Ftlen1. clear Ftlen.
+    carry Hst1 Hnd'.
+    (* s->qhead = 0; *)
+    run. store Fqh as m2 Hst2.
+    pose proof (fld_store Fqh Hst2) as Fqh2. clear Fqh.
+    carry Hst2 Hnd'.
+    (* s->nshorts = 0; *)
+    run. store Fns as m3 Hst3.
+    pose proof (fld_store Fns Hst3) as Fns3. clear Fns.
+    carry Hst3 Hnd'.
+    (* s->cur = 0; *)
+    run. store Fcur as m4 Hst4.
+    pose proof (fld_store Fcur Hst4) as Fcur4. clear Fcur.
+    carry Hst4 Hnd'.
+    (* s->dl = 0; *)
+    run. store Fdl as m5 Hst5.
+    pose proof (fld_store Fdl Hst5) as Fdl5. clear Fdl.
+    carry Hst5 Hnd'.
+    (* s->ltlen = 0; *)
+    run. store Fltlen as m6 Hst6.
+    pose proof (fld_store Fltlen Hst6) as Fltlen6. clear Fltlen.
+    carry Hst6 Hnd'.
+    (* s->rtop = 0; *)
+    run. store Frtop as m7 Hst7.
+    pose proof (fld_store Frtop Hst7) as Frtop7. clear Frtop.
+    carry Hst7 Hnd'.
+    (* s->nr = 0; *)
+    run. store Fnr as m8 Hst8.
+    pose proof (fld_store Fnr Hst8) as Fnr8. clear Fnr.
+    carry Hst8 Hnd'.
+    (* s->hsize = 0; *)
+    run. store Fhsize as m9 Hst9.
+    pose proof (fld_store Fhsize Hst9) as Fhsize9.
+    clear Fhsize.
+    carry Hst9 Hnd'.
+    cbn [Val.load_result] in Ftlen1, Fqh2, Fns3, Fcur4, Fdl5,
+      Fltlen6, Frtop7, Fnr8, Fhsize9.
+    apply (init_checks_correct zl tb (v_inc fl)).
+    - assumption.
+    - constructor; assumption.
+    - tmp.
   Qed.
 
   (* Clearing the tables of the heuristic, which the empty heuristic has empty:
@@ -896,36 +785,25 @@ Section Phases.
     pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
     unfold init_clear_heur, f_init. cbn [fn_body drop_stmts].
     (* zero(s->act, s->nv); *)
-    run. eapply (exec_call_triple_none zero_fun (zero_correct (b_act sh) N (t_act tb))).
-    - reflexivity.
-    - evs.
+    run. call zero_fun (zero_correct (b_act sh) N (t_act tb)).
     - split.
       + assumption.
       + lia.
     - intros m1 v1 [Aact1 Hun1]. normal. transfer Hun1 Hnd'. keep_mem m1.
       (* zero(s->heap, s->nv); *)
-      run. eapply (exec_call_triple_none zero_fun
-                     (zero_correct (b_heap sh) N (t_heap tb))).
-      + reflexivity.
-      + evs.
+      run. call zero_fun (zero_correct (b_heap sh) N (t_heap tb)).
       + split.
         * assumption.
         * lia.
       + intros m2 v2 [Aheap2 Hun2]. normal. transfer Hun2 Hnd'. keep_mem m2.
         (* fill_none(s->hpos, s->nv); *)
-        run. eapply (exec_call_triple_none fill_none_fun
-                       (fill_none_correct (b_hpos sh) N (t_hpos tb))).
-        * reflexivity.
-        * evs.
+        run. call fill_none_fun (fill_none_correct (b_hpos sh) N (t_hpos tb)).
         * split.
           -- assumption.
           -- lia.
         * intros m3 v3 [Ahpos3 Hun3]. normal. transfer Hun3 Hnd'. keep_mem m3.
           (* fill_none(s->dlit, s->nv); *)
-          run. eapply (exec_call_triple_none fill_none_fun
-                         (fill_none_correct (b_dlit sh) N (t_dlit tb))).
-          -- reflexivity.
-          -- evs.
+          run. call fill_none_fun (fill_none_correct (b_dlit sh) N (t_dlit tb)).
           -- split.
              ++ assumption.
              ++ lia.
@@ -964,63 +842,43 @@ Section Phases.
     pose proof Hnd as Hnd'. unfold iblocks in Hnd'.
     unfold init_clear, f_init. cbn [fn_body drop_stmts].
     (* zero(s->vals, n); *)
-    run. eapply (exec_call_triple_none zero_fun
-                   (zero_correct (b_vals sh) (2 * N) (t_vals tb))).
-    - reflexivity.
-    - evs.
+    run. call zero_fun (zero_correct (b_vals sh) (2 * N) (t_vals tb)).
     - split.
       + assumption.
       + lia.
     - intros m1 v1 [Avals1 Hun1]. normal. transfer Hun1 Hnd'. keep_mem m1.
       (* zero(s->tr, s->nv); *)
-      run. eapply (exec_call_triple_none zero_fun (zero_correct (b_tr sh) N (t_tr tb))).
-      + reflexivity.
-      + evs.
+      run. call zero_fun (zero_correct (b_tr sh) N (t_tr tb)).
       + split.
         * assumption.
         * lia.
       + intros m2 v2 [Atr2 Hun2]. normal. transfer Hun2 Hnd'. keep_mem m2.
         (* zero(s->phs, s->nv); *)
-        run. eapply (exec_call_triple_none zero_fun
-                       (zero_correct (b_phs sh) N (t_phs tb))).
-        * reflexivity.
-        * evs.
+        run. call zero_fun (zero_correct (b_phs sh) N (t_phs tb)).
         * split.
           -- assumption.
           -- lia.
         * intros m3 v3 [Aphs3 Hun3]. normal. transfer Hun3 Hnd'. keep_mem m3.
           (* zero(s->mrk, n); *)
-          run. eapply (exec_call_triple_none zero_fun
-                         (zero_correct (b_mrk sh) (2 * N) (t_mrk tb))).
-          -- reflexivity.
-          -- evs.
+          run. call zero_fun (zero_correct (b_mrk sh) (2 * N) (t_mrk tb)).
           -- split.
              ++ assumption.
              ++ lia.
           -- intros m4 v4 [Amrk4 Hun4]. normal. transfer Hun4 Hnd'. keep_mem m4.
              (* zero(s->wlen, n); *)
-             run. eapply (exec_call_triple_none zero_fun
-                            (zero_correct (b_wlen sh) (2 * N) (t_wlen tb))).
-             ++ reflexivity.
-             ++ evs.
+             run. call zero_fun (zero_correct (b_wlen sh) (2 * N) (t_wlen tb)).
              ++ split.
                 ** assumption.
                 ** lia.
              ++ intros m5 v5 [Awlen5 Hun5]. normal. transfer Hun5 Hnd'. keep_mem m5.
                 (* zero(s->rsn, s->nv); *)
-                run. eapply (exec_call_triple_none zero_fun
-                               (zero_correct (b_rsn sh) N (t_rsn tb))).
-                ** reflexivity.
-                ** evs.
+                run. call zero_fun (zero_correct (b_rsn sh) N (t_rsn tb)).
                 ** split.
                    --- assumption.
                    --- lia.
                 ** intros m6 v6 [Arsn6 Hun6]. normal. transfer Hun6 Hnd'. keep_mem m6.
                    (* zero(s->lvl, s->nv); *)
-                   run. eapply (exec_call_triple_none zero_fun
-                                  (zero_correct (b_lvl sh) N (t_lvl tb))).
-                   --- reflexivity.
-                   --- evs.
+                   run. call zero_fun (zero_correct (b_lvl sh) N (t_lvl tb)).
                    --- split.
                        +++ assumption.
                        +++ lia.
@@ -1056,17 +914,10 @@ Proof.
   - reflexivity.
   - unfold f_init. cbn [fn_body fn_return].
     (* if (s->nv < 1) return 0; *)
-    run. eapply (exec_if_lt _ 1).
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
+    run. branch _ 1.
     + (* no atoms: return 0; *)
-      intros _. eapply exec_return.
-      * ev.
-      * ret. exists (vint 0). split.
-        -- apply result_int.
-        -- now left.
+      intros _. return_int.
+      now left.
     + (* int n = 2 * s->nv; and the four phases *)
       intros HN1_z. assert (HN1: (1 <= N)%nat) by lia.
       assert (Hmul: Int.mul (Int.repr 2) (Int.repr (Z.of_nat N))

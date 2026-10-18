@@ -15,6 +15,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -120,9 +121,7 @@ Section Model.
     cbn [Nat.eqb]. replace (S (S p) - 1)%nat with (S p)
       by lia.
     unfold reason_add. rewrite reason_lits_mrk. cbn [set_mrk rsn].
-    destruct (reason_lits y (tget (rsn y) (extract t))) as [ys|].
-    - reflexivity.
-    - reflexivity.
+    destruct (reason_lits y (tget (rsn y) (extract t))) as [ys|]; reflexivity.
   Qed.
 End Model.
 
@@ -209,31 +208,20 @@ Proof.
   unfold analyze_end, f_analyze. cbn [fn_body drop_stmts].
   (* unmark_range(s, idx, lo); *)
   run.
-  eapply (exec_call_triple_none unmark_range_fun
-            (unmark_range_correct sh N lss y idx lo)).
-  - reflexivity.
-  - evs.
+  call unmark_range_fun (unmark_range_correct sh N lss y idx lo).
   - split.
     + apply HRep.
-    + split.
-      * assumption.
-      * assumption.
+    + split; assumption.
   - intros m2 v [HRep2 Hun2]. normal.
     (* return -1; *)
-    eapply exec_return.
-    + ev.
-    + exists (vint (-1)). split.
-      * apply result_int.
+    return_int.
+    split.
+    + reflexivity.
+    + split.
+      * apply HRep2.
       * split.
-        -- reflexivity.
-        -- split.
-           ++ apply HRep2.
-           ++ split.
-              ** intros u Hu. discriminate.
-              ** apply (Mem.unchanged_on_trans _ m m1 m2).
-                 --- assumption.
-                 --- apply (Mem.unchanged_on_implies _ _ _ _ Hun2).
-                     intros b0 ofs [_ [Hb _]] _. assumption.
+        -- intros u Hu. discriminate.
+        -- frame.
 Qed.
 
 (* A count that is used up or failed ends the analysis. *)
@@ -299,65 +287,47 @@ Proof.
   unfold analyze_resolve, analyze_body, analyze_loop_stmt, f_analyze.
   cbn [fn_body drop_stmts first_stmt loop_body Swhile].
   (* s->mrk[t ^ 1] = 0; *)
-  run. eapply (exec_store_arr Amrk Hk).
-  - evl.
-  - ofs.
+  run. store Amrk Hk as m2 Hst2.
+  set (y1 := y <| mrk := tset (mrk y) (lit_key (¬t)) false |>).
+  assert (HRep2: RepL m2 sh N lss y1).
+  { apply (rep_store_mrk m1 m2 (lit_key (¬t)) false HRep Hk Hst2). }
+  assert (Hun2: Mem.unchanged_on (AddFrame sh) m m2).
+  { apply (store_unchanged _ m m1 m2 Mint32 (b_mrk sh) _ _ Hun Hst2).
+    intros i [_ [Hb _]]. apply Hb. reflexivity. }
+  (* idx = idx1 - 1; pathc = add_reason_lits(s, t, d, pathc - 1); *)
+  run.
+  eapply (exec_call_triple add_reason_lits_fun
+            (add_reason_lits_correct sh N lss y1 t d (S p))).
   - reflexivity.
-  - ev.
-  - intros m2 Hst2. normal.
-    set (y1 := y <| mrk := tset (mrk y) (lit_key (¬t)) false |>).
-    assert (HRep2: RepL m2 sh N lss y1).
-    { apply (rep_store_mrk m1 m2 (lit_key (¬t)) false HRep Hk Hst2). }
-    assert (Hun2: Mem.unchanged_on (AddFrame sh) m m2).
-    { apply (store_unchanged _ m m1 m2 Mint32 (b_mrk sh) _ _ Hun Hst2).
-      intros i [_ [Hb _]]. apply Hb. reflexivity. }
-    (* idx = idx1 - 1; pathc = add_reason_lits(s, t, d, pathc - 1); *)
-    run.
-    eapply (exec_call_triple add_reason_lits_fun
-              (add_reason_lits_correct sh N lss y1 t d (S p))).
-    + reflexivity.
-    + unfold vint. rewrite <- Hpc. evs.
-    + split.
-      * apply HRep2.
-      * split.
-        -- assumption.
-        -- split.
-           ++ assumption.
-           ++ lia.
-    + intros m3 v Hpost. normal. unfold ReasonPost in Hpost.
-      destruct (reason_add y1 t d (S p)) as [y2 r] eqn:Hadd.
-      destruct Hpost as (-> & HRep3 & Hun3).
-      assert (Htlen2: tlen y2 = tlen y) by apply (reason_add_tlen Hadd).
-      (* fuel--; and the loop goes on *)
-      run. ints. apply loopk_next with f.
-      * lia.
-      * exists (idx1 - 1)%nat, (enc_count r), y2. constructor.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-        -- rewrite Htlen2. lia.
-        -- rewrite Htlen2. lia.
-        -- apply HRep3.
-        -- apply (Mem.unchanged_on_trans _ m m2 m3).
-           ++ assumption.
-           ++ apply Hun3.
-        -- (* the model goes on with the reason of t *)
-           rewrite Hres, (analyze_loop_step d lo y f idx p idx1 t Hidx1 Ht Hhigh).
-           fold y1. rewrite Hadd. destruct r as [q|].
-           ++ left. exists q. split.
-              ** reflexivity.
-              ** split.
-                 --- rewrite <- Hnv.
-                     apply (reason_add_count_le y1 y2 t d (S p) q Hadd).
-                     cbn [y1 set_mrk nvars]. lia.
-                 --- reflexivity.
-           ++ right. split.
-              ** reflexivity.
-              ** reflexivity.
+  - unfold vint. rewrite <- Hpc. evs.
+  - splits.
+    + apply HRep2.
+    + assumption.
+    + assumption.
+    + lia.
+  - intros m3 v Hpost. normal. unfold ReasonPost in Hpost.
+    destruct (reason_add y1 t d (S p)) as [y2 r] eqn:Hadd.
+    destruct Hpost as (-> & HRep3 & Hun3).
+    assert (Htlen2: tlen y2 = tlen y) by apply (reason_add_tlen Hadd).
+    (* fuel--; and the loop goes on *)
+    run. ints. apply loopk_next with f.
+    + lia.
+    + exists (idx1 - 1)%nat, (enc_count r), y2. constructor.
+      * constructor; tmp.
+      * rewrite Htlen2. lia.
+      * rewrite Htlen2. lia.
+      * apply HRep3.
+      * frame.
+      * (* the model goes on with the reason of t *)
+        rewrite Hres, (analyze_loop_step d lo y f idx p idx1 t Hidx1 Ht Hhigh).
+        fold y1. rewrite Hadd. destruct r as [q|].
+        -- left. exists q. splits.
+           ++ reflexivity.
+           ++ rewrite <- Hnv.
+              apply (reason_add_count_le y1 y2 t d (S p) q Hadd).
+              cbn [y1 set_mrk nvars]. lia.
+           ++ reflexivity.
+        -- right. split; reflexivity.
 Qed.
 
 (* One round of the loop of analyze, with fuel f + 1 and count pc:
@@ -397,9 +367,7 @@ Proof.
   - ev.
   - ev.
   - reflexivity.
-  - destruct Hres as [(p & -> & Hp & _) | (-> & _)].
-    + lia.
-    + lia.
+  - destruct Hres as [(p & -> & Hp & _) | (-> & _)]; lia.
   - (* no count: break; and the end *)
     intros Hle. apply exec_break. abrupt. apply loopk_break. normal.
     apply (analyze_end_correct sh N lss lo res idx y le m m1).
@@ -418,26 +386,17 @@ Proof.
     apply exec_skip. normal.
     (* int idx1 = prev_marked(s, idx, lo); idx = idx1; *)
     run.
-    eapply (exec_call_triple prev_marked_fun
-              (prev_marked_correct sh N lss y idx lo)).
-    + reflexivity.
-    + evs.
+    call prev_marked_fun (prev_marked_correct sh N lss y idx lo).
     + split.
       * apply HRep.
-      * split.
-        -- assumption.
-        -- assumption.
+      * split; assumption.
     + intros m' v [-> ->]. normal.
       set (idx1 := newest_marked y lo idx).
       pose proof (prev_marked_le (tr y) (mrk y) lo (idx - lo) idx) as Hidx1.
       fold idx1 in Hidx1.
       run.
       (* if (idx1 <= lo) break; *)
-      eapply exec_if_le.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* nothing marked above lo: break; and the end *)
         intros Hlow. apply exec_break. abrupt. apply loopk_break. normal.
         apply (analyze_end_correct sh N lss lo res idx1 y).
@@ -467,11 +426,7 @@ Proof.
         (* int t = s->tr[idx1 - 1]; *)
         run. fold t.
         (* if (pathc == 1) return t ^ 1; *)
-        eapply exec_if_eq.
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- lia.
+        branch.
         -- (* the last literal of level d: return ¬t *)
            intros Hlast. destruct p0 as [|p'].
            ++ eapply exec_return.
@@ -504,13 +459,7 @@ Proof.
               ** assumption.
               ** assumption.
               ** assumption.
-              ** constructor.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
+              ** constructor; tmp.
               ** tmp.
               ** tmp.
 Qed.
@@ -558,28 +507,19 @@ Proof.
   - unfold f_analyze. cbn [fn_body fn_return].
     (* int idx = s->tlen; int pathc = add_lits(...); *)
     run.
-    eapply (exec_call_triple add_lits_fun
-              (add_lits_correct sh N lss x (b_clits sh) (nclits sh) tcl
-                 (starts sh i) (starts sh (S i)) None d 0)).
-    + reflexivity.
-    + evs.
-    + split.
+    call add_lits_fun
+      (add_lits_correct sh N lss x (b_clits sh) (nclits sh) tcl (starts sh i)
+         (starts sh (S i)) None d 0).
+    + splits.
       * assumption.
-      * split.
-        -- now left.
-        -- split.
-           ++ assumption.
-           ++ split.
-              ** lia.
-              ** split.
-                 --- intros k Hk. apply Hatoms. lia.
-                 --- split.
-                     +++ intros y Hy. discriminate.
-                     +++ split.
-                         *** assumption.
-                         *** split.
-                             ---- lia.
-                             ---- apply (r_nclits_small HRep).
+      * now left.
+      * assumption.
+      * lia.
+      * intros k Hk. apply Hatoms. lia.
+      * intros y Hy. discriminate.
+      * assumption.
+      * lia.
+      * apply (r_nclits_small HRep).
     + intros m1 v Hpost. normal.
       fold (span_lits tcl (starts sh i) (starts sh (S i))) in Hres.
       destruct (add_lits x d None (span_lits tcl (starts sh i) (starts sh (S i))) 0)
@@ -597,11 +537,7 @@ Proof.
         pose proof HS as [[Hs Hd' Hlo' Hidx' _ Hfuel'] Hidx Hfuel HRep2 Hun2 Hres2].
         pose proof (r_tlen_le HRep2) as Htlen2.
         (* while (fuel > 0) *)
-        apply exec_seq. eapply exec_if_gt.
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- lia.
+        apply exec_seq. branch.
         -- (* fuel left: the body *)
            intros Hpos. destruct fuel as [|f].
            ++ lia.
@@ -635,15 +571,12 @@ Proof.
         -- assumption.
         -- apply Hun1.
         -- rewrite Hres. destruct r as [p|].
-           ++ left. exists p. split.
+           ++ left. exists p. splits.
               ** reflexivity.
-              ** split.
-                 --- rewrite <- Hnv.
-                     apply (add_lits_count_le 0 p Hadd). lia.
-                 --- reflexivity.
-           ++ right. split.
+              ** rewrite <- Hnv.
+                 apply (add_lits_count_le 0 p Hadd). lia.
               ** reflexivity.
-              ** reflexivity.
+           ++ right. split; reflexivity.
 Qed.
 
 Lemma analyze_fun: FunAt _analyze f_analyze.

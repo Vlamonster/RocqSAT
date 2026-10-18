@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -55,11 +56,10 @@ Lemma reason_post_none: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   ReasonPost sh N lss y t d pathc m m (vint (-1)).
 Proof.
   intros sh N lss y t d pathc m HRep Hnone. unfold ReasonPost, reason_add.
-  rewrite Hnone. split.
+  rewrite Hnone. splits.
   - reflexivity.
-  - split.
-    + assumption.
-    + apply Mem.unchanged_on_refl.
+  - assumption.
+  - frame.
 Qed.
 
 (* The keys from position b on that hold the literals ls, read back as literals. *)
@@ -117,11 +117,7 @@ Proof.
   replace (Z.of_nat i + 1) with (Z.of_nat (S i)) in Hr' by lia.
   unfold input_branch, f_add_reason_lits. cbn [fn_body drop_stmts first_stmt then_stmt].
   (* if (r > s->ncl) return -1; *)
-  run. eapply exec_if_gt.
-  - ev.
-  - ev.
-  - reflexivity.
-  - lia.
+  run. branch.
   - (* clause i is not there: impossible, as i < length lss *)
     intros Hgt. lia.
   - (* clause i is there: add its literals *)
@@ -132,42 +128,28 @@ Proof.
     apply exec_skip. normal.
     (* return add_lits(s, s->clits, s->cstart[r - 1], s->cstart[r], t, d, pathc); *)
     run.
-    eapply (exec_call_triple add_lits_fun
-              (add_lits_correct sh N lss y (b_clits sh) (nclits sh) tcl
-                 (starts sh i) (starts sh (S i)) (Some t) d pathc)).
-    * reflexivity.
-    * evs.
-    * split.
-      -- apply HRep.
-      -- split.
-         ++ now left.
-         ++ split.
-            ** assumption.
-            ** split.
-               --- lia.
-               --- split.
-                   +++ intros k Hk. apply Hatoms. lia.
-                   +++ split.
-                       *** intros y' Heq. injection Heq as <-. assumption.
-                       *** split.
-                           ---- assumption.
-                           ---- split.
-                                ++++ assumption.
-                                ++++ apply (r_nclits_small HRep).
-    * intros m' v Hpost. normal.
+    call add_lits_fun
+      (add_lits_correct sh N lss y (b_clits sh) (nclits sh) tcl (starts sh i)
+         (starts sh (S i)) (Some t) d pathc).
+    + splits.
+      * apply HRep.
+      * now left.
+      * assumption.
+      * lia.
+      * intros k Hk. apply Hatoms. lia.
+      * intros y' Heq. injection Heq as <-. assumption.
+      * assumption.
+      * assumption.
+      * apply (r_nclits_small HRep).
+    + intros m' v Hpost. normal.
       destruct (add_lits y d (Some t) (span_lits tcl (starts sh i) (starts sh (S i)))
                   pathc) as [y' r] eqn:Hadd.
       destruct Hpost as (-> & HRep' & Hun).
-      eapply exec_return.
-      -- ev.
-      -- ret. exists (vint (enc_count r)). split.
-         ++ apply result_int.
-         ++ unfold ReasonPost, reason_add, reason_lits. rewrite Hr, (Hcl i Hi).
-            fold (span_lits tcl (starts sh i) (starts sh (S i))). rewrite Hadd. split.
-            ** reflexivity.
-            ** split.
-               --- assumption.
-               --- assumption.
+      return_int.
+      unfold ReasonPost, reason_add, reason_lits. rewrite Hr, (Hcl i Hi).
+      fold (span_lits tcl (starts sh i) (starts sh (S i))). rewrite Hadd. split.
+      * reflexivity.
+      * split; assumption.
 Qed.
 
 (* The reason of t is reason clause j (r = -(j + 1)): add its literals, from rbeg[j] on
@@ -214,15 +196,12 @@ Proof.
   - reflexivity.
   - lia.
   - (* reason clause j is not there: return -1; *)
-    intros Hlt. eapply exec_return.
-    + ev.
-    + ret. exists (vint (-1)). split.
-      * apply result_int.
-      * apply reason_post_none.
-        -- assumption.
-        -- unfold reason_lits. rewrite Hr.
-           replace (j <? nr y)%nat with false by (symmetry; apply Nat.ltb_ge; lia).
-           reflexivity.
+    intros Hlt. return_int.
+    apply reason_post_none.
+    + assumption.
+    + unfold reason_lits. rewrite Hr.
+      replace (j <? nr y)%nat with false by (symmetry; apply Nat.ltb_ge; lia).
+      reflexivity.
   - (* reason clause j is there: add its literals *)
     intros Hge. assert (Hjn: (j < nr y)%nat) by lia.
     set (rs := reasons_size (rcl y) j).
@@ -271,31 +250,24 @@ Proof.
                      +++ intros y' Heq. injection Heq as <-. assumption.
                      +++ split.
                          *** assumption.
-                         *** split.
-                             ---- assumption.
-                             ---- assumption.
+                         *** split; assumption.
     + intros m' v Hpost. normal.
       (* The keys read back are reason clause j. *)
       assert (Hys: span_lits trl rs (rs + len) = tget (rcl y) j).
       { unfold span_lits. replace (rs + len - rs)%nat with len by lia.
         apply map_lit_of_seq.
         intros k Hk. apply Htrl.
-        **** assumption.
-        **** assumption. }
+        - assumption.
+        - assumption. }
       rewrite Hys in Hpost.
       destruct (add_lits y d (Some t) (tget (rcl y) j) pathc) as [y' r] eqn:Hadd_lits.
       destruct Hpost as (-> & HRep' & Hun).
-      eapply exec_return.
-      * ev.
-      * ret. exists (vint (enc_count r)). split.
-        -- apply result_int.
-        -- unfold ReasonPost, reason_add, reason_lits. rewrite Hr.
-           replace (j <? nr y)%nat with true by (symmetry; now apply Nat.ltb_lt).
-           rewrite Hadd_lits. split.
-           ++ reflexivity.
-           ++ split.
-              ** assumption.
-              ** assumption.
+      return_int.
+      unfold ReasonPost, reason_add, reason_lits. rewrite Hr.
+      replace (j <? nr y)%nat with true by (symmetry; now apply Nat.ltb_lt).
+      rewrite Hadd_lits. split.
+      * reflexivity.
+      * split; assumption.
 Qed.
 
 (* add_reason_lits reads the reason of t and adds the literals of its clause:
@@ -334,31 +306,16 @@ Proof.
     destruct (tget (rsn y) (extract t)) as [|i|j] eqn:Hr; cbn [enc_reason ReasonBelow]
       in *.
     + (* no reason: neither branch, return -1; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * intros Hgt. lia.
-      * intros _. apply exec_skip. normal. run. eapply exec_if_lt.
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- lia.
+      * intros _. apply exec_skip. normal. run. branch.
         -- intros Hlt. lia.
-        -- intros _. apply exec_skip. normal. eapply exec_return.
-           ++ ev.
-           ++ exists (vint (-1)). split.
-              ** apply result_int.
-              ** apply reason_post_none.
-                 --- assumption.
-                 --- unfold reason_lits. rewrite Hr. reflexivity.
+        -- intros _. apply exec_skip. normal. return_int.
+           apply reason_post_none.
+           ++ assumption.
+           ++ unfold reason_lits. rewrite Hr. reflexivity.
     + (* input clause i: r = i + 1 > 0 *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * intros _. apply (input_branch_correct sh N lss y t d pathc i).
         -- assumption.
         -- assumption.
@@ -366,25 +323,13 @@ Proof.
         -- assumption.
         -- assumption.
         -- assumption.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
+        -- constructor; tmp.
         -- tmp.
       * intros Hle. lia.
     + (* reason clause j: r = -(j + 1) < 0 *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * intros Hgt. lia.
-      * intros _. apply exec_skip. normal. run. eapply exec_if_lt.
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- lia.
+      * intros _. apply exec_skip. normal. run. branch.
         -- intros _. apply (learnt_branch_correct sh N lss y t d pathc j).
            ++ assumption.
            ++ assumption.
@@ -392,11 +337,7 @@ Proof.
            ++ assumption.
            ++ assumption.
            ++ assumption.
-           ++ constructor.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** tmp.
+           ++ constructor; tmp.
            ++ tmp.
         -- intros Hge. lia.
 Qed.

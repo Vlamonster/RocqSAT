@@ -347,9 +347,7 @@ Section Stores.
     - repack.
     - repack.
     - (* their literals *)
-      exists trl. split.
-      + assumption.
-      + assumption.
+      exists trl. split; assumption.
     - (* their starts *)
       exists tb. split.
       + assumption.

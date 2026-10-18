@@ -116,18 +116,11 @@ Proof.
     set (n := length (watching (wls x) l)) in *.
     assert (Hn: n = length (tget (wls x) (lit_key l))) by reflexivity.
     (* int n = s->wlen[l]; if (n >= s->wcap[l]) return 0; *)
-    run. eapply exec_if_ge.
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
+    run. branch.
     + (* no room: return 0; *)
       intros Hfull.
-      eapply exec_return.
-      * ev.
-      * ret. exists (vint 0). split.
-        -- apply result_int.
-        -- now left.
+      return_int.
+      now left.
     + (* the list has room *)
       intros Hroom_z.
       assert (Hlt: (length (tget (wls x) (lit_key l)) < caps sh (lit_key l))%nat) by lia.
@@ -150,72 +143,53 @@ Proof.
       assert (H2w1: (2 * w + 1 < 2 * npool sh)%nat) by lia.
       pose proof r_nodup as Hnd.
       (* int q = 2 * (s->woff[l] + n); s->wpool[q] = i; *)
-      run. eapply (exec_store_arr Apool H2w).
-      * evl.
-      * ofs.
+      run. store Apool H2w as m1 Hst1.
+      pose proof (rep_store_pool m m1 _ _ HRep Hst1) as HRep1.
+      pose proof (arr_store Apool H2w Hst1) as Apool1.
+      pose proof (Rep.r_wpool HRep1) as Fwpool1.
+      (* only the pool changes *)
+      assert (Hun1: Mem.unchanged_on
+                      (PoolFrame sh)
+                      m m1).
+      { apply (store_unchanged _ m m m1 _ _ _ _ (Mem.unchanged_on_refl _ m) Hst1).
+        intros j [Hb' _]. now apply Hb'. }
+      keep_mem m1.
+      (* s->wpool[q + 1] = b; *)
+      run. store Apool1 H2w1 as m2 Hst2.
+      pose proof (rep_store_pool m1 m2 _ _ HRep1 Hst2) as HRep2.
+      assert (Apool2: PoolArr m2 sh (set_watcher t w (i, b))).
+      { apply (arr_store Apool1 H2w1 Hst2). }
+      assert (Hun2: Mem.unchanged_on
+                      (PoolFrame sh)
+                      m m2).
+      { apply (store_unchanged _ m m1 m2 _ _ _ _ Hun1 Hst2).
+        intros j [Hb' _]. now apply Hb'. }
+      pose proof (Rep.r_wlen HRep2) as Fwlen2.
+      pose proof (Rep.a_wlen HRep2) as Awlen2.
+      keep_mem m2.
+      (* s->wlen[l] = n + 1; *)
+      run. store Awlen2 Hk as m3 Hst3.
+      cbn [cast_int_int] in Hst3. rewrite Hadd1 in Hst3.
+      pose proof
+        (rep_store_wlen m2 m3 l i b HRep2 Hl Hlt Hi Hb Hst3)
+        as HRep3.
+      (* return 1; *)
+      return_int.
+      right. split.
       * reflexivity.
-      * ev.
-      * intros m1 Hst1. normal.
-        pose proof (rep_store_pool m m1 _ _ HRep Hst1) as HRep1.
-        pose proof (arr_store Apool H2w Hst1) as Apool1.
-        pose proof (Rep.r_wpool HRep1) as Fwpool1.
-        (* only the pool changes *)
-        assert (Hun1: Mem.unchanged_on
-                        (PoolFrame sh)
-                        m m1).
-        { apply (store_unchanged _ m m m1 _ _ _ _ (Mem.unchanged_on_refl _ m) Hst1).
-          intros j [Hb' _]. now apply Hb'. }
-        keep_mem m1.
-        (* s->wpool[q + 1] = b; *)
-        run. eapply (exec_store_arr Apool1 H2w1).
-        -- evl.
-        -- ofs.
-        -- reflexivity.
-        -- ev.
-        -- intros m2 Hst2. normal.
-           pose proof (rep_store_pool m1 m2 _ _ HRep1 Hst2) as HRep2.
-           assert (Apool2: PoolArr m2 sh (set_watcher t w (i, b))).
-           { apply (arr_store Apool1 H2w1 Hst2). }
-           assert (Hun2: Mem.unchanged_on
-                           (PoolFrame sh)
-                           m m2).
-           { apply (store_unchanged _ m m1 m2 _ _ _ _ Hun1 Hst2).
-             intros j [Hb' _]. now apply Hb'. }
-           pose proof (Rep.r_wlen HRep2) as Fwlen2.
-           pose proof (Rep.a_wlen HRep2) as Awlen2.
-           keep_mem m2.
-           (* s->wlen[l] = n + 1; *)
-           run. eapply (exec_store_arr Awlen2 Hk).
-           ++ evl.
-           ++ ofs.
-           ++ reflexivity.
-           ++ ev.
-           ++ intros m3 Hst3. normal.
-              cbn [cast_int_int] in Hst3. rewrite Hadd1 in Hst3.
-              pose proof
-                (rep_store_wlen m2 m3 l i b HRep2 Hl Hlt Hi Hb Hst3)
-                as HRep3.
-              (* return 1; *)
-              eapply exec_return.
-              ** ev.
-              ** exists (vint 1). split.
-                 --- apply result_int.
-                 --- right. split.
-                     +++ reflexivity.
-                     +++ split.
-                         { assumption. }
-                         split.
-                         { apply (arr_store_other Apool2 Hst3). neq Hnd. }
-                         split.
-                         { apply (pool_push m sh N lss x).
-                           - assumption.
-                           - assumption.
-                           - assumption.
-                           - assumption.
-                           - assumption. }
-                         (* and the store to wlen keeps the rest *)
-                         apply (store_unchanged _ m m2 m3 _ _ _ _ Hun2 Hst3).
-                         intros j [_ Hb']. now apply Hb'.
+      * split.
+        { assumption. }
+        split.
+        { apply (arr_store_other Apool2 Hst3). neq Hnd. }
+        split.
+        { apply (pool_push m sh N lss x).
+          - assumption.
+          - assumption.
+          - assumption.
+          - assumption.
+          - assumption. }
+        (* and the store to wlen keeps the rest *)
+        frame.
 Qed.
 
 Lemma wpush_fun: FunAt _wpush f_wpush.

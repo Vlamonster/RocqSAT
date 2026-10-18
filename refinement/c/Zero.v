@@ -92,11 +92,7 @@ Proof.
     + intros q le1 m1 HI. destruct HI as [Hp Hn' Hq Hqn [t1 [A1 Hfilled]] Hframe].
       apply exec_seq.
       (* if (q < n) ... else break; *)
-      eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* q < n: p[q] = e; q++; *)
         intros Hlt_z. assert (Hlt: (q < n)%nat) by lia.
         assert (Hadd: Int.add (Int.repr (Z.of_nat q)) (Int.repr 1)
@@ -119,19 +115,15 @@ Proof.
                  --- intros k Hk. destruct (Nat.eqb_spec q k) as [<- | Hne].
                      +++ reflexivity.
                      +++ apply Hfilled. lia.
-              ** apply (store_unchanged _ m m1 m2 Mint32 b (4 * Z.of_nat q) (vint z)).
-                 --- assumption.
-                 --- assumption.
-                 --- intros i Hi. now apply Hi.
+              ** frame.
       * (* q >= n: break; every entry is z *)
         intros Hge. apply exec_break. abrupt. apply loopk_break.
-        exists Vundef. split.
-        -- reflexivity.
-        -- split.
-           ++ apply (arr_ext m1 b n t1).
-              ** assumption.
-              ** intros k Hk. symmetry. apply Hfilled. lia.
+        return_none.
+        split.
+        -- apply (arr_ext m1 b n t1).
            ++ assumption.
+           ++ intros k Hk. symmetry. apply Hfilled. lia.
+        -- assumption.
     + (* The invariant holds at q = 0. *)
       constructor.
       * tmp.
@@ -141,7 +133,7 @@ Proof.
       * exists t. split.
         -- assumption.
         -- intros k Hk. lia.
-      * apply Mem.unchanged_on_refl.
+      * frame.
 Qed.
 
 (* zero stores 0 into every entry of the array, and nothing else. *)

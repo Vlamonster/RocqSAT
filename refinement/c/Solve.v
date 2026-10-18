@@ -98,103 +98,54 @@ Proof.
     + intros s le1 m1 HI.
       destruct HI as [Hs Hder (xc & -> & Hinv1 & HRep1)].
       (* int r = step(s); *)
-      run. eapply (exec_call_triple step_fun (step_correct sh N lss xc f)).
-      * reflexivity.
-      * evs.
-      * split.
-        -- assumption.
-        -- assumption.
+      run. call step_fun (step_correct sh N lss xc f).
+      * split; assumption.
       * intros m2 v Hout. normal. run.
         pose proof (cstep_spec (trail xc) f xc Hinv1) as Hok.
         destruct Hout as [-> | Hout].
         -- (* r = -1: out of room *)
-           eapply (exec_if_eq (-1) 0).
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
+           branch (-1) 0.
            ++ intros Heq. lia.
-           ++ intros _. run. eapply (exec_if_eq (-1) 1).
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
+           ++ intros _. run. branch (-1) 1.
               ** intros Heq. lia.
-              ** intros _. run. eapply (exec_if_lt (-1) 0).
-                 --- ev.
-                 --- ev.
-                 --- reflexivity.
-                 --- lia.
+              ** intros _. run. branch (-1) 0.
                  --- (* return 2; *)
-                     intros _. eapply exec_return.
-                     +++ ev.
-                     +++ ret. exists (vint 2). split.
-                         *** apply result_int.
-                         *** right. now right.
+                     intros _. return_int.
+                     right. now right.
                  --- intros Hge. lia.
         -- destruct (cstep xc) as [| |x'] eqn:Hcs;
              cbn [COutcome StepOk] in Hout, Hok.
            ++ (* r = 0: step stops, so the trail is a model; return 1; *)
               destruct Hout as [-> Htrail].
-              eapply (exec_if_eq 0 0).
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
-              ** intros _. eapply exec_return.
-                 --- ev.
-                 --- ret. exists (vint 1). split.
-                     +++ apply result_int.
-                     +++ left. split.
-                         *** reflexivity.
-                         *** exists (trail xc). split.
-                             ---- now apply Basic.final_model.
-                             ---- assumption.
+              branch 0 0.
+              ** intros _. return_int.
+                 left. split.
+                 --- reflexivity.
+                 --- exists (trail xc). split.
+                     +++ now apply Basic.final_model.
+                     +++ assumption.
               ** intros Hne. lia.
            ++ (* r = 1: step reaches fail, so f is unsatisfiable; return 0; *)
               subst v.
-              eapply (exec_if_eq 1 0).
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
+              branch 1 0.
               ** intros Heq. lia.
-              ** intros _. run. eapply (exec_if_eq 1 1).
-                 --- ev.
-                 --- ev.
-                 --- reflexivity.
-                 --- lia.
-                 --- intros _. eapply exec_return.
-                     +++ ev.
-                     +++ ret. exists (vint 0). split.
-                         *** apply result_int.
-                         *** right. left. split.
-                             ---- reflexivity.
-                             ---- apply DPLL_BJ.final_unsat_refl. split.
-                                  ++++ apply rt_trans with (state (trail xc) f).
-                                       **** assumption.
-                                       **** now apply clos_t_clos_rt.
-                                  ++++ intros [s' Htrans]. inversion Htrans.
+              ** intros _. run. branch 1 1.
+                 --- intros _. return_int.
+                     right. left. split.
+                     +++ reflexivity.
+                     +++ apply DPLL_BJ.final_unsat_refl. split.
+                         *** apply rt_trans with (state (trail xc) f).
+                             ---- assumption.
+                             ---- now apply clos_t_clos_rt.
+                         *** intros [s' Htrans]. inversion Htrans.
                  --- intros Hne. lia.
            ++ (* r = 2: the next context, after a strict derivation; the loop goes on *)
               destruct Hout as [-> HRep2]. destruct Hok as [Hplus Hinv'].
-              eapply (exec_if_eq 2 0).
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
+              branch 2 0.
               ** intros Heq. lia.
-              ** intros _. run. eapply (exec_if_eq 2 1).
-                 --- ev.
-                 --- ev.
-                 --- reflexivity.
-                 --- lia.
+              ** intros _. run. branch 2 1.
                  --- intros Heq. lia.
-                 --- intros _. run. eapply (exec_if_lt 2 0).
-                     +++ ev.
-                     +++ ev.
-                     +++ reflexivity.
-                     +++ lia.
+                 --- intros _. run. branch 2 0.
                      +++ intros Hlt. lia.
                      +++ intros _. apply exec_skip.
                          apply loopk_next with (state (trail x') f).
@@ -209,9 +160,7 @@ Proof.
                                   ++++ now apply clos_t_clos_rt.
                              ---- exists x'. split.
                                   ++++ reflexivity.
-                                  ++++ split.
-                                       **** assumption.
-                                       **** assumption.
+                                  ++++ split; assumption.
     + (* The invariant holds at the initial state. *)
       constructor.
       * tmp.
@@ -221,7 +170,5 @@ Proof.
            rewrite <- (@step_core_trail ⟨⟩ f x).
            ++ reflexivity.
            ++ apply Hinv.
-        -- split.
-           ++ assumption.
-           ++ assumption.
+        -- split; assumption.
 Qed.

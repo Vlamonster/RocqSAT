@@ -17,6 +17,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -161,8 +162,7 @@ Proof.
     + apply (fld_store_other Fm Hst). left. neq Hnd.
     + apply (arr_store_other As Hst). neq Hnd.
     + apply (arr_store_other Al Hst). neq Hnd.
-  - apply (store_unchanged _ m m1 m2 Mint32 (b_mrk sh) ofs v Hun Hst). intros i Hi. now
-    apply Hi.
+  - frame.
 Qed.
 
 (* The parts of check_clauses proved in lemmas of their own: the loop over the clauses,
@@ -311,37 +311,33 @@ Section Loops.
             - discriminate.
             - reflexivity. }
           run.
-          eapply (exec_store_arr Am2 Hky).
-          -- evl.
-          -- ofs.
-          -- reflexivity.
-          -- ev.
-          -- intros m3 Hst. normal. run. ints.
-             apply loopk_next with (S q).
-             ++ unfold clause_variant, ltof. lia.
-             ++ constructor.
-                ** tmp.
-                ** tmp.
-                ** tmp.
-                ** tmp.
-                ** tmp.
-                ** tmp.
-                ** lia.
-                ** rewrite span_snoc by lia. intros l Hl.
-                   apply in_app_or in Hl as [Hl | [<- | []]].
-                   --- apply Hat2. assumption.
-                   --- assumption.
-                ** rewrite span_snoc by lia. apply NoDup_app.
-                   --- assumption.
+          store Am2 Hky as m3 Hst.
+          run. ints.
+          apply loopk_next with (S q).
+          -- unfold clause_variant, ltof. lia.
+          -- constructor.
+             ++ tmp.
+             ++ tmp.
+             ++ tmp.
+             ++ tmp.
+             ++ tmp.
+             ++ tmp.
+             ++ lia.
+             ++ rewrite span_snoc by lia. intros l Hl.
+                apply in_app_or in Hl as [Hl | [<- | []]].
+                ** apply Hat2. assumption.
+                ** assumption.
+             ++ rewrite span_snoc by lia. apply NoDup_app.
+                ** assumption.
+                ** constructor.
+                   --- easy.
                    --- constructor.
-                       +++ easy.
-                       +++ constructor.
-                   --- intros l Hl [<- | []]. apply existsb_key in Hl.
-                       congruence.
-                ** apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM2 Hst).
-                ** eexists. split.
-                   --- apply (arr_store Am2 Hky Hst).
-                   --- rewrite span_snoc by lia. apply marks_add. assumption.
+                ** intros l Hl [<- | []]. apply existsb_key in Hl.
+                   congruence.
+             ++ apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM2 Hst).
+             ++ eexists. split.
+                ** apply (arr_store Am2 Hky Hst).
+                ** rewrite span_snoc by lia. apply marks_add. assumption.
   Qed.
 
   (* The marking loop of clause i, from b = starts sh i to e = starts sh (i + 1):
@@ -367,11 +363,7 @@ Section Loops.
       pose proof HM2 as [[Fnv2 Fncl2 Fcs2 Fcl2 Fm2 As2 Al2] Hun2].
       apply exec_seq.
       (* if (q < e) ... else break; *)
-      eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      branch.
       + (* q < e: the body *)
         intros Hqlt. apply exec_skip. normal.
         apply (mark_body_correct i q le2 m2).
@@ -417,11 +409,7 @@ Section Loops.
       pose proof HM3 as [[Fnv3 Fncl3 Fcs3 Fcl3 Fm3 As3 Al3] Hun3].
       apply exec_seq.
       (* if (q < e) ... else break; *)
-      eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      branch.
       + (* q < e: s->mrk[s->clits[q]] = 0; q++; *)
         intros Hqlt.
         assert (Hin: In (lits sh q) (nth i lss [])).
@@ -439,26 +427,22 @@ Section Loops.
           - lia.
           - rewrite <- Hclause. assumption. }
         rewrite span_cons in Hnd3 by lia.
-        run. eapply (exec_store_arr Am3 Hky).
-        * evl.
-        * ofs.
-        * reflexivity.
-        * ev.
-        * intros m4 Hst. normal. run. ints. apply loopk_next with (S q).
-          -- unfold clause_variant, ltof. lia.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ lia.
-             ++ apply (clause_mem_store m m3 m4 sh N lss _ _ Hnd HM3 Hst).
-             ++ eexists. split.
-                ** apply (arr_store Am3 Hky Hst).
-                ** apply marks_remove.
-                   --- rewrite <- span_cons by lia. assumption.
-                   --- inversion Hnd3. assumption.
+        run. store Am3 Hky as m4 Hst.
+        run. ints. apply loopk_next with (S q).
+        * unfold clause_variant, ltof. lia.
+        * constructor.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- lia.
+          -- apply (clause_mem_store m m3 m4 sh N lss _ _ Hnd HM3 Hst).
+          -- eexists. split.
+             ++ apply (arr_store Am3 Hky Hst).
+             ++ apply marks_remove.
+                ** rewrite <- span_cons by lia. assumption.
+                ** inversion Hnd3. assumption.
       + (* q >= e: break; nothing is marked *)
         intros Hqge. apply exec_break. abrupt. apply loopk_break.
         replace q with (starts sh (S i)) in HI by lia. split.
@@ -542,11 +526,7 @@ Proof.
       pose proof HM1 as [[Fnv1 Fncl1 Fcs1 Fcl1 Fm1 As1 Al1] Hun1].
       clear Fnv Fncl Fcstart Fclits Fmrk Astarts Alits Amrk.
       (* if (i < s->ncl) ... else break; *)
-      run. eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      run. branch.
       * (* i < ncl: int b = s->cstart[i]; int e = s->cstart[i + 1]; int q = b; *)
         intros Hi_ncl. assert (Hlt: (i < length lss)%nat) by lia.
         destruct (ly_clause Hly i Hlt) as [Hrange Hclause].
@@ -627,19 +607,13 @@ Proof.
               ** now left.
       * (* i >= ncl: break; return 1; every clause is checked *)
         intros Hncl_le. apply exec_break. abrupt. apply loopk_break. normal.
-        eapply exec_return.
-        -- ev.
-        -- exists (vint 1). split.
-           ++ apply result_int.
-           ++ right. split.
-              ** reflexivity.
-              ** split.
-                 --- intros i' Hi'. apply Hat. lia.
-                 --- split.
-                     +++ intros i' Hi'. apply Hnd'. lia.
-                     +++ split.
-                         *** exists tm1. split; assumption.
-                         *** assumption.
+        return_int.
+        right. splits.
+        -- reflexivity.
+        -- intros i' Hi'. apply Hat. lia.
+        -- intros i' Hi'. apply Hnd'. lia.
+        -- exists tm1. split; assumption.
+        -- assumption.
     + (* The invariant holds at i = 0. *)
       constructor.
       * tmp.
@@ -650,7 +624,7 @@ Proof.
       * intros i' Hi'. lia.
       * constructor.
         -- assumption.
-        -- apply Mem.unchanged_on_refl.
+        -- frame.
       * exists tm. split; assumption.
 Qed.
 

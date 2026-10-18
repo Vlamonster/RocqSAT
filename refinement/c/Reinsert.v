@@ -85,11 +85,7 @@ Proof.
       cbn [set_hr tr tlen] in Hatoms, Atr.
       apply exec_seq.
       (* if (q > j) ... else break; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* q > j: insert the atom at q - 1 *)
         intros Hgt.
         assert (Hsub: Int.sub (Int.repr (Z.of_nat q)) (Int.repr 1)
@@ -108,9 +104,7 @@ Proof.
                      (extract (tget (tr x) (q - 1))))).
         -- reflexivity.
         -- unfold vint. rewrite <- Hshr. evs.
-        -- split.
-           ++ assumption.
-           ++ assumption.
+        -- split; assumption.
         -- intros m2 v2 [HRep2 Hun2]. normal. keep_mem m2.
            (* q--; and the loop goes on *)
            run. ints. apply loopk_next with (q - 1)%nat.
@@ -123,16 +117,13 @@ Proof.
               ** exists (heap_insert h N (extract (tget (tr x) (q - 1)))). split.
                  --- rewrite reinsert_last by lia. assumption.
                  --- apply HRep2.
-              ** apply (Mem.unchanged_on_trans _ m m1 m2).
-                 --- assumption.
-                 --- assumption.
+              ** frame.
       * (* q <= j, so q = j: break; the heuristic is res *)
-        intros Hle. apply exec_break. abrupt. apply loopk_break. exists Vundef. split.
-        -- reflexivity.
-        -- replace (q - j)%nat with 0%nat in Hres by lia. cbn [reinsert] in Hres.
-           rewrite <- Hres. split.
-           ++ apply HRep1.
-           ++ assumption.
+        intros Hle. apply exec_break. abrupt. apply loopk_break. return_none.
+        replace (q - j)%nat with 0%nat in Hres by lia. cbn [reinsert] in Hres.
+        rewrite <- Hres. split.
+        -- apply HRep1.
+        -- assumption.
     + (* The invariant holds at q0. *)
       constructor.
       * tmp.
@@ -142,7 +133,7 @@ Proof.
       * exists (hr x). split.
         -- reflexivity.
         -- destruct x. apply HRep.
-      * apply Mem.unchanged_on_refl.
+      * frame.
 Qed.
 
 Lemma reinsert_fun: FunAt _reinsert f_reinsert.

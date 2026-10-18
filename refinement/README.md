@@ -56,6 +56,7 @@ that its literal is unassigned and falls back to the cursor, so only bounds on t
 
 Files are listed in dependency order; all are in `core/`.
 
+- `Tactics.v`: `splits`, which splits a conjunction into one goal per conjunct.
 - `Table.v`: `Table A`, tables as functions (`tget`, `tset`, `tmake`).
 - `Lookup.v`: `Values` (the value of each atom), `values m`, `lookup` (agrees with `l_eval`); `ValuesOf`,
   `Fresh`, `Incl`; unassigning a level (`unassign_level`) or a segment of the trail (`unassign_segment`).
@@ -163,7 +164,13 @@ separate blocks for the tables, and that the clauses are exactly those of `f`.
   decorated program.
 - `c/Arrays.v`: tables in memory (`Arr`, `Fld`): every table has a block of its own, so a store to one keeps
   the others without separation logic; `Mem.unchanged_on` frames for calls.
-- `c/Common.v`: literals as keys, and the tactics that run straight-line code (`run`, `ev`, `ld`, `ofs`).
+- `c/Common.v`: literals as keys, the tactics that run straight-line code (`run`, `ev`, `ld`, `ofs`), and one
+  tactic per kind of statement, which applies its rule of `c/Logic.v` and proves the side goals that only
+  evaluate expressions: `store F as m' Hst` (a field) and `store A Hk as m' Hst` (an array entry), `branch`
+  (`branch z1 z2` when the compared values must be given; two goals remain, the branches), `call Hf T` (two
+  goals remain: the precondition of the triple `T` and the rest), `return_int` and `return_none` (the
+  postcondition remains), and `frame` for `Mem.unchanged_on` goals (it walks back over the stores and calls
+  that made the memory).
 - `c/Rep.v`: `RepL`, how the memory of `solver.c` holds a context (`Rep` between steps: no lower literals,
   and the watch lists in the pool):
   the values per literal (`key_value`, so that `lit_value` is one load), the marks, reasons (`enc_reason`) and

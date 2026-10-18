@@ -21,6 +21,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -170,11 +171,10 @@ Section Memory.
     pose proof (lit_key_lt p N Hp) as HP.
     pose proof (r_wlen_le HRep (lit_key p) HP) as Hcap.
     fold (watching (wls xc) p) in Hcap. rewrite Hext, length_app in Hcap.
-    split.
+    splits.
     - lia.
-    - split.
-      + apply (r_room HRep). assumption.
-      + apply (r_pool_small HRep).
+    - apply (r_room HRep). assumption.
+    - apply (r_pool_small HRep).
   Qed.
 
   (* The watchers of ws are of clauses, with blockers of atoms below N. *)
@@ -260,9 +260,7 @@ Section Memory.
       + apply Hback. lia.
     - exists extra. assumption.
     - intros i b [Heq | Hin].
-      + rewrite Heq in Hi, Hb. cbn [fst snd] in Hi, Hb. split.
-        * assumption.
-        * assumption.
+      + rewrite Heq in Hi, Hb. cbn [fst snd] in Hi, Hb. split; assumption.
       + apply Hkept. assumption.
   Qed.
 
@@ -420,11 +418,7 @@ Section Memory.
         pose proof (r_wpool HRep1) as Fwpool.
         pose proof HT1 as [Hs Hpk Hbase1 Hn Hj Hk].
         (* while (k < n) *)
-        apply exec_seq. eapply exec_if_lt.
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
+        apply exec_seq. branch.
         * (* copy watcher z to position j; j++; k++; *)
           intros Hlt. assert (Hzn: (z < length ws)%nat) by lia.
           destruct (visit_watcher z kept1 xc t1 m1 z HM1 Hzn) as
@@ -449,64 +443,48 @@ Section Memory.
             by lia.
           apply exec_skip. normal.
           (* s->wpool[base + 2 * j] = s->wpool[base + 2 * k]; *)
-          run. rewrite Hz1. eapply (exec_store_arr Apool Hj_lt).
-          -- evl.
-          -- ofs.
-          -- reflexivity.
-          -- ev.
-          -- intros m2 Hst2. normal.
-             pose proof (arr_store Apool Hj_lt Hst2) as Apool2.
-             assert (Hz2': (if Nat.eqb (2 * (offs sh (lit_key p) + length kept1))
-                                 (2 * (offs sh (lit_key p) + z) + 1)
-                            then Z.of_nat (fst e) else t1
-                              (2 * (offs sh (lit_key p) + z) + 1)%nat)
-                           = key (snd e)).
-             { replace (Nat.eqb _ _) with false by (symmetry; apply Nat.eqb_neq; lia).
-               assumption. }
-             pose proof (rep_store_pool m1 m2 _ _ HRep1 Hst2) as HRep2.
-             pose proof (Rep.r_wpool HRep2) as Fwpool2.
-             (* s->wpool[base + 2 * j + 1] = s->wpool[base + 2 * k + 1]; *)
-             run. rewrite Hz2'. eapply (exec_store_arr Apool2 Hj1_lt).
-             ++ evl.
-             ++ ofs.
-             ++ reflexivity.
-             ++ ev.
-             ++ intros m3 Hst3. normal. run. ints.
-                apply loopk_next with (S z).
-                ** unfold ltof. lia.
-                ** exists (e :: kept1). eexists. split.
-                   --- constructor; tmp.
-                   --- split.
-                       +++ apply (visit_mem_keep z kept1 xc t1 e
-                                    m1 m2 m3 HM1 Hzn Hi Hb Hst2 Hst3).
-                       +++ (* watcher z moved from ws to the watchers kept *)
-                           rewrite (skipn_nth ws
-                             (0%nat, Pos 0%nat) z Hzn) in HL.
-                           fold e in HL. cbn [rev_append]. assumption.
+          run. rewrite Hz1. store Apool Hj_lt as m2 Hst2.
+          pose proof (arr_store Apool Hj_lt Hst2) as Apool2.
+          assert (Hz2': (if Nat.eqb (2 * (offs sh (lit_key p) + length kept1))
+                              (2 * (offs sh (lit_key p) + z) + 1)
+                         then Z.of_nat (fst e) else t1
+                           (2 * (offs sh (lit_key p) + z) + 1)%nat)
+                        = key (snd e)).
+          { replace (Nat.eqb _ _) with false by (symmetry; apply Nat.eqb_neq; lia).
+            assumption. }
+          pose proof (rep_store_pool m1 m2 _ _ HRep1 Hst2) as HRep2.
+          pose proof (Rep.r_wpool HRep2) as Fwpool2.
+          (* s->wpool[base + 2 * j + 1] = s->wpool[base + 2 * k + 1]; *)
+          run. rewrite Hz2'. store Apool2 Hj1_lt as m3 Hst3.
+          run. ints.
+          apply loopk_next with (S z).
+          -- unfold ltof. lia.
+          -- exists (e :: kept1). eexists. splits.
+             ++ constructor; tmp.
+             ++ apply (visit_mem_keep z kept1 xc t1 e
+                         m1 m2 m3 HM1 Hzn Hi Hb Hst2 Hst3).
+             ++ (* watcher z moved from ws to the watchers kept *)
+                rewrite (skipn_nth ws
+                  (0%nat, Pos 0%nat) z Hzn) in HL.
+                fold e in HL. cbn [rev_append]. assumption.
         * (* break; s->wlen[p] = j; *)
           intros Hge. apply exec_break. abrupt. apply loopk_break. normal.
           pose proof (r_nodup HRep1) as Hnd.
           pose proof (r_wlen HRep1) as Fwlen.
           pose proof (a_wlen HRep1) as Awlen.
           pose proof Hkp as Hkp'. unfold key in Hkp'.
-          run. eapply (exec_store_arr Awlen HP).
-          -- evl.
-          -- ofs.
-          -- reflexivity.
-          -- ev.
-          -- intros m2 Hst2. exists Vundef. split.
-             ++ reflexivity.
-             ++ (* nothing is left of ws: the watchers kept are L *)
-                rewrite skipn_all2 in HL by lia.
-                rewrite rev_append_rev, app_nil_r in HL.
-                rewrite <- HL.
-                apply (visit_mem_finish z kept1 xc t1 m1 m2 HM1 Hst2).
+          run. store Awlen HP as m2 Hst2.
+          return_none.
+          (* nothing is left of ws: the watchers kept are L *)
+          rewrite skipn_all2 in HL by lia.
+          rewrite rev_append_rev, app_nil_r in HL.
+          rewrite <- HL.
+          apply (visit_mem_finish z kept1 xc t1 m1 m2 HM1 Hst2).
       + (* The invariant holds at k. *)
-        exists kept, t. split.
+        exists kept, t. splits.
         * constructor; tmp.
-        * split.
-          -- assumption.
-          -- reflexivity.
+        * assumption.
+        * reflexivity.
   Qed.
 
 End Memory.

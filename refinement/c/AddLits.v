@@ -17,6 +17,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -103,26 +104,9 @@ Lemma add_frame_mark: forall (m m1 m2: mem) (sh: Shape) (b: block) (n: nat)
 Proof.
   intros m m1 m2 sh b n tc Hb Hnd A Hun Hmark. unfold iblocks in Hnd. split.
   - apply (arr_unchanged _ m1 m2 b n tc Hmark).
-    + intros ofs. destruct Hb as [-> | ->].
-      * repeat split.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
-      * repeat split.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
-        -- neq Hnd.
+    + intros ofs. destruct Hb as [-> | ->]; repeat split; neq Hnd.
     + assumption.
-  - apply (Mem.unchanged_on_trans _ m m1 m2).
-    + assumption.
-    + apply (Mem.unchanged_on_implies _ _ _ _ Hmark). intros b' ofs [_ Hb'] _.
-      assumption.
+  - frame.
 Qed.
 
 (* The literal t to skip, as C passes it, is small. *)
@@ -216,13 +200,10 @@ Section Loop.
   Proof.
     intros q x1 le m1 HRep Hkept Hres. right. split.
     - reflexivity.
-    - unfold AddPost. rewrite <- Hres. split.
+    - unfold AddPost. rewrite <- Hres. splits.
       + assumption.
-      + split.
-        * assumption.
-        * right. split.
-          -- reflexivity.
-          -- reflexivity.
+      + assumption.
+      + right. split; reflexivity.
   Qed.
 
   (* The temporaries for the literal y after its loads: y, then the marks pointer and the
@@ -263,20 +244,13 @@ Section Loop.
     unfold add_level, add_unmarked, add_lit, add_body, add_loop, f_add_lits, lit_temps.
     cbn [fn_body drop_stmts first_stmt then_stmt loop_body Swhile].
     (* if (pathc >= s->nv) return -1; *)
-    run. eapply exec_if_ge.
-    - ev.
-    - ev.
-    - reflexivity.
-    - lia.
+    run. branch.
     - (* the count would reach N: return -1, as the model says *)
       intros Hfull.
       replace (N <=? pathc)%nat with true in Hres by (symmetry; apply Nat.leb_le; lia).
       eapply exec_return.
       + ev.
-      + ret. apply (add_lit_post_none q x1).
-        * assumption.
-        * assumption.
-        * assumption.
+      + ret. apply (add_lit_post_none q x1); assumption.
     - (* mark(s, y); pathc++; *)
       intros Hroom.
       replace (N <=? pathc)%nat with false in Hres by (symmetry; apply Nat.leb_gt; lia).
@@ -284,12 +258,8 @@ Section Loop.
                      = Int.repr (Z.of_nat (S pathc))).
       { rewrite add_repr. f_equal. lia. }
       apply exec_skip. normal. run.
-      eapply (exec_call_triple_none mark_fun (mark_correct sh N lss x1 y)).
-      + reflexivity.
-      + evs.
-      + split.
-        * assumption.
-        * assumption.
+      call mark_fun (mark_correct sh N lss x1 y).
+      + split; assumption.
       + intros m2 v [HRep2 Hun2]. normal.
         destruct (add_frame_mark m m1 m2 sh b n tc Hb Hnd Alits Hkept Hun2)
           as [Alits2 Hkept2].
@@ -346,21 +316,14 @@ Section Loop.
     unfold add_lower, add_unmarked, add_lit, add_body, add_loop, f_add_lits, lit_temps.
     cbn [fn_body drop_stmts first_stmt then_stmt else_stmt loop_body Swhile].
     (* int n = s->ltlen; if (n >= s->nv) return -1; *)
-    run. eapply exec_if_ge.
-    - ev.
-    - ev.
-    - reflexivity.
-    - lia.
+    run. branch.
     - (* the lower literals would reach N: return -1, as the model says *)
       intros Hfull.
       replace (N <=? length (lower x1))%nat with true in Hres
         by (symmetry; apply Nat.leb_le; lia).
       eapply exec_return.
       + ev.
-      + ret. apply (add_lit_post_none q x1).
-        * assumption.
-        * assumption.
-        * assumption.
+      + ret. apply (add_lit_post_none q x1); assumption.
     - (* mark(s, y); *)
       intros Hroom_z. assert (Hroom: (length (lower x1) < N)%nat) by lia.
       replace (N <=? length (lower x1))%nat with false in Hres
@@ -369,12 +332,8 @@ Section Loop.
                      = Int.repr (Z.of_nat (S (length (lower x1))))).
       { rewrite add_repr. f_equal. lia. }
       apply exec_skip. normal. run.
-      eapply (exec_call_triple_none mark_fun (mark_correct sh N lss x1 y)).
-      + reflexivity.
-      + evs.
-      + split.
-        * assumption.
-        * assumption.
+      call mark_fun (mark_correct sh N lss x1 y).
+      + split; assumption.
       + intros m2 v [HRep2 Hun2]. normal.
         destruct (add_frame_mark m m1 m2 sh b n tc Hb Hnd Alits Hkept Hun2)
           as [Alits2 Hkept2].
@@ -383,49 +342,40 @@ Section Loop.
         pose proof (r_ltlen HRep2) as Fltlen.
         pose proof (a_lt HRep2) as (tlt & Alt & _).
         (* s->lt[n] = y; *)
-        run. eapply (exec_store_arr Alt Hroom).
-        -- evl.
-        -- ofs.
-        -- reflexivity.
-        -- ev.
-        -- intros m3 Hst3. normal.
-           assert (Hlt_in: In (b_lt sh) [b_mrk sh; b_lt sh; b_s sh]).
-           { right. now left. }
-           destruct (add_frame_store m m2 m3 sh b (b_lt sh) n tc _ _ _ Hb Hnd
-                       Hlt_in Alits2 Hkept2 Hst3) as [Alits3 Hkept3].
-           assert (Fltlen3: IntAt m3 sh o_ltlen (length (lower x1))).
-           { apply (fld_store_other Fltlen Hst3). left. neq Hnd. }
-           (* s->ltlen = n + 1; *)
-           eapply (exec_store_fld Fltlen3).
-           ++ evl.
-           ++ reflexivity.
-           ++ ev.
-           ++ intros m4 Hst4. normal.
-              cbn [cast_int_int] in Hst4. rewrite Hincr in Hst4.
-              pose proof (rep_store_lt m2 m3 m4 y HRep2
-                            Hroom Hy Hst3 Hst4) as HRep4.
-              assert (Hs_in: In (b_s sh) [b_mrk sh; b_lt sh; b_s sh]).
-              { right. right. now left. }
-              destruct (add_frame_store m m3 m4 sh b (b_s sh) n tc _ _ _ Hb
-                          Hnd Hs_in Alits3 Hkept3 Hst4) as [Alits4 Hkept4].
-              left. split.
-              ** reflexivity.
-              ** exists ((mark x1 y) <| lower := lower x1 ++ [y] |>), pathc.
-                 constructor.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- lia.
-                 --- intros k Hk. apply Hkeys. lia.
-                 --- assumption.
-                 --- assumption.
-                 --- apply HRep4.
-                 --- assumption.
-                 --- assumption.
+        run. store Alt Hroom as m3 Hst3.
+        assert (Hlt_in: In (b_lt sh) [b_mrk sh; b_lt sh; b_s sh]).
+        { right. now left. }
+        destruct (add_frame_store m m2 m3 sh b (b_lt sh) n tc _ _ _ Hb Hnd
+                    Hlt_in Alits2 Hkept2 Hst3) as [Alits3 Hkept3].
+        assert (Fltlen3: IntAt m3 sh o_ltlen (length (lower x1))).
+        { apply (fld_store_other Fltlen Hst3). left. neq Hnd. }
+        (* s->ltlen = n + 1; *)
+        store Fltlen3 as m4 Hst4.
+        cbn [cast_int_int] in Hst4. rewrite Hincr in Hst4.
+        pose proof (rep_store_lt m2 m3 m4 y HRep2
+                      Hroom Hy Hst3 Hst4) as HRep4.
+        assert (Hs_in: In (b_s sh) [b_mrk sh; b_lt sh; b_s sh]).
+        { right. right. now left. }
+        destruct (add_frame_store m m3 m4 sh b (b_s sh) n tc _ _ _ Hb
+                    Hnd Hs_in Alits3 Hkept3 Hst4) as [Alits4 Hkept4].
+        left. split.
+        * reflexivity.
+        * exists ((mark x1 y) <| lower := lower x1 ++ [y] |>), pathc.
+          constructor.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- lia.
+          -- intros k Hk. apply Hkeys. lia.
+          -- assumption.
+          -- assumption.
+          -- apply HRep4.
+          -- assumption.
+          -- assumption.
   Qed.
 
   (* The statement for the literal y at q < e, whose key is in the temporary y:
@@ -487,12 +437,7 @@ Section Loop.
                       = Int.repr (Z.of_nat (extract y))).
         { apply shr_key. lia. }
         run.
-        eapply (exec_if_eq (Z.of_nat (level x1 y))
-                  (Z.of_nat d)).
-        * ev.
-        * ev.
-        * reflexivity.
-        * lia.
+        branch (Z.of_nat (level x1 y)) (Z.of_nat d).
         * (* level d *)
           intros Hlv. apply (add_level_correct q y x1 pathc).
           -- assumption.
@@ -584,11 +529,7 @@ Section Loop.
     (* int y = cl[q]; *)
     run. rewrite Htcq.
     apply exec_weaken with (Q := AddLitPost q).
-    - apply (add_lit_correct q y x1 pathc le m1).
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
+    - apply (add_lit_correct q y x1 pathc le m1); assumption.
     - intros le2 m2 out [(-> & x2 & pathc2 & HI2) | (-> & Hpost)].
       + (* q++; and the loop goes on *)
         destruct HI2 as [Hs2 Hcl2 Hq2 He2 Ht2 Hd2 Hpc2 Hrange2 Hkeys2 Alits2 Hkept2 HRep2
@@ -633,11 +574,7 @@ Section Loop.
         as [Hs Hcl Hq He Ht' Hd' Hpc Hrange Hkeys Alits Hkept HRep1 Hpcle Hres].
       apply exec_seq.
       (* if (q < e) ... else break; *)
-      eapply exec_if_lt.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      branch.
       + (* q < e: the body *)
         intros Hlt. apply exec_skip. normal.
         apply add_body_correct.
@@ -646,15 +583,14 @@ Section Loop.
       + (* q = e: break; no literals are left, and the model gives the count *)
         intros Hge. apply exec_break. abrupt. apply loopk_break.
         replace q with e in Hres by lia. rewrite span_lits_nil in Hres.
-        cbn [add_lits] in Hres. unfold AddPost. rewrite <- Hres. split.
+        cbn [add_lits] in Hres. unfold AddPost. rewrite <- Hres. splits.
         * assumption.
-        * split.
-          -- assumption.
-          -- left. split.
+        * assumption.
+        * left. split.
+          -- reflexivity.
+          -- exists pathc. split.
              ++ reflexivity.
-             ++ exists pathc. split.
-                ** reflexivity.
-                ** assumption.
+             ++ assumption.
     - assumption.
   Qed.
 End Loop.
@@ -706,30 +642,24 @@ Proof.
       * assumption.
       * assumption.
       * assumption.
-      * apply Mem.unchanged_on_refl.
+      * frame.
       * assumption.
       * assumption.
       * symmetry. assumption.
     + intros le' m' out. unfold AddPost. destruct res as [x' r].
       intros (HRep' & Hkept & [(-> & pathc' & -> & Hpc') | (-> & ->)]).
       * (* the loop ended with the count: return pathc; *)
-        normal. eapply exec_return.
-        -- ev.
-        -- exists (vnat pathc'). split.
-           ++ apply result_int.
-           ++ split.
-              ** reflexivity.
-              ** split.
-                 --- assumption.
-                 --- apply Hkept.
+        normal. return_int.
+        splits.
+        -- reflexivity.
+        -- assumption.
+        -- apply Hkept.
       * (* the loop gave up: return -1 *)
-        abrupt. exists (vint (-1)). split.
+        abrupt. exists (vint (-1)). splits.
         -- apply result_int.
-        -- split.
-           ++ reflexivity.
-           ++ split.
-              ** assumption.
-              ** apply Hkept.
+        -- reflexivity.
+        -- assumption.
+        -- apply Hkept.
 Qed.
 
 Lemma add_lits_fun: FunAt _add_lits f_add_lits.

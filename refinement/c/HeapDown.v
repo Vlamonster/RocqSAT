@@ -17,6 +17,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -146,11 +147,7 @@ Proof.
     cbn [set_hr hr] in Aheap, Aact.
     run.
     (* if (s->act[s->heap[c + 1]] > s->act[s->heap[c]]) c = c + 1; *)
-    eapply exec_if_gt.
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
+    branch.
     + (* the second child is more active: c = c + 1; *)
       intros Hmore. apply Z.ltb_lt in Hmore. rewrite Hmore.
       apply exec_set with (vnat (S (S (2 * i)))).
@@ -293,18 +290,11 @@ Section Loop.
       + lia.
       + constructor.
         * lia.
-        * exists (place h i (tget (heap h) c)), c. split.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-          -- split.
-             ++ assumption.
-             ++ split.
-                ** assumption.
-                ** apply HRep3.
+        * exists (place h i (tget (heap h) c)), c. splits.
+          -- constructor; tmp.
+          -- assumption.
+          -- assumption.
+          -- apply HRep3.
         * assumption.
   Qed.
 
@@ -343,13 +333,7 @@ Section Loop.
     unfold down_rest. apply exec_seq.
     (* choose the child c *)
     apply exec_weaken with (Q := ChildPost le m1 (child h (hsize (hr x)) i)).
-    - apply (child_correct sh N lss x).
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
-      + assumption.
+    - apply (child_correct sh N lss x); assumption.
     - intros le2 m2 out [-> -> Hc2 Hs2 Ha2 Hi2 Hn2 Hfuel2]. apply seqk_normal.
       rewrite <- Hs2 in Hs. rewrite <- Ha2 in Ha'. rewrite <- Hn2 in Hn'.
       rewrite <- Hi2 in Hi'. rewrite <- Hfuel2 in Hfuel. clear Hs2 Ha2 Hn2 Hi2 Hfuel2.
@@ -360,11 +344,7 @@ Section Loop.
       cbn [set_hr hr] in Aheap, Aact.
       (* int b = s->heap[c]; if (s->act[b] <= s->act[a]) break; *)
       run.
-      eapply exec_if_le.
-      + ev.
-      + ev.
-      + reflexivity.
-      + lia.
+      branch.
       + (* the child is not more active: break; and the end *)
         intros Hle. apply Z.leb_le in Hle. rewrite Hle in Hres.
         apply exec_break. abrupt.
@@ -375,12 +355,7 @@ Section Loop.
         * assumption.
         * symmetry. assumption.
         * assumption.
-        * constructor.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
+        * constructor; tmp.
       + (* the child is more active: it moves up to i *)
         intros Hgt. apply Z.leb_gt in Hgt. rewrite Hgt in Hres.
         apply exec_skip. normal.
@@ -392,12 +367,7 @@ Section Loop.
         * assumption.
         * assumption.
         * assumption.
-        * constructor.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
+        * constructor; tmp.
         * tmp.
         * tmp.
   Qed.
@@ -459,11 +429,7 @@ Proof.
       destruct HI as [Hfle (h & i & [Hs Ha' Hn Hi Hfuel] & Hilt & Hres & HRep1) Hun1].
       apply exec_seq.
       (* if (fuel > 0) ... else break; *)
-      eapply exec_if_gt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * intros Hfuel_left. destruct fuel as [|fuel].
         -- (* no fuel left: impossible *)
            lia.
@@ -475,11 +441,7 @@ Proof.
            ++ apply eval_left. assumption.
            ++ normal. apply exec_seq.
               (* if (c >= n) break; *)
-              eapply exec_if_ge.
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
+              branch.
               ** (* no child: break; and the end *)
                  intros Hleaf. apply exec_break. abrupt.
                  apply loopk_break. normal.
@@ -492,12 +454,7 @@ Proof.
                  --- assumption.
                  --- symmetry. assumption.
                  --- assumption.
-                 --- constructor.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
+                 --- constructor; tmp.
               ** (* a child: the rest of the loop body *)
                  intros Hchild. apply exec_skip. normal.
                  apply (down_rest_correct m sh N lss x i0 h i fuel _ m1).
@@ -509,12 +466,7 @@ Proof.
                  --- assumption.
                  --- assumption.
                  --- assumption.
-                 --- constructor.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
+                 --- constructor; tmp.
                  --- tmp.
       * intros Hno_fuel. destruct fuel as [|fuel].
         -- (* no fuel left: break; and the end *)
@@ -526,30 +478,18 @@ Proof.
            ++ assumption.
            ++ symmetry. assumption.
            ++ assumption.
-           ++ constructor.
-              ** assumption.
-              ** assumption.
-              ** assumption.
-              ** assumption.
-              ** assumption.
+           ++ constructor; assumption.
         -- (* fuel left: impossible *)
            lia.
     + (* The invariant holds at the start: heuristic hr x, position i0. *)
       constructor.
       * assumption.
-      * exists (hr x), i0. split.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-        -- split.
-           ++ assumption.
-           ++ split.
-              ** reflexivity.
-              ** rewrite set_hr_same. assumption.
-      * apply Mem.unchanged_on_refl.
+      * exists (hr x), i0. splits.
+        -- constructor; tmp.
+        -- assumption.
+        -- reflexivity.
+        -- rewrite set_hr_same. assumption.
+      * frame.
 Qed.
 
 Lemma heap_down_fun: FunAt _heap_down f_heap_down.

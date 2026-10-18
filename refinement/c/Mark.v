@@ -63,34 +63,23 @@ Proof.
   - reflexivity.
   - unfold f_mark. cbn [fn_body fn_return].
     (* s->mrk[y] = 1; *)
-    run. eapply (exec_store_arr Amrk Hkey).
-    + evl.
-    + ofs.
+    run. store Amrk Hkey as m1 Hst1.
+    pose proof (rep_store_mrk m m1 (lit_key y) true HRep Hkey Hst1)
+      as HRep1.
+    (* bump(s, y >> 1); *)
+    eapply (exec_call_triple_none bump_fun
+              (bump_correct sh N lss (x <| mrk := tset (mrk x) (lit_key y) true |>)
+                 (extract y))).
     + reflexivity.
-    + ev.
-    + intros m1 Hst1. normal.
-      pose proof (rep_store_mrk m m1 (lit_key y) true HRep Hkey Hst1)
-        as HRep1.
-      (* bump(s, y >> 1); *)
-      eapply (exec_call_triple_none bump_fun
-                (bump_correct sh N lss (x <| mrk := tset (mrk x) (lit_key y) true |>)
-                   (extract y))).
-      * reflexivity.
-      * unfold vint. rewrite <- Hshr. evs.
-      * split.
-        -- apply HRep1.
-        -- assumption.
-      * intros m2 v [HRep2 Hun2]. exists Vundef. split.
-        -- reflexivity.
-        -- split.
-           ++ unfold mark. rewrite (r_nvars HRep). apply HRep2.
-           ++ (* only the marks and the heuristic changed *)
-              apply (Mem.unchanged_on_trans _ m m1 m2).
-              ** apply (store_unchanged _ m m m1 Mint32 (b_mrk sh) _ _
-                          (Mem.unchanged_on_refl _ m) Hst1).
-                 intros i [Hb _]. apply Hb. reflexivity.
-              ** apply (Mem.unchanged_on_implies _ _ _ _ Hun2).
-                 intros b0 ofs [_ Hb] _. assumption.
+    + unfold vint. rewrite <- Hshr. evs.
+    + split.
+      * apply HRep1.
+      * assumption.
+    + intros m2 v [HRep2 Hun2]. return_none.
+      split.
+      * unfold mark. rewrite (r_nvars HRep). apply HRep2.
+      * (* only the marks and the heuristic changed *)
+        frame.
 Qed.
 
 Lemma mark_fun: FunAt _mark f_mark.

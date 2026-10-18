@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -84,56 +85,37 @@ Proof.
   pose proof (a_phs HRep) as Aphs.
   unfold assign_rest, f_assign. cbn [fn_body drop_stmts].
   (* s->phs[a] = v; *)
-  run. eapply (exec_store_arr Aphs Hl).
-  - evl.
-  - ofs.
+  run. store Aphs Hl as m1 Hst1.
+  pose proof (rep_store_phs m m1 (extract l)
+                (Some (is_pos l)) HRep Hl Hst1) as HRep1.
+  assert (Apool1: PoolArr m1 sh t).
+  { apply (arr_store_other Apool Hst1). neq Hnd. }
+  set (y1 := (appended x l) <| phs := tset (phs (appended x l)) (extract l)
+               (Some (is_pos l)) |>) in HRep1.
+  keep_mem m1.
+  pose proof (r_rsn HRep1) as Frsn1.
+  pose proof (a_rsn HRep1) as Arsn1.
+  (* s->rsn[a] = r; *)
+  run. store Arsn1 Hl as m2 Hst2.
+  pose proof (rep_store_rsn m1 m2 (extract l) r HRep1 Hl Hr Hst2)
+    as HRep2.
+  assert (Apool2: PoolArr m2 sh t).
+  { apply (arr_store_other Apool1 Hst2). neq Hnd. }
+  set (y2 := y1 <| rsn := tset (rsn y1) (extract l) r |>) in HRep2.
+  keep_mem m2.
+  pose proof (r_lvl HRep2) as Flvl2.
+  pose proof (a_lvl HRep2) as Alvl2.
+  pose proof (r_dl HRep2) as Fdl2.
+  (* s->lvl[a] = s->dl; *)
+  run. store Alvl2 Hl as m3 Hst3.
+  pose proof (rep_store_lvl m2 m3 (extract l) (length (lims x))
+                HRep2 Hl Hdle Hst3) as HRep3.
+  (* return 1; with the level of the decisions, dl x *)
+  return_int.
+  right. splits.
   - reflexivity.
-  - ev.
-  - intros m1 Hst1. normal.
-    pose proof (rep_store_phs m m1 (extract l)
-                  (Some (is_pos l)) HRep Hl Hst1) as HRep1.
-    assert (Apool1: PoolArr m1 sh t).
-    { apply (arr_store_other Apool Hst1). neq Hnd. }
-    set (y1 := (appended x l) <| phs := tset (phs (appended x l)) (extract l)
-                 (Some (is_pos l)) |>) in HRep1.
-    keep_mem m1.
-    pose proof (r_rsn HRep1) as Frsn1.
-    pose proof (a_rsn HRep1) as Arsn1.
-    (* s->rsn[a] = r; *)
-    run. eapply (exec_store_arr Arsn1 Hl).
-    + evl.
-    + ofs.
-    + reflexivity.
-    + ev.
-    + intros m2 Hst2. normal.
-      pose proof (rep_store_rsn m1 m2 (extract l) r HRep1 Hl Hr Hst2)
-        as HRep2.
-      assert (Apool2: PoolArr m2 sh t).
-      { apply (arr_store_other Apool1 Hst2). neq Hnd. }
-      set (y2 := y1 <| rsn := tset (rsn y1) (extract l) r |>) in HRep2.
-      keep_mem m2.
-      pose proof (r_lvl HRep2) as Flvl2.
-      pose proof (a_lvl HRep2) as Alvl2.
-      pose proof (r_dl HRep2) as Fdl2.
-      (* s->lvl[a] = s->dl; *)
-      run. eapply (exec_store_arr Alvl2 Hl).
-      * evl.
-      * ofs.
-      * reflexivity.
-      * ev.
-      * intros m3 Hst3. normal.
-        pose proof (rep_store_lvl m2 m3 (extract l) (length (lims x))
-                      HRep2 Hl Hdle Hst3) as HRep3.
-        (* return 1; with the level of the decisions, dl x *)
-        eapply exec_return.
-        -- ev.
-        -- exists (vint 1). split.
-           ++ apply result_int.
-           ++ right. split.
-              ** reflexivity.
-              ** split.
-                 --- unfold y2, y1 in HRep3. rewrite <- Hdl in HRep3. apply HRep3.
-                 --- apply (arr_store_other Apool2 Hst3). neq Hnd.
+  - unfold y2, y1 in HRep3. rewrite <- Hdl in HRep3. apply HRep3.
+  - apply (arr_store_other Apool2 Hst3). neq Hnd.
 Qed.
 
 (* The statements of assign after its test: set_value, the stores and return 1. *)
@@ -168,10 +150,7 @@ Proof.
   pose proof (r_nodup HRep) as Hnd.
   unfold assign_stores, f_assign. cbn [fn_body drop_stmts].
   (* set_value(s, a, v); *)
-  run. eapply (exec_call_triple_none set_value_fun
-                 (set_value_correct sh N lss x (extract l) (Some (is_pos l)))).
-  - reflexivity.
-  - evs.
+  run. call set_value_fun (set_value_correct sh N lss x (extract l) (Some (is_pos l))).
   - split.
     + apply HRep.
     + apply Hl.
@@ -181,51 +160,42 @@ Proof.
     pose proof (r_tr HRep1) as Ftr1.
     pose proof (a_tr HRep1) as Atr1.
     (* s->tr[t] = l; *)
-    run. eapply (exec_store_arr Atr1 Hlt).
-    + evl.
-    + ofs.
-    + reflexivity.
-    + ev.
-    + intros m2 Hst2. normal.
-      assert (Hj: (tlen x1 <= tlen x < N)%nat) by (cbn; lia).
-      pose proof (rep_store_tr m1 m2 (tlen x) l HRep1 Hj Hst2)
-        as HRep2.
-      assert (Apool2: PoolArr m2 sh t).
-      { apply (arr_store_other Apool1 Hst2). neq Hnd. }
-      set (x2 := x1 <| tr := tset (tr x1) (tlen x) l |>) in HRep2.
-      keep_mem m2.
-      pose proof (r_tlen HRep2) as Ftlen2.
-      (* s->tlen = t + 1; *)
-      run. eapply (exec_store_fld Ftlen2).
-      * evl.
-      * reflexivity.
-      * ev.
-      * intros m3 Hst3. normal.
-        assert (Hadd: Int.add (Int.repr (Z.of_nat (tlen x))) (Int.repr 1)
-                    = Int.repr (Z.of_nat (S (tlen x)))).
-        { rewrite add_repr by lia. f_equal. lia. }
-        cbn [cast_int_int] in Hst3. rewrite Hadd in Hst3.
-        (* The trail is one longer: its new end is l, of an atom below N. *)
-        assert (Hn: (S (tlen x) <= N)%nat) by lia.
-        assert (Hq: (qhead x2 <= S (tlen x))%nat).
-        { pose proof (r_qhead_le HRep). cbn. lia. }
-        assert (Hatoms: forall (j: nat), (j < S (tlen x))%nat ->
-                       (extract (tget (tr x2) j) < N)%nat).
-        { intros j Hj'. unfold x2, x1. cbn [set_tr set_vals tr].
-          rewrite tget_tset. destruct (Nat.eq_dec (tlen x) j) as [Heq | Hne].
-          - assumption.
-          - apply (r_tr_atoms HRep). lia. }
-        pose proof (rep_store_tlen m2 m3 _ HRep2 Hn Hq Hatoms Hst3)
-          as HRep3.
-        assert (Apool3: PoolArr m3 sh t).
-        { apply (arr_store_other Apool2 Hst3). neq Hnd. }
-        (* the phase, reason and level *)
-        apply (assign_rest_correct sh N lss x l r t).
-        -- apply HRep3.
-        -- assumption.
-        -- assumption.
-        -- assumption.
-        -- constructor; tmp.
+    run. store Atr1 Hlt as m2 Hst2.
+    assert (Hj: (tlen x1 <= tlen x < N)%nat) by (cbn; lia).
+    pose proof (rep_store_tr m1 m2 (tlen x) l HRep1 Hj Hst2)
+      as HRep2.
+    assert (Apool2: PoolArr m2 sh t).
+    { apply (arr_store_other Apool1 Hst2). neq Hnd. }
+    set (x2 := x1 <| tr := tset (tr x1) (tlen x) l |>) in HRep2.
+    keep_mem m2.
+    pose proof (r_tlen HRep2) as Ftlen2.
+    (* s->tlen = t + 1; *)
+    run. store Ftlen2 as m3 Hst3.
+    assert (Hadd: Int.add (Int.repr (Z.of_nat (tlen x))) (Int.repr 1)
+                = Int.repr (Z.of_nat (S (tlen x)))).
+    { rewrite add_repr by lia. f_equal. lia. }
+    cbn [cast_int_int] in Hst3. rewrite Hadd in Hst3.
+    (* The trail is one longer: its new end is l, of an atom below N. *)
+    assert (Hn: (S (tlen x) <= N)%nat) by lia.
+    assert (Hq: (qhead x2 <= S (tlen x))%nat).
+    { pose proof (r_qhead_le HRep). cbn. lia. }
+    assert (Hatoms: forall (j: nat), (j < S (tlen x))%nat ->
+                   (extract (tget (tr x2) j) < N)%nat).
+    { intros j Hj'. unfold x2, x1. cbn [set_tr set_vals tr].
+      rewrite tget_tset. destruct (Nat.eq_dec (tlen x) j) as [Heq | Hne].
+      - assumption.
+      - apply (r_tr_atoms HRep). lia. }
+    pose proof (rep_store_tlen m2 m3 _ HRep2 Hn Hq Hatoms Hst3)
+      as HRep3.
+    assert (Apool3: PoolArr m3 sh t).
+    { apply (arr_store_other Apool2 Hst3). neq Hnd. }
+    (* the phase, reason and level *)
+    apply (assign_rest_correct sh N lss x l r t).
+    + apply HRep3.
+    + assumption.
+    + assumption.
+    + assumption.
+    + constructor; tmp.
 Qed.
 
 (* assign stores the value of l, appends l to the trail and sets the phase, reason r and
@@ -264,17 +234,10 @@ Proof.
     (* int a = l >> 1; int v = 1 - 2 * (l & 1); int t = s->tlen; *)
     run.
     (* if (t >= s->nv) return 0; *)
-    eapply exec_if_ge.
-    + ev.
-    + ev.
-    + reflexivity.
-    + lia.
+    branch.
     + (* the trail is full: return 0; *)
-      intros Hfull. eapply exec_return.
-      * ev.
-      * ret. exists (vint 0). split.
-        -- apply result_int.
-        -- now left.
+      intros Hfull. return_int.
+      now left.
     + (* the trail has room: the stores *)
       intros Hroom. assert (Hlt: (tlen x < N)%nat) by lia.
       apply exec_skip. normal.

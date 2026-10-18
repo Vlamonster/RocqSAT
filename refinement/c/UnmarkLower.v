@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -131,11 +132,7 @@ Proof.
       rewrite Hlower in Fltlen, Hltle.
       apply exec_seq.
       (* if (q < s->ltlen) ... else break; *)
-      run. eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      run. branch.
       * (* q < length (lower x): the literal y at q *)
         intros Hlt. assert ((q < length (lower x))%nat) by lia.
         assert (Hy: (extract (nth q (lower x) (Pos 0%nat)) < N)%nat).
@@ -156,78 +153,65 @@ Proof.
         (* int y = s->lt[q]; *)
         apply exec_skip. normal. run. rewrite (Htlt q) by assumption.
         (* s->mrk[y] = 0; *)
-        eapply (exec_store_arr Amrk Hk).
-        -- evl.
-        -- ofs.
-        -- reflexivity.
-        -- ev.
-        -- intros m2 Hst2. normal.
-           assert (HRep2: RepL m2 sh N lss
-                            (x1 <| mrk := tset (mrk x1)
-                                    (lit_key (nth q (lower x) (Pos 0%nat))) false |>)).
-           { apply (rep_store_mrk m1 m2 _ false HRep1 Hk Hst2). }
-           assert (Hun2: Mem.unchanged_on
-                           (AllBut (b_mrk sh)) m m2).
-           { apply (store_unchanged _ m m1 m2 Mint32 (b_mrk sh)
-                      (4 * Z.of_nat (lit_key (nth q (lower x) (Pos 0%nat))))
-                      (vint 0)).
-             - assumption.
-             - assumption.
-             - intros i Hi. now apply Hi. }
-           keep_mem m2.
-           pose proof (r_lvl HRep2) as Flvl.
-           pose proof (a_lvl HRep2) as Alvl.
-           cbn [set_mrk lvl] in Alvl.
-           assert (Hlv: (level x1 (nth q (lower x) (Pos 0%nat))
-                         <= N)%nat).
-           { apply (r_lvl_le HRep1). assumption. }
-           (* int v = s->lvl[y >> 1]; *)
-           run.
-           (* if (v > mx) mx = v; *)
-           eapply exec_if_gt.
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
-           ++ (* a higher level: mx = v; q++; *)
-              intros Hgt.
-              run. ints. apply loopk_next with (S q).
-              ** unfold ltof. lia.
-              ** apply (unmark_inv_next m m1 m2 sh N lss x res q x1 mx le1).
-                 --- assumption.
-                 --- assumption.
-                 --- assumption.
-                 --- assumption.
-                 --- tmp.
-                 --- tmp.
-                 --- rewrite Nat.max_r by lia. tmp.
-           ++ (* not higher: q++; *)
-              intros Hle.
-              apply exec_skip. normal. run. ints.
-              apply loopk_next with (S q).
-              ** unfold ltof. lia.
-              ** apply (unmark_inv_next m m1 m2 sh N lss x res q x1 mx le1).
-                 --- assumption.
-                 --- assumption.
-                 --- assumption.
-                 --- assumption.
-                 --- tmp.
-                 --- tmp.
-                 --- rewrite Nat.max_l by lia. tmp.
+        store Amrk Hk as m2 Hst2.
+        assert (HRep2: RepL m2 sh N lss
+                         (x1 <| mrk := tset (mrk x1)
+                                 (lit_key (nth q (lower x) (Pos 0%nat))) false |>)).
+        { apply (rep_store_mrk m1 m2 _ false HRep1 Hk Hst2). }
+        assert (Hun2: Mem.unchanged_on
+                        (AllBut (b_mrk sh)) m m2).
+        { apply (store_unchanged _ m m1 m2 Mint32 (b_mrk sh)
+                   (4 * Z.of_nat (lit_key (nth q (lower x) (Pos 0%nat))))
+                   (vint 0)).
+          - assumption.
+          - assumption.
+          - intros i Hi. now apply Hi. }
+        keep_mem m2.
+        pose proof (r_lvl HRep2) as Flvl.
+        pose proof (a_lvl HRep2) as Alvl.
+        cbn [set_mrk lvl] in Alvl.
+        assert (Hlv: (level x1 (nth q (lower x) (Pos 0%nat))
+                      <= N)%nat).
+        { apply (r_lvl_le HRep1). assumption. }
+        (* int v = s->lvl[y >> 1]; *)
+        run.
+        (* if (v > mx) mx = v; *)
+        branch.
+        -- (* a higher level: mx = v; q++; *)
+           intros Hgt.
+           run. ints. apply loopk_next with (S q).
+           ++ unfold ltof. lia.
+           ++ apply (unmark_inv_next m m1 m2 sh N lss x res q x1 mx le1).
+              ** assumption.
+              ** assumption.
+              ** assumption.
+              ** assumption.
+              ** tmp.
+              ** tmp.
+              ** rewrite Nat.max_r by lia. tmp.
+        -- (* not higher: q++; *)
+           intros Hle.
+           apply exec_skip. normal. run. ints.
+           apply loopk_next with (S q).
+           ++ unfold ltof. lia.
+           ++ apply (unmark_inv_next m m1 m2 sh N lss x res q x1 mx le1).
+              ** assumption.
+              ** assumption.
+              ** assumption.
+              ** assumption.
+              ** tmp.
+              ** tmp.
+              ** rewrite Nat.max_l by lia. tmp.
       * (* q = length (lower x): break; return mx, and res = (mk, mx) *)
         intros Hge.
         assert (Hend: skipn q (lower x) = []) by (apply skipn_all2; lia).
         rewrite Hend in Hacc. cbn [unmark_lits] in Hacc. rewrite <- Hacc.
         apply exec_break. abrupt. apply loopk_break. normal.
-        eapply exec_return.
-        -- ev.
-        -- exists (vnat mx). split.
-           ++ apply result_int.
-           ++ split.
-              ** assumption.
-              ** split.
-                 --- reflexivity.
-                 --- assumption.
+        return_int.
+        splits.
+        -- assumption.
+        -- reflexivity.
+        -- assumption.
     + (* The invariant holds at q = 0, with the marks of x and mx = 0. *)
       exists x, 0%nat. constructor.
       * tmp.
@@ -238,7 +222,7 @@ Proof.
       * reflexivity.
       * rewrite Hres. reflexivity.
       * assumption.
-      * apply Mem.unchanged_on_refl.
+      * frame.
 Qed.
 
 Lemma unmark_lower_fun: FunAt _unmark_lower f_unmark_lower.

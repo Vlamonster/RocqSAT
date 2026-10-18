@@ -59,38 +59,20 @@ Proof.
   - unfold f_set_value. cbn [fn_body fn_return].
     (* s->vals[2 * a] = v; *)
     assert (Hpos_lt: (2 * a < 2 * N)%nat) by lia.
-    run. eapply (exec_store_arr Avals Hpos_lt).
-    + evl.
-    + ofs.
-    + reflexivity.
-    + ev.
-    + intros m1 Hst1. normal.
-      pose proof (arr_store Avals Hpos_lt Hst1) as Avals1.
-      pose proof (r_nodup HRep) as Hnd.
-      assert (Fvals1: PtrAt m1 sh o_vals (b_vals sh)).
-      { apply (fld_store_other Fvals Hst1). left. neq Hnd. }
-      clear Fvals Avals.
-      (* s->vals[2 * a + 1] = -v; *)
-      assert (Hneg_lt: (2 * a + 1 < 2 * N)%nat) by lia.
-      run. eapply (exec_store_arr Avals1 Hneg_lt).
-      * evl.
-      * ofs.
-      * reflexivity.
-      * ev.
-      * intros m2 Hst2. rewrite Hv in Hst2. exists Vundef. split.
-        -- reflexivity.
-        -- split.
-           ++ apply (rep_store_vals m m1 m2 a o HRep Ha Hst1 Hst2).
-           ++ (* only the values changed *)
-              apply (store_unchanged _ m m1 m2 Mint32 (b_vals sh)
-                       (4 * Z.of_nat (2 * a + 1)) (vint (- enc_value o))).
-              ** apply (store_unchanged _ m m m1 Mint32 (b_vals sh)
-                          (4 * Z.of_nat (2 * a)) (vint (enc_value o))).
-                 --- apply Mem.unchanged_on_refl.
-                 --- apply Hst1.
-                 --- intros j Hb. now apply Hb.
-              ** apply Hst2.
-              ** intros j Hb. now apply Hb.
+    run. store Avals Hpos_lt as m1 Hst1.
+    pose proof (arr_store Avals Hpos_lt Hst1) as Avals1.
+    pose proof (r_nodup HRep) as Hnd.
+    assert (Fvals1: PtrAt m1 sh o_vals (b_vals sh)).
+    { apply (fld_store_other Fvals Hst1). left. neq Hnd. }
+    clear Fvals Avals.
+    (* s->vals[2 * a + 1] = -v; *)
+    assert (Hneg_lt: (2 * a + 1 < 2 * N)%nat) by lia.
+    run. store Avals1 Hneg_lt as m2 Hst2.
+    rewrite Hv in Hst2. return_none.
+    split.
+    + apply (rep_store_vals m m1 m2 a o HRep Ha Hst1 Hst2).
+    + (* only the values changed *)
+      frame.
 Qed.
 
 Lemma set_value_fun: FunAt _set_value f_set_value.

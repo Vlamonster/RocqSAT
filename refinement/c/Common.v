@@ -258,6 +258,105 @@ Ltac arr_tset := eapply arr_ext; [eassumption | ];
 (* Evaluate the arguments of a call. *)
 Ltac evs := first [apply eval_Enil | eapply eval_Econs; [ev | reflexivity | evs]].
 
+(* The statements of a C function, one tactic each. Each applies its rule of Logic.v and
+   proves the side goals that only evaluate expressions: the address, the offset and the
+   stored value of a store, the compared values of a branch, the arguments of a call. What
+   remains is what the proof has to show. *)
+
+(* A store to the struct field that F describes (Fld), or to entry k of the array that A
+   describes (Arr), with Hk: k < its size. The proof goes on in the memory m' after the
+   store, with Hst: Mem.store ... = Some m', at the next statement. *)
+Tactic Notation "store" constr(F) "as" ident(m') ident(Hst) :=
+  eapply (exec_store_fld F); [evl | reflexivity | ev | intros m' Hst; normal].
+Tactic Notation "store" constr(A) constr(Hk) "as" ident(m') ident(Hst) :=
+  eapply (exec_store_arr A Hk); [evl | ofs | reflexivity | ev | intros m' Hst; normal].
+
+(* The rule of a branch on the comparison op, with the compared values z1 and z2. *)
+Ltac branch_rule op z1 z2 := lazymatch op with
+  | Olt => eapply (exec_if_lt z1 z2)
+  | Ole => eapply (exec_if_le z1 z2)
+  | Ogt => eapply (exec_if_gt z1 z2)
+  | Oge => eapply (exec_if_ge z1 z2)
+  | Oeq => eapply (exec_if_eq z1 z2)
+  | One => eapply (exec_if_ne z1 z2)
+  end.
+
+(* A branch: on a comparison of two small ints, or on whether an int is nonzero. Two goals
+   remain, the then and the else branch, each with the outcome of the test as a
+   hypothesis.
+   The compared values are found by evaluation; give them (branch z1 z2, branch z) when
+   evaluation cannot find them. *)
+Tactic Notation "branch" := lazymatch goal with
+  | |- Exec _ _ _ (Sifthenelse (Ebinop ?op _ _ _) _ _) _ =>
+    branch_rule op open_constr:(_) open_constr:(_); [ev | ev | reflexivity | lia | | ]
+  | |- Exec _ _ _ (Sifthenelse _ _ _) _ =>
+    eapply exec_if_nonzero; [ev | reflexivity | lia | | ]
+  end.
+Tactic Notation "branch" open_constr(z1) open_constr(z2) := lazymatch goal with
+  | |- Exec _ _ _ (Sifthenelse (Ebinop ?op _ _ _) _ _) _ =>
+    branch_rule op z1 z2; [ev | ev | reflexivity | lia | | ]
+  end.
+Tactic Notation "branch" open_constr(z) :=
+  eapply (exec_if_nonzero z); [ev | reflexivity | lia | | ].
+
+(* Split a frame fact H, a conjunction of disequalities of blocks with frames such as
+   HeurFrame nested in it, into its disequalities. *)
+Ltac frame_split H := hnf in H; lazymatch type of H with
+  | _ /\ _ => let H1 := fresh "H" in let H2 := fresh "H" in
+    destruct H as [H1 H2]; frame_split H1; frame_split H2
+  | _ => idtac
+  end.
+
+(* return e; in a function returning int: e is evaluated, the statements around the return
+   are left, and the postcondition of the function remains, for the int e gives. *)
+Ltac return_int := eapply exec_return;
+  [ev | ret; eexists; split; [apply result_int | ]].
+
+(* The end of a function without result, after its last statement or at return;: the
+   postcondition of the function remains. *)
+Ltac return_none := exists Vundef; split; [reflexivity | ].
+
+(* A frame P (a predicate on blocks such as AllBut b or HeurFrame sh) excludes block
+   b: one of the disequalities of P b i is b <> b. *)
+Ltac frame_out := let i := fresh "i" in let Hb := fresh "Hb" in
+  intros i Hb; frame_split Hb;
+  match goal with H: ?x = ?x -> False |- _ => now apply H end.
+
+(* A frame Q of a call contains the frame P of its caller: each disequality of Q is one of
+   P. *)
+Ltac frame_goal := hnf; lazymatch goal with
+  | |- _ /\ _ => split; frame_goal
+  | |- _ => assumption
+  end.
+Ltac frame_in := let b := fresh "b" in let o := fresh "o" in let HP := fresh "HP" in
+  intros b o HP _; frame_split HP; frame_goal.
+
+(* Mem.unchanged_on P m0 m: the memory m comes from m0 by stores and calls that leave P
+   unchanged. The proof walks the memories back from m to m0: a store to a block outside P
+   (store_unchanged), or a call whose frame contains P (Mem.unchanged_on_trans). *)
+Ltac frame := lazymatch goal with
+  | |- Mem.unchanged_on _ ?m ?m => apply Mem.unchanged_on_refl
+  | |- Mem.unchanged_on ?P ?m0 ?m2 =>
+    first
+      [ match goal with Hst: Mem.store _ ?m1 ?b _ _ = Some m2 |- _ =>
+          eapply (store_unchanged P m0 m1 m2); [frame | apply Hst | frame_out] end
+      | match goal with Hun: Mem.unchanged_on ?Q m0 m2 |- _ =>
+          apply (Mem.unchanged_on_implies Q P m0 m2 Hun); frame_in end
+      | match goal with Hun: Mem.unchanged_on ?Q ?m1 m2 |- _ =>
+          apply (Mem.unchanged_on_trans P m0 m1 m2);
+            [frame | apply (Mem.unchanged_on_implies Q P m1 m2 Hun); frame_in] end ]
+  end.
+
+(* A call of the function that Hf finds (FunAt), through its triple T, with or without a
+   result. Two goals remain: the precondition of T in the memory of the call, and the rest
+   of the proof for every memory and result T allows. *)
+Tactic Notation "call" constr(Hf) open_constr(T) := lazymatch goal with
+  | |- Exec _ _ _ (Scall (Some _) _ _) _ =>
+    eapply (exec_call_triple Hf T); [reflexivity | evs | | ]
+  | |- Exec _ _ _ (Scall None _ _) _ =>
+    eapply (exec_call_triple_none Hf T); [reflexivity | evs | | ]
+  end.
+
 (* The negation of a literal flips the lowest bit of its key. *)
 Lemma xor_key: forall (l: Lit), 0 <= key l < small_bound ->
   Int.xor (Int.repr (key l)) (Int.repr 1) = Int.repr (key (Neg.neg l)).

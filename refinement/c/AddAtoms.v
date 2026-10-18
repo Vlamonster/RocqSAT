@@ -110,64 +110,42 @@ Proof.
   unfold add_new, f_add_atoms.
   cbn [fn_body drop_stmts first_stmt then_stmt loop_body Swhile].
   (* s->dlit[b] = l; *)
-  run. eapply (exec_store_arr Adlit Hb).
-  - evl.
-  - ofs.
-  - reflexivity.
-  - ev.
-  - intros m2 Hst2. normal.
-    assert (HRep2: RepL m2 sh N lss (x <| hr := set_dlit h (extract l) (Some l) |>)).
-    { apply (rep_store_dlit m1 m2 (extract l) (Some l)
-               HRep1 Hb).
-      - intros l0 Hl0. injection Hl0 as <-. assumption.
-      - apply Hst2. }
-    keep_mem m2.
-    pose proof (r_act HRep2) as Fact.
-    pose proof (a_act HRep2) as Aact.
-    (* s->act[b] = n - k; *)
-    run. eapply (exec_store_arr Aact Hb).
-    + evl.
-    + ofs.
+  run. store Adlit Hb as m2 Hst2.
+  assert (HRep2: RepL m2 sh N lss (x <| hr := set_dlit h (extract l) (Some l) |>)).
+  { apply (rep_store_dlit m1 m2 (extract l) (Some l)
+             HRep1 Hb).
+    - intros l0 Hl0. injection Hl0 as <-. assumption.
+    - apply Hst2. }
+  keep_mem m2.
+  pose proof (r_act HRep2) as Fact.
+  pose proof (a_act HRep2) as Aact.
+  (* s->act[b] = n - k; *)
+  run. store Aact Hb as m3 Hst3.
+  cbn [cast_int_int] in Hst3. rewrite Hsub in Hst3. normal.
+  set (h' := set_act (set_dlit h (extract l) (Some l)) (extract l)
+               (Z.of_nat (nlits x - k))).
+  assert (HRep3: RepL m3 sh N lss (x <| hr := h' |>)).
+  { apply (rep_store_act m2 m3 (extract l) _
+             HRep2 Hb).
+    - lia.
+    - apply Hst3. }
+  keep_mem m3.
+  (* heap_insert(s, b); *)
+  call heap_insert_fun (heap_insert_correct sh N lss (x <| hr := h' |>) (extract l)).
+  - split.
+    + apply HRep3.
+    + apply Hb.
+  - intros m4 v4 [HRep4 Hun4]. split.
     + reflexivity.
-    + ev.
-    + intros m3 Hst3. cbn [cast_int_int] in Hst3. rewrite Hsub in Hst3. normal.
-      set (h' := set_act (set_dlit h (extract l) (Some l)) (extract l)
-                   (Z.of_nat (nlits x - k))).
-      assert (HRep3: RepL m3 sh N lss (x <| hr := h' |>)).
-      { apply (rep_store_act m2 m3 (extract l) _
-                 HRep2 Hb).
-        - lia.
-        - apply Hst3. }
-      keep_mem m3.
-      (* heap_insert(s, b); *)
-      eapply (exec_call_triple_none heap_insert_fun
-                (heap_insert_correct sh N lss (x <| hr := h' |>) (extract l))).
-      * reflexivity.
-      * evs.
-      * split.
-        -- apply HRep3.
-        -- apply Hb.
-      * intros m4 v4 [HRep4 Hun4]. split.
-        -- reflexivity.
-        -- constructor.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
-           ++ lia.
-           ++ exists (heap_insert h' N (extract l)). split.
-              ** apply Hres.
-              ** apply HRep4.
-           ++ apply (Mem.unchanged_on_trans _ m m3 m4).
-              ** apply (store_unchanged _ m m2 m3 Mint32 (b_act sh)
-                          (4 * Z.of_nat (extract l)) (vnat (nlits x - k))).
-                 --- apply (store_unchanged _ m m1 m2 Mint32 (b_dlit sh)
-                              (4 * Z.of_nat (extract l)) (vint (key l))).
-                     +++ assumption.
-                     +++ assumption.
-                     +++ intros i (_ & _ & _ & Hne & _). now apply Hne.
-                 --- assumption.
-                 --- intros i [Hne _]. now apply Hne.
-              ** assumption.
+    + constructor.
+      * tmp.
+      * tmp.
+      * tmp.
+      * lia.
+      * exists (heap_insert h' N (extract l)). split.
+        -- apply Hres.
+        -- apply HRep4.
+      * frame.
 Qed.
 
 (* add_atoms looks at the literals of alls in order; the first one of each atom becomes
@@ -222,11 +200,7 @@ Proof.
       pose proof (r_nodup HRep1) as Hnd.
       apply exec_seq.
       (* if (k < n) ... else break; *)
-      eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch.
       * (* k < n: look at the literal at k *)
         intros Hlt_z. assert (Hlt: (k < nlits x)%nat) by lia.
         rewrite (add_atoms_next h (alls x) N (nlits x) k Hlt) in Hres.
@@ -258,11 +232,7 @@ Proof.
               assert (Hl': (extract l' < N)%nat).
               { apply (Hdl l' Hb). reflexivity. }
               pose proof (key_small l' N Hl' HN) as Hkey'.
-              cbn [enc_lit]. eapply exec_if_lt.
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
+              cbn [enc_lit]. branch.
               ** (* key l' < 0 is impossible *)
                  intros Hneg. lia.
               ** intros _. apply exec_skip. split.
@@ -277,11 +247,7 @@ Proof.
                          *** apply HRep1.
                      +++ assumption.
            ++ (* the first literal of the atom: add it (add_new_correct) *)
-              cbn [enc_lit]. eapply exec_if_lt.
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** lia.
+              cbn [enc_lit]. branch.
               ** intros _. rewrite Hshr.
                  apply (add_new_correct sh N lss x res h k l _ m m1).
                  --- assumption.
@@ -325,7 +291,7 @@ Proof.
       * exists (hr x). split.
         -- rewrite Nat.sub_0_r. reflexivity.
         -- destruct x. apply HRep.
-      * apply Mem.unchanged_on_refl.
+      * frame.
 Qed.
 
 Lemma add_atoms_fun: FunAt _add_atoms f_add_atoms.

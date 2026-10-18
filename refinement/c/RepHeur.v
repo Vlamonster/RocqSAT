@@ -49,9 +49,7 @@ Section Stores.
     (* Every field is as before, but this array of the heuristic, which A gives. *)
     constructor; try assumption.
     - (* the bounds *)
-      apply heur_ok_act.
-      + assumption.
-      + assumption.
+      apply heur_ok_act; assumption.
   Qed.
 
   (* Storing atom b at heap position i: s->heap[i] = b. *)
@@ -70,9 +68,7 @@ Section Stores.
     - (* the array: the entry stored *)
       cbn [set_hr hr set_heap heap]. arr_tset.
     - (* the bounds *)
-      apply heur_ok_heap.
-      + assumption.
-      + assumption.
+      apply heur_ok_heap; assumption.
   Qed.
 
   (* Storing the heap position o of atom a: s->hpos[a] = enc_pos o. *)
@@ -92,9 +88,7 @@ Section Stores.
     - (* the array: the entry stored *)
       cbn [set_hr hr set_hpos hpos]. arr_tset.
     - (* the bounds *)
-      apply heur_ok_hpos.
-      + assumption.
-      + assumption.
+      apply heur_ok_hpos; assumption.
   Qed.
 
   (* Storing the literal o to decide on of atom a: s->dlit[a] = enc_lit o. *)
@@ -114,9 +108,7 @@ Section Stores.
     - (* the array: the entry stored *)
       cbn [set_hr hr set_dlit dlit]. arr_tset.
     - (* the bounds *)
-      apply heur_ok_dlit.
-      + assumption.
-      + assumption.
+      apply heur_ok_dlit; assumption.
   Qed.
 
   (* Storing the bump v: s->inc = v. *)
@@ -133,9 +125,7 @@ Section Stores.
     (* Every field but this one of the heuristic is as before. *)
     constructor; try assumption.
     - (* the bounds *)
-      apply heur_ok_inc.
-      + assumption.
-      + assumption.
+      apply heur_ok_inc; assumption.
   Qed.
 
   (* Storing the size k of the heap: s->hsize = k. *)
@@ -152,9 +142,7 @@ Section Stores.
     (* Every field but this one of the heuristic is as before. *)
     constructor; try assumption.
     - (* the bounds *)
-      apply heur_ok_hsize.
-      + assumption.
-      + assumption.
+      apply heur_ok_hsize; assumption.
   Qed.
 
 End Stores.

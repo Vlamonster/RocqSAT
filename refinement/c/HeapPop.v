@@ -87,59 +87,40 @@ Proof.
   (* int b = s->heap[n]; *)
   run.
   (* s->heap[0] = b; *)
-  eapply (exec_store_arr Aheap H0N).
-  - evl.
-  - ofs.
-  - reflexivity.
-  - ev.
-  - intros m2 Hst2. normal.
-    pose proof (rep_store_heap m1 m2 0 b HRep1 H0N Hb Hst2)
-      as HRep2.
-    pose proof (r_hpos HRep2) as Fhpos2.
-    pose proof (a_hpos HRep2) as Ahpos2.
-    clear Fheap Aheap Fhpos Ahpos.
-    (* s->hpos[b] = 0; *)
-    run. eapply (exec_store_arr Ahpos2 Hb).
-    + evl.
-    + ofs.
+  store Aheap H0N as m2 Hst2.
+  pose proof (rep_store_heap m1 m2 0 b HRep1 H0N Hb Hst2)
+    as HRep2.
+  pose proof (r_hpos HRep2) as Fhpos2.
+  pose proof (a_hpos HRep2) as Ahpos2.
+  clear Fheap Aheap Fhpos Ahpos.
+  (* s->hpos[b] = 0; *)
+  run. store Ahpos2 Hb as m3 Hst3.
+  pose proof (rep_store_hpos m2 m3 b (Some 0%nat) HRep2 Hb)
+    as HRep3.
+  assert (Hun3: Mem.unchanged_on (HeurFrame sh) m m3).
+  { apply (store_unchanged _ m m2 m3 Mint32 (b_hpos sh) (4 * Z.of_nat b)
+             (vint (enc_pos (Some 0%nat)))).
+    - frame.
+    - assumption.
+    - apply hpos_not_frame. }
+  (* heap_down(s, 0); *)
+  call heap_down_fun
+    (heap_down_correct sh N lss (x <| hr := place (pop_top (hr x)) 0 b |>) 0).
+  - split.
+    + apply HRep3.
+      * intros i Hi. injection Hi as <-. assumption.
+      * apply Hst3.
+    + assumption.
+  - intros m4 v4 [HRep4 Hun4]. split.
     + reflexivity.
-    + ev.
-    + intros m3 Hst3. normal.
-      pose proof (rep_store_hpos m2 m3 b (Some 0%nat) HRep2 Hb)
-        as HRep3.
-      assert (Hun3: Mem.unchanged_on (HeurFrame sh) m m3).
-      { apply (store_unchanged _ m m2 m3 Mint32 (b_hpos sh) (4 * Z.of_nat b)
-                 (vint (enc_pos (Some 0%nat)))).
-        - apply (store_unchanged _ m m1 m2 Mint32 (b_heap sh) (4 * Z.of_nat 0)
-                   (vnat b)).
-          + assumption.
-          + assumption.
-          + apply heap_not_frame.
-        - assumption.
-        - apply hpos_not_frame. }
-      (* heap_down(s, 0); *)
-      eapply (exec_call_triple_none heap_down_fun
-                (heap_down_correct sh N lss (x <| hr := place (pop_top (hr x)) 0 b |>)
- 0)).
-      * reflexivity.
-      * evs.
+    + split.
+      * tmp.
       * split.
-        -- apply HRep3.
-           ++ intros i Hi. injection Hi as <-. assumption.
-           ++ apply Hst3.
-        -- assumption.
-      * intros m4 v4 [HRep4 Hun4]. split.
-        -- reflexivity.
-        -- split.
-           ++ tmp.
-           ++ split.
-              ** unfold heap_pop.
-                 replace (0 <? hsize (hr x) - 1)%nat with true
-                   by (symmetry; apply Nat.ltb_lt; assumption).
-                 apply HRep4.
-              ** apply (Mem.unchanged_on_trans _ m m3 m4).
-                 --- assumption.
-                 --- assumption.
+        -- unfold heap_pop.
+           replace (0 <? hsize (hr x) - 1)%nat with true
+             by (symmetry; apply Nat.ltb_lt; assumption).
+           apply HRep4.
+        -- frame.
 Qed.
 
 (* heap_pop takes the top atom a out of the heap: the heap gets one smaller, a gets no
@@ -185,75 +166,53 @@ Proof.
     (* int a = s->heap[0]; int n = s->hsize - 1; *)
     run.
     (* s->hsize = n; *)
-    rewrite Hsub. eapply (exec_store_fld Fhsize).
-    + evl.
-    + reflexivity.
-    + ev.
-    + intros m2 Hst2. normal.
-      assert (Hle: (hsize (hr x) - 1 <= N)%nat) by lia.
-      pose proof (rep_store_hsize m m2 _ HRep Hle Hst2) as HRep2.
-      pose proof (r_hpos HRep2) as Fhpos.
-      pose proof (a_hpos HRep2) as Ahpos.
-      clear Fheap Aheap Fhsize.
-      (* s->hpos[a] = -1; *)
-      run. eapply (exec_store_arr Ahpos Ha).
-      * evl.
-      * ofs.
-      * reflexivity.
-      * ev.
-      * intros m3 Hst3. normal.
-        assert (Hnone: forall (i: nat), None = Some i -> (i < N)%nat).
-        { intros i Hi. discriminate. }
-        pose proof (rep_store_hpos m2 m3 _ None HRep2 Ha Hnone Hst3)
-          as HRep3.
-        assert (Hun3: Mem.unchanged_on (HeurFrame sh) m m3).
-        { apply (store_unchanged _ m m2 m3 Mint32 (b_hpos sh)
-                   (4 * Z.of_nat (atom_at (hr x) 0)) (vint (enc_pos None))).
-          - apply (store_unchanged _ m m m2 Mint32 (b_s sh) o_hsize
-                     (vint (Z.of_nat (hsize (hr x) - 1)%nat))).
-            + apply Mem.unchanged_on_refl.
-            + assumption.
-            + apply s_not_frame.
-          - assumption.
-          - apply hpos_not_frame. }
-        (* if (n > 0) ...; both branches end in PopPost *)
-        apply exec_seq. apply exec_weaken with (Q := PopPost sh N lss x m).
-        -- eapply exec_if_gt.
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ lia.
-           ++ (* atoms are left: the last one goes to the top *)
-              intros Hn. apply (pop_down_correct sh N lss x _ m m3).
-              ** apply HRep3.
-              ** lia.
+    rewrite Hsub. store Fhsize as m2 Hst2.
+    assert (Hle: (hsize (hr x) - 1 <= N)%nat) by lia.
+    pose proof (rep_store_hsize m m2 _ HRep Hle Hst2) as HRep2.
+    pose proof (r_hpos HRep2) as Fhpos.
+    pose proof (a_hpos HRep2) as Ahpos.
+    clear Fheap Aheap Fhsize.
+    (* s->hpos[a] = -1; *)
+    run. store Ahpos Ha as m3 Hst3.
+    assert (Hnone: forall (i: nat), None = Some i -> (i < N)%nat).
+    { intros i Hi. discriminate. }
+    pose proof (rep_store_hpos m2 m3 _ None HRep2 Ha Hnone Hst3)
+      as HRep3.
+    assert (Hun3: Mem.unchanged_on (HeurFrame sh) m m3).
+    { apply (store_unchanged _ m m2 m3 Mint32 (b_hpos sh)
+               (4 * Z.of_nat (atom_at (hr x) 0)) (vint (enc_pos None))).
+      - frame.
+      - assumption.
+      - apply hpos_not_frame. }
+    (* if (n > 0) ...; both branches end in PopPost *)
+    apply exec_seq. apply exec_weaken with (Q := PopPost sh N lss x m).
+    + branch.
+      * (* atoms are left: the last one goes to the top *)
+        intros Hn. apply (pop_down_correct sh N lss x _ m m3).
+        -- apply HRep3.
+        -- lia.
+        -- assumption.
+        -- assumption.
+        -- tmp.
+        -- tmp.
+        -- tmp.
+      * (* the heap is empty now *)
+        intros Hn. apply exec_skip. split.
+        -- reflexivity.
+        -- split.
+           ++ tmp.
+           ++ split.
+              ** unfold heap_pop.
+                 replace (0 <? hsize (hr x) - 1)%nat with false
+                   by (symmetry; apply Nat.ltb_ge; lia).
+                 apply HRep3.
               ** assumption.
-              ** assumption.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-           ++ (* the heap is empty now *)
-              intros Hn. apply exec_skip. split.
-              ** reflexivity.
-              ** split.
-                 --- tmp.
-                 --- split.
-                     +++ unfold heap_pop.
-                         replace (0 <? hsize (hr x) - 1)%nat with false
-                           by (symmetry; apply Nat.ltb_ge; lia).
-                         apply HRep3.
-                     +++ assumption.
-        -- (* return a; *)
-           intros le4 m4 out (-> & Ha4 & HRep4 & Hun4). apply seqk_normal.
-           eapply exec_return.
-           ++ ev.
-           ++ exists (vnat (atom_at (hr x) 0)). split.
-              ** apply result_int.
-              ** split.
-                 --- split.
-                     +++ assumption.
-                     +++ assumption.
-                 --- rewrite heap_pop_snd. reflexivity.
+    + (* return a; *)
+      intros le4 m4 out (-> & Ha4 & HRep4 & Hun4). apply seqk_normal.
+      return_int.
+      split.
+      * split; assumption.
+      * rewrite heap_pop_snd. reflexivity.
 Qed.
 
 Lemma heap_pop_fun: FunAt _heap_pop f_heap_pop.

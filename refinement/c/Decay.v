@@ -96,42 +96,26 @@ Proof.
     + cbn [cast_int_int]. rewrite add_repr. fold c. normal.
       (* if (c >= ACT_LIM / 2) ... *)
       unfold decay. cbv zeta. fold c.
-      eapply (exec_if_ge c (act_lim / 2)).
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      branch c (act_lim / 2).
       * (* rescale(s, c); *)
         intros Hge.
         replace (act_lim / 2 <=? c) with true by (symmetry; now apply Z.leb_le).
-        eapply (exec_call_triple_none rescale_fun (rescale_correct sh N lss x c)).
-        -- reflexivity.
-        -- evs.
+        call rescale_fun (rescale_correct sh N lss x c).
         -- split.
            ++ apply HRep.
            ++ lia.
-        -- intros m1 v1 [HRep1 Hun1]. exists Vundef. split.
-           ++ reflexivity.
-           ++ split.
-              ** assumption.
-              ** assumption.
+        -- intros m1 v1 [HRep1 Hun1]. return_none.
+           split; assumption.
       * (* s->inc = c; *)
         intros Hlt.
         replace (act_lim / 2 <=? c) with false by (symmetry; now apply Z.leb_gt).
-        eapply (exec_store_fld Finc).
-        -- evl.
-        -- reflexivity.
-        -- ev.
-        -- intros m1 Hst. exists Vundef. split.
-           ++ reflexivity.
-           ++ split.
-              ** apply (rep_store_inc m m1 c HRep).
-                 --- lia.
-                 --- apply Hst.
-              ** apply (store_unchanged _ m m m1 Mint32 (b_s sh) o_inc (vint c)).
-                 --- apply Mem.unchanged_on_refl.
-                 --- assumption.
-                 --- intros i Hi. now apply Hi.
+        store Finc as m1 Hst.
+        return_none.
+        split.
+        -- apply (rep_store_inc m m1 c HRep).
+           ++ lia.
+           ++ apply Hst.
+        -- frame.
 Qed.
 
 Lemma decay_fun: FunAt _decay f_decay.

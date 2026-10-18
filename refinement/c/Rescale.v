@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -58,12 +59,8 @@ Proof.
   intros z Hz. unfold act_lim, act_shift in *.
   change (2 ^ 30) with small_bound in *. change (2 ^ 20) with 1048576.
   change (small_bound / 2) with key_bound. split.
-  - apply Z.div_pos.
-    + lia.
-    + lia.
-  - apply Z.div_lt_upper_bound.
-    + lia.
-    + lia.
+  - apply Z.div_pos; lia.
+  - apply Z.div_lt_upper_bound; lia.
 Qed.
 
 (* The invariant of the loop of rescale at atom a, for the memory m of the call: the
@@ -139,11 +136,7 @@ Proof.
       pose proof (r_nv HRep1) as Fnv.
       apply exec_seq.
       (* if (a < s->nv) ... else break; *)
-      run. eapply exec_if_lt.
-      * ev.
-      * ev.
-      * reflexivity.
-      * lia.
+      run. branch.
       * (* a < N: shift the activity of a *)
         intros Hlt_z. assert (Hlt: (a < N)%nat) by lia.
         pose proof (r_act HRep1) as Fact.
@@ -158,32 +151,24 @@ Proof.
                       = Int.repr (Z.of_nat (S a))).
         { rewrite add_repr. f_equal. lia. }
         (* s->act[a] = s->act[a] >> 20; *)
-        apply exec_skip. normal. run. eapply (exec_store_arr Aact Hlt).
-        -- evl.
-        -- ofs.
-        -- reflexivity.
-        -- ev.
-        -- intros m2 Hst2. rewrite Hshr in Hst2. normal.
-           (* a++; and the loop goes on *)
-           run. ints. apply loopk_next with (S a).
-           ++ unfold ltof. lia.
-           ++ constructor.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** lia.
-              ** exists (tset t a (tget t a / act_shift)). split.
-                 --- rewrite <- Ht. replace (N - a)%nat
-                       with (S (N - S a)) by lia.
-                     reflexivity.
-                 --- apply (rep_store_act m1 m2 a _ HRep1 Hlt).
-                     +++ lia.
-                     +++ apply Hst2.
-              ** apply (store_unchanged _ m m1 m2 Mint32 (b_act sh)
-                          (4 * Z.of_nat a) (vint (tget t a / act_shift))).
-                 --- assumption.
-                 --- assumption.
-                 --- apply act_not_frame.
+        apply exec_skip. normal. run. store Aact Hlt as m2 Hst2.
+        rewrite Hshr in Hst2. normal.
+        (* a++; and the loop goes on *)
+        run. ints. apply loopk_next with (S a).
+        -- unfold ltof. lia.
+        -- constructor.
+           ++ tmp.
+           ++ tmp.
+           ++ tmp.
+           ++ lia.
+           ++ exists (tset t a (tget t a / act_shift)). split.
+              ** rewrite <- Ht. replace (N - a)%nat
+                   with (S (N - S a)) by lia.
+                 reflexivity.
+              ** apply (rep_store_act m1 m2 a _ HRep1 Hlt).
+                 --- lia.
+                 --- apply Hst2.
+           ++ frame.
       * (* a = N: break; the activities are those of the model *)
         intros Hge.
         replace a with N in Ht by lia. rewrite Nat.sub_diag in Ht.
@@ -203,40 +188,28 @@ Proof.
            ++ reflexivity.
            ++ change (act_lim / 2) with key_bound in Hdiv. lia.
            ++ (* below 1: c = 1; *)
-              intros Hlt1. run. split.
+              intros Hlt1. run. splits.
               ** reflexivity.
-              ** split.
-                 --- reflexivity.
-                 --- split.
-                     +++ tmp.
-                     +++ rewrite Z.max_l by lia. tmp.
+              ** reflexivity.
+              ** tmp.
+              ** rewrite Z.max_l by lia. tmp.
            ++ (* at least 1 *)
-              intros Hge1. apply exec_skip. split.
+              intros Hge1. apply exec_skip. splits.
               ** reflexivity.
-              ** split.
-                 --- reflexivity.
-                 --- split.
-                     +++ tmp.
-                     +++ rewrite Z.max_r by lia. tmp.
+              ** reflexivity.
+              ** tmp.
+              ** rewrite Z.max_r by lia. tmp.
         -- intros le2 m2 out (-> & -> & Hs2 & Hc2). apply seqk_normal.
            pose proof (r_inc HRep1) as Finc.
            (* s->inc = c; *)
-           eapply (exec_store_fld Finc).
-           ++ evl.
-           ++ reflexivity.
-           ++ ev.
-           ++ intros m3 Hst3. exists Vundef. split.
-              ** reflexivity.
-              ** split.
-                 --- unfold rescale. rewrite <- Ht.
-                     apply (rep_store_inc m1 m3 _ HRep1).
-                     +++ change (act_lim / 2) with key_bound in *. lia.
-                     +++ apply Hst3.
-                 --- apply (store_unchanged _ m m1 m3 Mint32 (b_s sh) o_inc
-                              (vint (Z.max 1 (c / act_shift)))).
-                     +++ assumption.
-                     +++ assumption.
-                     +++ apply s_not_frame.
+           store Finc as m3 Hst3.
+           return_none.
+           split.
+           ++ unfold rescale. rewrite <- Ht.
+              apply (rep_store_inc m1 m3 _ HRep1).
+              ** change (act_lim / 2) with key_bound in *. lia.
+              ** apply Hst3.
+           ++ frame.
     + (* The invariant holds at a = 0, with the activities of x. *)
       constructor.
       * tmp.
@@ -246,7 +219,7 @@ Proof.
       * exists (act (hr x)). split.
         -- rewrite Nat.sub_0_r. reflexivity.
         -- rewrite with_acts_act, set_hr_same. assumption.
-      * apply Mem.unchanged_on_refl.
+      * frame.
 Qed.
 
 Lemma rescale_fun: FunAt _rescale f_rescale.
