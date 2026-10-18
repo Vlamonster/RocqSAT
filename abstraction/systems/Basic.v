@@ -1,0 +1,95 @@
+From Stdlib Require Import List.
+
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Assignment.
+From RocqSAT Require Import Evaluation.
+From RocqSAT Require Import Model.
+From RocqSAT Require Import State.
+From RocqSAT Require Import Rule.
+From RocqSAT Require Import Trans.
+From RocqSAT Require Import Satisfiability.
+From RocqSAT.rules Require Import Fail.
+From RocqSAT.rules Require Import Decide.
+From RocqSAT.rules Require Import Backtrack.
+
+(* The main theorems for Basic: Fail, Decide and Backtrack. *)
+
+Lemma basic_fail_only: forall (r: Rule) (s: State), In r Basic -> step r s fail -> FailStep s fail.
+Proof.
+  intros r s Hr Hstep. destruct Hr as [<-|[<-|[<-|[]]]].
+  - assumption.
+  - inversion Hstep.
+  - inversion Hstep.
+Qed.
+
+(* From every initial state, a final state is reachable: every state is final or can step (final_or_step), and there are no infinite derivations. *)
+Theorem final_exists: forall (f: CNF),
+  exists (s: State), state ⟨⟩ f ==>*[Basic] s /\ Final Basic s.
+Proof.
+  intros f. apply final_exists_progress. intros [|m f'] _.
+  - right. intros [s' Htrans]. inversion Htrans.
+  - destruct (final_or_step m f') as [Hfinal|Hstep].
+    + now right.
+    + now left.
+Qed.
+
+(* A final state is a model: otherwise there is a conflict, so Fail or Backtrack applies, or an undefined literal, so Decide applies. *)
+Theorem final_model: forall (m: PA) (f: CNF),
+  Final Basic (state m f) -> Model m f.
+Proof.
+  unfold Model. unfold Final. unfold not. intros. destruct (f_eval m f) eqn:Heq.
+  - destruct b.
+    + reflexivity.
+    + exfalso. apply H. apply f_eval_false_iff in Heq as [c [Hc_in_f Hconflict]].
+      destruct (split_last_decision m) as [[m_split l_split]|] eqn:Hsplit.
+      (* Backtrack *)
+      * exists (state ⟨m_split, (¬l_split)⟩ f).
+        pose proof Hsplit as Hdecomp.
+        apply PA.split_last_decision_some_iff in Hdecomp as [n_split [-> Hno_dec]].
+        apply (t_step Backtrack).
+        -- right. right. now left.
+        -- now apply (r_backtrack m_split n_split f c l_split).
+      (* Fail *)
+      * exists fail. apply (t_step Fail).
+        -- now left.
+        -- apply (r_fail m f c).
+          ++ assumption.
+          ++ assumption.
+          ++ now apply PA.split_last_decision_none_iff.
+  (* Decide *)
+  - exfalso. apply H. apply f_eval_none_iff in Heq as [_ [c [Hc_in_f Hc]]].
+    apply c_eval_none_iff in Hc as [_ [l [Hl_in_c Hl]]].
+    exists (state ⟨m; l⟩ f). apply (t_step Decide).
+    + right. now left.
+    + apply r_decide.
+      * left. now exists c.
+      * assumption.
+Qed.
+
+(* A formula is satisfiable exactly when a final state other than fail is reachable. *)
+Theorem final_sat_refl: forall (f: CNF),
+  (exists (m: PA), state ⟨⟩ f ==>*[Basic] state m f /\ Final Basic (state m f)) <-> Sat f.
+Proof.
+  intros f. apply (sat_iff_final Basic).
+  - right. now left.
+  - intros m f' _ _. apply final_model.
+Qed.
+
+(* A formula is unsatisfiable exactly when fail is reachable. *)
+Theorem final_unsat_refl: forall (f: CNF),
+  state ⟨⟩ f ==>*[Basic] fail /\ Final Basic fail <-> Unsat f.
+Proof.
+  intros f. apply (unsat_iff_fail Basic).
+  - apply basic_fail_only.
+  - apply final_exists.
+  - intros m f' _ _. apply final_model.
+Qed.
+
+Theorem sat_decidable: forall (f: CNF), Sat f \/ Unsat f.
+Proof.
+  intros f. apply (sat_or_unsat Basic).
+  - apply basic_fail_only.
+  - apply final_exists.
+  - intros m f' _ _. apply final_model.
+Qed.

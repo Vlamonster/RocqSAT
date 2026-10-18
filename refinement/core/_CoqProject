@@ -1,0 +1,3 @@
+-Q "../../_build/default/abstraction" RocqSAT
+-Q "../../_build/default/refinement/core" RocqSAT.refinement
+-Q "." RocqSAT.refinement
