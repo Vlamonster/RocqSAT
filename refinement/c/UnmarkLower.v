@@ -109,9 +109,8 @@ Lemma unmark_lower_correct: forall (sh: Shape) (N: nat)
   (lss: list (list Lit)) (x: Ctx),
   {{ m | RepL m sh N lss x }}
     f_unmark_lower(sptr sh)
-  {{ m', v | RepL m' sh N lss (fst (unmark_lower x)) /\
-             v = vnat (snd (unmark_lower x)) /\
-             Mem.unchanged_on (AllBut (b_mrk sh)) m m' }}.
+  {{ m', v | Gives sh N lss (AllBut (b_mrk sh)) (fst (unmark_lower x))
+               (vnat (snd (unmark_lower x))) m m' v }}.
 Proof.
   intros sh N lss x m HRep. pose proof (r_n HRep) as HN.
   remember (unmark_lower x) as res eqn:Hres.
@@ -209,8 +208,8 @@ Proof.
         apply exec_break. abrupt. apply loopk_break. normal.
         return_int.
         splits.
-        -- assumption.
         -- reflexivity.
+        -- assumption.
         -- assumption.
     + (* The invariant holds at q = 0, with the marks of x and mx = 0. *)
       exists x, 0%nat. constructor.

@@ -45,9 +45,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_heur HRep) as Hok.
     pose proof (arr_store (a_act HRep) Ha Hst) as A.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but this array of the heuristic, which A gives. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the bounds *)
       apply heur_ok_act; assumption.
   Qed.
@@ -62,9 +62,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_heur HRep) as Hok.
     pose proof (arr_store (a_heap HRep) Hi Hst) as A.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but this array of the heuristic, which A gives. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the array: the entry stored *)
       cbn [set_hr hr set_heap heap]. arr_tset.
     - (* the bounds *)
@@ -82,9 +82,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_heur HRep) as Hok.
     pose proof (arr_store (a_hpos HRep) Ha Hst) as A.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but this array of the heuristic, which A gives. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the array: the entry stored *)
       cbn [set_hr hr set_hpos hpos]. arr_tset.
     - (* the bounds *)
@@ -102,9 +102,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_heur HRep) as Hok.
     pose proof (arr_store (a_dlit HRep) Ha Hst) as A.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but this array of the heuristic, which A gives. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the array: the entry stored *)
       cbn [set_hr hr set_dlit dlit]. arr_tset.
     - (* the bounds *)
@@ -121,9 +121,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_heur HRep) as Hok.
     pose proof (fld_store (r_inc HRep) Hst) as F.
-    cbn [Val.load_result] in F. destruct HRep. carry Hst Hnd.
+    cbn [Val.load_result] in F. destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field but this one of the heuristic is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the bounds *)
       apply heur_ok_inc; assumption.
   Qed.
@@ -138,9 +138,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_heur HRep) as Hok.
     pose proof (fld_store (r_hsize HRep) Hst) as F.
-    cbn [Val.load_result] in F. destruct HRep. carry Hst Hnd.
+    cbn [Val.load_result] in F. destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field but this one of the heuristic is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the bounds *)
       apply heur_ok_hsize; assumption.
   Qed.
@@ -155,4 +155,4 @@ Definition HeurFrame (sh: Shape): block -> Z -> Prop :=
 (* After a function of the heuristic: m' represents x with the heuristic h, and only the
    heuristic changed. *)
 Abbreviation HeurPost sh N lss x m h m' :=
-  (RepL m' sh N lss (x <| hr := h |>) /\ Mem.unchanged_on (HeurFrame sh) m m').
+  (Changes sh N lss (HeurFrame sh) (x <| hr := h |>) m m').

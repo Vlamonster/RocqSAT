@@ -46,7 +46,7 @@ Lemma mark_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   (x: Ctx) (y: Lit),
   {{ m | RepL m sh N lss x /\ (extract y < N)%nat }}
     f_mark(sptr sh, vint (key y))
-  {{ m', v | RepL m' sh N lss (mark x y) /\ Mem.unchanged_on (MarkFrame sh) m m' }}.
+  {{ m', v | Changes sh N lss (MarkFrame sh) (mark x y) m m' }}.
 Proof.
   intros sh N lss x y m [HRep Hy].
   pose proof (r_n HRep) as HN.

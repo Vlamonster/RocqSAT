@@ -105,6 +105,14 @@ Proof.
     reflexivity.
 Qed.
 
+(* Replacing an entry keeps the length. *)
+Lemma length_set_nth: forall (d: nat) (y: Lit) (ls: list Lit), (d < length ls)%nat ->
+  length (set_nth d y ls) = length ls.
+Proof.
+  intros d y ls Hd. unfold set_nth. rewrite length_app. cbn [length].
+  rewrite length_firstn, length_skipn. lia.
+Qed.
+
 (* The length e - b of a clause, as C computes it from its range. *)
 Lemma eval_clause_len: forall (le: temp_env) (m: mem) (b e: nat),
   le ! _b = Some (vnat b) -> le ! _e = Some (vnat e) ->
@@ -121,9 +129,10 @@ Qed.
 
 (* The parts of visit proved in lemmas of their own: the loop and the end after it; in
    the loop body the slow path past a true blocker, the test of the length of the clause,
-   the tail that keeps the watcher and k++; for a clause watching p, the test of its
-   other watch o, the search for a new watch, and what follows when one is found or
-   not. *)
+   the tail that keeps the watcher and k++; for a unit clause, the test of its literal;
+   for a longer clause, the swap of its first two literals and the test of the second
+   one; for a clause watching p, the test of its other watch o, the search for a new
+   watch, and what follows when one is found or not. *)
 Definition visit_loop: statement := first_stmt (drop_stmts 4 (fn_body f_visit)).
 Definition visit_end: statement := drop_stmts 5 (fn_body f_visit).
 Definition visit_body: statement := drop_stmts 1 (loop_body visit_loop).
@@ -132,7 +141,10 @@ Definition visit_len: statement := first_stmt (drop_stmts 3 visit_slow).
 Definition visit_tail: statement := drop_stmts 4 visit_slow.
 Definition visit_keep: statement := first_stmt visit_tail.
 Definition visit_incr: statement := drop_stmts 1 visit_tail.
+Definition visit_single: statement := then_stmt visit_len.
 Definition visit_watch: statement := then_stmt (else_stmt visit_len).
+Definition visit_swap: statement := then_stmt (first_stmt (drop_stmts 1 visit_watch)).
+Definition visit_second: statement := drop_stmts 2 visit_watch.
 Definition visit_test: statement := then_stmt (drop_stmts 4 visit_watch).
 Definition visit_search: statement := else_stmt (drop_stmts 1 visit_test).
 Definition visit_move: statement := then_stmt (drop_stmts 1 visit_search).
@@ -340,25 +352,24 @@ Section Visit.
     - (* keep the watcher with blocker b *)
       pose proof (Hob b eq_refl) as Hb.
       pose proof (key_small b N Hb (r_n HRep)) as Hkey.
-      branch (key b) 0.
-      + intros Hge. apply (visit_keep_correct k kept xc t i b _t'9 _t'8).
-        * right. split; reflexivity.
+      take_then (key b) 0 by lia.
+      intros Hge. apply (visit_keep_correct k kept xc t i b _t'9 _t'8).
+      + right. split; reflexivity.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
+      + intros le' m' HW' HM'. pose proof HW' as [[Hs Hpk Hbase Hn Hj Hk] Hi' Hkb'].
+        assert (Hj_incr: Int.add (Int.repr (Z.of_nat (length kept))) (Int.repr 1)
+                         = Int.repr (Z.of_nat (length ((i, b) :: kept)))).
+        { apply incr_nat. lia. }
+        (* j++; *)
+        run. ints. apply visit_incr_correct.
+        exists ((i, b) :: kept), xc. eexists. splits.
+        * constructor; tmp.
+        * apply HM'.
         * assumption.
-        * assumption.
-        * assumption.
-        * assumption.
-        * assumption.
-        * intros le' m' HW' HM'. pose proof HW' as [[Hs Hpk Hbase Hn Hj Hk] Hi' Hkb'].
-          assert (Hj_incr: Int.add (Int.repr (Z.of_nat (length kept))) (Int.repr 1)
-                           = Int.repr (Z.of_nat (length ((i, b) :: kept)))).
-          { apply incr_nat. lia. }
-          (* j++; *)
-          run. ints. apply visit_incr_correct.
-          exists ((i, b) :: kept), xc. eexists. splits.
-          -- constructor; tmp.
-          -- apply HM'.
-          -- assumption.
-      + intros Hlt. lia.
     - (* drop the watcher: kb = -1 *)
       branch (-1) 0.
       + intros Hge. lia.
@@ -400,6 +411,20 @@ Section Visit.
       else (set_watching x1 p (rev_append kept (skipn k ws)), Some i)
     end.
 
+  (* A conflict on clause i, which visit finds with the context xc': visit returns
+     i + 1. *)
+  Lemma visit_returns_conflict: forall (xc': Ctx) (i: nat) (le: temp_env) (m': mem),
+    Rep m' sh N lss xc' -> (i < length lss)%nat -> res = (xc', Some i) ->
+    Returns f_visit VisitPost le m' (ret_int (enc_conf (Some i))).
+  Proof.
+    intros xc' i le m' HRep' Hi Hvisit. exists (vint (enc_conf (Some i))). split.
+    - apply result_int.
+    - right. rewrite Hvisit. cbn [fst snd]. splits.
+      + reflexivity.
+      + assumption.
+      + intros i' Heq. injection Heq as <-. assumption.
+  Qed.
+
   (* The other watch o of the clause o :: p :: ls has no literal of ls to take the place
      of p:
 
@@ -434,67 +459,89 @@ Section Visit.
       visit_body, visit_loop, f_visit.
     cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
     (* if (lit_value(s, o) == 0) *)
-    run. call lit_value_fun (lit_value_correct sh N lss x1 o).
-    - split; assumption.
-    - intros m' v [-> ->]. normal. eapply (exec_if_eq _ 0).
-      + ev.
-      + ev.
+    run. call lit_value_fun (lit_value_correct sh N lss x1 o) by (split; assumption).
+    intros m' v [-> ->]. normal. eapply (exec_if_eq _ 0).
+    - ev.
+    - ev.
+    - reflexivity.
+    - split.
+      + apply enc_small.
+      + lia.
+    - (* o is unassigned: if (!assign(s, o, i + 1)) return -1; *)
+      intros Hzero. apply Z.eqb_eq in Hzero. rewrite enc_undef in Hzero.
+      rewrite Hzero in Hvisit. run.
+      eapply (exec_call_triple assign_fun
+                (assign_correct sh N lss x1 o (input i) t)).
       + reflexivity.
-      + split.
-        * apply enc_small.
-        * lia.
-      + (* o is unassigned: if (!assign(s, o, i + 1)) return -1; *)
-        intros Hzero. apply Z.eqb_eq in Hzero. rewrite enc_undef in Hzero.
-        rewrite Hzero in Hvisit. run.
-        eapply (exec_call_triple assign_fun
-                  (assign_correct sh N lss x1 o (input i) t)).
-        * reflexivity.
-        * (* the reason is input i, encoded as i + 1 *)
-          cbn [enc_reason]. unfold vint. rewrite <- add_repr. evs.
-        * split.
-          -- assumption.
-          -- split.
+      + (* the reason is input i, encoded as i + 1 *)
+        cbn [enc_reason]. unfold vint. rewrite <- add_repr. evs.
+      + splits; assumption.
+      + intros m1 v Hv. normal. destruct Hv as [-> | (-> & HRep1 & Apool1)].
+        * (* out of room *)
+          take_then 1 by lia.
+          intros _. return_int.
+          left. reflexivity.
+        * (* kb = o: keep the watcher with blocker o *)
+          take_else 0 by lia.
+          intros _. apply exec_skip. normal. run. apply visit_tail_correct.
+          exists kept, (assign x1 o (input i)), t, i, (Some o). splits.
+          -- constructor; try tmp.
+             constructor; tmp.
+          -- apply (visit_mem_ctx sh N lss x p k kept x1 _ t m m1).
              ++ assumption.
-             ++ split; assumption.
-        * intros m1 v Hv. normal. destruct Hv as [-> | (-> & HRep1 & Apool1)].
-          -- (* out of room *)
-             branch 1.
-             ++ intros _. return_int.
-                left. reflexivity.
-             ++ intros Hone_zero. lia.
-          -- (* kb = o: keep the watcher with blocker o *)
-             branch 0.
-             ++ intros Hzero_nonzero. lia.
-             ++ intros _. apply exec_skip. normal. run. apply visit_tail_correct.
-                exists kept, (assign x1 o (input i)), t, i, (Some o). splits.
-                ** constructor; try tmp.
-                   constructor; tmp.
-                ** apply (visit_mem_ctx sh N lss x p k kept x1 _ t m
-                     m1).
-                   --- assumption.
-                   --- assumption.
-                   --- assumption.
-                   --- reflexivity.
-                   --- reflexivity.
-                ** assumption.
-                ** assumption.
-                ** intros b' Heq. injection Heq as <-.
-                   assumption.
-                ** assumption.
-      + (* o is false: a conflict, keep_rest(s, p, j, k, n); return i + 1; *)
-        intros Hnonzero. apply Z.eqb_neq in Hnonzero. rewrite enc_undef in Hnonzero.
-        rewrite Hnonzero in Hvisit. run.
-        call keep_rest_fun (keep_rest_correct sh N lss x p k kept x1 t).
+             ++ assumption.
+             ++ assumption.
+             ++ reflexivity.
+             ++ reflexivity.
+          -- assumption.
+          -- assumption.
+          -- intros b' Heq. injection Heq as <-. assumption.
+          -- assumption.
+    - (* o is false: a conflict, keep_rest(s, p, j, k, n); return i + 1; *)
+      intros Hnonzero. apply Z.eqb_neq in Hnonzero. rewrite enc_undef in Hnonzero.
+      rewrite Hnonzero in Hvisit. run.
+      call keep_rest_fun (keep_rest_correct sh N lss x p k kept x1 t) by assumption.
+      intros m' v HRep'. normal. eapply exec_return.
+      + ev.
+      + ret. cbn [cast_int_int]. rewrite enc_conf_some.
+        apply (visit_returns_conflict _ i _ _ HRep').
         * assumption.
-        * intros m' v HRep'. normal. eapply exec_return.
-          -- ev.
-          -- ret. cbn [cast_int_int]. rewrite enc_conf_some.
-             exists (vint (enc_conf (Some i))). split.
-             ++ apply result_int.
-             ++ right. rewrite Hvisit. cbn [fst snd]. splits.
-                ** reflexivity.
-                ** assumption.
-                ** intros i' Heq. injection Heq as <-. assumption.
+        * assumption.
+  Qed.
+
+  (* Two stores to the literals of clause i, of y1 at its position d1 and then of y2 at
+     its position d2, keep the memory of the visit, with the clause updated. *)
+  Lemma visit_mem_clits_twice: forall (k: nat) (kept: list Watcher) (x1: Ctx)
+    (t: nat -> Z) (m m1 m2: mem) (i d1 d2: nat) (ls: list Lit) (y1 y2: Lit),
+    VisitMem k kept x1 t m -> (i < length lss)%nat -> tget (cmap x1) i = Some ls ->
+    (d1 < length ls)%nat -> (d2 < length ls)%nat ->
+    (extract y1 < N)%nat -> (extract y2 < N)%nat ->
+    Mem.store Mint32 m (b_clits sh) (4 * Z.of_nat (starts sh i + d1)) (vint (key y1))
+      = Some m1 ->
+    Mem.store Mint32 m1 (b_clits sh) (4 * Z.of_nat (starts sh i + d2)) (vint (key y2))
+      = Some m2 ->
+    VisitMem k kept (set_clause x1 i (set_nth d2 y2 (set_nth d1 y1 ls))) t m2.
+  Proof.
+    intros k kept x1 t m m1 m2 i d1 d2 ls y1 y2 HM Hi Hls Hd1 Hd2 Hy1 Hy2 Hst1 Hst2.
+    pose proof HM as [_ _ HRep _ Apool _ _ _ _ _].
+    pose proof (r_nodup HRep) as Hnd.
+    pose proof (rep_store_clits m m1 i d1 ls y1 HRep Hi Hls Hd1 Hy1 Hst1) as HRep1.
+    assert (HRep2: RepL m2 sh N lss
+      (set_clause (set_clause x1 i (set_nth d1 y1 ls)) i
+         (set_nth d2 y2 (set_nth d1 y1 ls)))).
+    { apply (rep_store_clits m1 m2 i d2 (set_nth d1 y1 ls) y2 HRep1 Hi).
+      - apply tget_tset_same.
+      - rewrite length_set_nth by assumption. assumption.
+      - assumption.
+      - assumption. }
+    apply rep_clause_twice in HRep2.
+    apply (visit_mem_ctx sh N lss x p k kept x1 _ t m m2).
+    - assumption.
+    - assumption.
+    - apply (arr_store_other (arr_store_other Apool Hst1 ltac:(neq Hnd)) Hst2).
+      neq Hnd.
+    - reflexivity.
+    - reflexivity.
   Qed.
 
   (* Moving the watch p of the clause o :: p :: ls to r, its literal d >= 2, which
@@ -555,74 +602,52 @@ Section Visit.
     cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
     (* int r = s->clits[q]; s->clits[b + 1] = r; *)
     run. rewrite Htl. store Alits Hb1_lt as m1 Hst1.
-    pose proof
-      (rep_store_clits m m1 i 1 (o :: p :: ls) r HRep Hi_lt Hcls
-                  ltac:(cbn [length]; lia) Hr_lt Hst1) as HRep1.
-    cbn [set_nth firstn skipn app] in HRep1.
-    pose proof (arr_store_other Apool Hst1 ltac:(neq Hnd)) as Apool1.
-    pose proof (Rep.r_clits HRep1) as Fclits1.
-    pose proof (Rep.a_lits HRep1) as (tl1 & Alits1 & _).
-    keep_mem m1.
-    (* s->clits[q] = p; *)
+    pose proof (arr_store Alits Hb1_lt Hst1) as Alits1.
+    carry Hst1 Hnd. keep_mem m1.
+    (* s->clits[q] = p; the clause is o :: r :: ls' in x2 *)
     run. store Alits1 Hq_lt as m2 Hst2.
-    pose proof
-      (rep_store_clits m1 m2 i
-                  d (o :: r :: ls) p HRep1 Hi_lt (tget_tset_same _ _ _)
-                  ltac:(cbn [length] in *; lia) Hp Hst2) as HRep2.
-    apply rep_clause_twice in HRep2. rewrite set_nth_move in HRep2 by lia.
+    pose proof (visit_mem_clits_twice k kept x1 t m m1 m2 i 1 d (o :: p :: ls) r p HM
+      Hi_lt Hcls ltac:(cbn [length]; lia) ltac:(lia) Hr_lt Hp Hst1 Hst2) as HM2.
+    replace (set_nth 1 r (o :: p :: ls)) with (o :: r :: ls) in HM2 by reflexivity.
+    rewrite set_nth_move in HM2 by lia.
     set (x2 := set_clause x1 i (o :: r :: set_nth (d - 2) p ls)) in *.
-    pose proof
-      (arr_store_other Apool1 Hst2 ltac:(neq Hnd)) as Apool2.
-    assert (HM2: VisitMem k kept x2 t m2).
-    { apply (visit_mem_ctx sh N lss x p k kept x1 x2 t m m2).
-      - assumption.
-      - assumption.
-      - assumption.
-      - reflexivity.
-      - reflexivity. }
+    pose proof HM2 as [_ _ HRep2 _ Apool2 _ _ _ _ _].
     keep_mem m2.
     (* if (!wpush(s, r, i, o)) return -1; *)
     run. call wpush_fun
       (wpush_correct sh N lss x2 r i o t (SkipP (lit_key p) (length ws))).
-    - split.
+    - splits.
       + assumption.
-      + split.
-        * assumption.
-        * split.
-          -- apply HM2.
-          -- split.
-             ++ (* the skipped watchers are within ws, which the list of p
-                   starts with *)
-                intros q' [Heq Hq']. unfold watching.
-                cbn [set_clause wls x2].
-                rewrite Heq. fold (watching (wls x1) p).
-                rewrite Hext, length_app.
-                lia.
-             ++ split.
-                ** assumption.
-                ** split; assumption.
+      + assumption.
+      + apply HM2.
+      + (* the skipped watchers are within ws, which the list of p starts with *)
+        intros q' [Heq Hq']. unfold watching.
+        cbn [set_clause wls x2].
+        rewrite Heq. fold (watching (wls x1) p).
+        rewrite Hext, length_app.
+        lia.
+      + assumption.
+      + assumption.
+      + assumption.
     - intros m3 v Hv. normal.
       destruct Hv as [-> | (-> & HRep3 & Apool3 & Hpool3 & _)].
       + (* out of room *)
-        branch 1.
-        * intros _. return_int.
-          left. reflexivity.
-        * intros Hone_zero. lia.
+        take_then 1 by lia.
+        intros _. return_int.
+        left. reflexivity.
       + (* the watch moved: drop the watcher, kb = -1 *)
-        branch 0.
-        * intros Hzero_nonzero. lia.
-        * intros _. apply exec_skip. normal. apply visit_tail_correct.
-          exists kept, (move_watch x1 i (o :: r :: set_nth (d - 2) p ls) r o).
-          eexists. exists i, None. splits.
-          -- constructor; try tmp.
-             constructor; tmp.
-          -- rewrite move_watch_split.
-             apply (visit_mem_push sh N lss x p k kept x2 t i r o
-                      m2 m3); assumption.
-          -- assumption.
-          -- assumption.
-          -- intros b' Heq. discriminate.
-          -- assumption.
+        take_else 0 by lia.
+        intros _. apply exec_skip. normal. apply visit_tail_correct.
+        exists kept, (move_watch x1 i (o :: r :: set_nth (d - 2) p ls) r o).
+        eexists. exists i, None. splits.
+        * constructor; try tmp.
+          constructor; tmp.
+        * rewrite move_watch_split.
+          apply (visit_mem_push sh N lss x p k kept x2 t i r o m2 m3); assumption.
+        * assumption.
+        * assumption.
+        * intros b' Heq. discriminate.
+        * assumption.
   Qed.
 
   (* The other watch o of the clause o :: p :: ls is not true: search ls for a new watch.
@@ -676,18 +701,17 @@ Section Visit.
         { apply swap_watch_all_false. intros d Hd.
           apply (Hall (S (S d))). cbn [length]. lia. }
         rewrite Hnone in Hvisit.
-        branch (-1) 0.
-        * intros Hge. lia.
-        * intros Hlt. apply (visit_unit_correct k kept x1 t i o).
+        take_else (-1) 0 by lia.
+        intros Hlt. apply (visit_unit_correct k kept x1 t i o).
+        * constructor; try tmp.
           -- constructor; try tmp.
-             ++ constructor; try tmp.
-                constructor; tmp.
-             ++ assumption.
-             ++ assumption.
-             ++ assumption.
-          -- tmp.
+             constructor; tmp.
           -- assumption.
           -- assumption.
+          -- assumption.
+        * tmp.
+        * assumption.
+        * assumption.
       + (* literal d >= 2 is not false: q = starts i + d *)
         assert (Hsome: swap_watch (vals x1) p ls =
                        Some (nth (d - 2) ls (Pos 0%nat), set_nth (d - 2) p ls)).
@@ -701,21 +725,20 @@ Section Visit.
               assumption.
           - intros d' Hd'. apply (Hbefore (S (S d'))). lia. }
         rewrite Hsome in Hvisit.
-        branch (Z.of_nat (starts sh i + d)) 0.
-        * intros Hge. apply (visit_move_correct k kept x1 t i o ls d).
+        take_then (Z.of_nat (starts sh i + d)) 0 by lia.
+        intros Hge. apply (visit_move_correct k kept x1 t i o ls d).
+        * constructor; try tmp.
           -- constructor; try tmp.
-             ++ constructor; try tmp.
-                constructor; tmp.
-             ++ assumption.
-             ++ assumption.
-             ++ assumption.
-          -- tmp.
-          -- tmp.
+             constructor; tmp.
           -- assumption.
           -- assumption.
           -- assumption.
-          -- assumption.
-        * intros Hlt. lia.
+        * tmp.
+        * tmp.
+        * assumption.
+        * assumption.
+        * assumption.
+        * assumption.
   Qed.
 
   (* The clause of the watcher at position k is o :: p :: ls in x1:
@@ -740,41 +763,117 @@ Section Visit.
       f_visit.
     cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
     (* if (lit_value(s, o) == 1) *)
-    run. call lit_value_fun (lit_value_correct sh N lss x1 o).
-    - split; assumption.
-    - intros m' v [-> ->]. normal. eapply (exec_if_eq _ 1).
-      + ev.
-      + ev.
-      + reflexivity.
-      + split.
-        * apply enc_small.
-        * lia.
-      + (* o is true: kb = o, keep the watcher with blocker o *)
-        intros Htrue. apply Z.eqb_eq in Htrue. rewrite enc_true in Htrue.
-        run. apply visit_tail_correct.
-        exists kept, x1, t, i, (Some o). splits.
+    run. call lit_value_fun (lit_value_correct sh N lss x1 o) by (split; assumption).
+    intros m' v [-> ->]. normal. eapply (exec_if_eq _ 1).
+    - ev.
+    - ev.
+    - reflexivity.
+    - split.
+      + apply enc_small.
+      + lia.
+    - (* o is true: kb = o, keep the watcher with blocker o *)
+      intros Htrue. apply Z.eqb_eq in Htrue. rewrite enc_true in Htrue.
+      run. apply visit_tail_correct.
+      exists kept, x1, t, i, (Some o). splits.
+      + constructor; try tmp.
+        constructor; tmp.
+      + assumption.
+      + assumption.
+      + assumption.
+      + intros b' Heq. injection Heq as <-. assumption.
+      + unfold visit_rest in Hvisit. rewrite Htrue in Hvisit.
+        assumption.
+    - (* look for a new watch *)
+      intros Hnot_true. apply Z.eqb_neq in Hnot_true. rewrite enc_true in Hnot_true.
+      apply (visit_search_correct k kept x1 t i o ls).
+      + constructor; try tmp.
         * constructor; try tmp.
           constructor; tmp.
         * assumption.
         * assumption.
         * assumption.
-        * intros b' Heq. injection Heq as <-. assumption.
-        * unfold visit_rest in Hvisit. rewrite Htrue in Hvisit.
-          assumption.
-      + (* look for a new watch *)
-        intros Hnot_true. apply Z.eqb_neq in Hnot_true. rewrite enc_true in Hnot_true.
-        apply (visit_search_correct k kept x1 t i o ls).
-        * constructor; try tmp.
-          -- constructor; try tmp.
-             constructor; tmp.
-          -- assumption.
-          -- assumption.
-          -- assumption.
-        * tmp.
-        * assumption.
-        * assumption.
-        * assumption.
-        * assumption.
+      + tmp.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
+  Qed.
+
+  (* The clause p :: c1 :: ls watches p first: swap its first two literals, so that it
+     is c1 :: p :: ls with c1 its other watch, and test c1:
+
+       {{ ClauseAt k kept xc /\ o = p }}
+         o = s->clits[b + 1];
+         s->clits[b] = o; s->clits[b + 1] = p;                        (rep_store_clits)
+       {{ ClauseAt k kept x1 /\ x1 = set_clause xc i (c1 :: p :: ls) }}
+         if (s->clits[b + 1] == p) ...                  (it is: visit_test_correct) *)
+  Lemma visit_swap_correct: forall (k: nat) (kept: list Watcher) (xc: Ctx) (t: nat -> Z)
+    (i: nat) (c1: Lit) (ls: list Lit) (le: temp_env) (m: mem),
+    ClauseAt k kept xc t i le m -> tget (cmap xc) i = Some (p :: c1 :: ls) ->
+    res = visit_rest k kept (set_clause xc i (c1 :: p :: ls)) i c1 ls ->
+    Exec ge le m visit_swap (SeqK ge visit_second (SeqK ge visit_tail (VisitK k))).
+  Proof.
+    intros k kept xc t i c1 ls le m HC Hcls Hvisit.
+    pose proof HC as [[HT Hi Hkb] Hb He HM Hkn Hi_lt].
+    pose proof HM as [Hp _ HRep _ Apool _ _ _ _ _].
+    pose proof (r_n HRep) as HN.
+    pose proof (r_nodup HRep) as Hnd.
+    pose proof (r_nclits_small HRep) as Hnclits.
+    pose proof (key_small p N Hp HN) as Hkp.
+    pose proof (r_clits HRep) as Fclits.
+    pose proof (a_lits HRep) as (tl & Alits & Hclauses).
+    (* The first two literals of the clause, at b and b + 1 *)
+    destruct (clause_lit m sh N lss xc tl i 0 (p :: c1 :: ls) HRep Hclauses Hi_lt Hcls)
+      as (Hpos0 & _ & _).
+    { cbn [length]. lia. }
+    destruct (clause_lit m sh N lss xc tl i 1 (p :: c1 :: ls) HRep Hclauses Hi_lt Hcls)
+      as (Hpos1 & Htl1 & Hc1).
+    { cbn [length]. lia. }
+    cbn [nth] in Htl1, Hc1. rewrite Nat.add_0_r in Hpos0.
+    pose proof (key_small c1 N Hc1 HN) as Hkc1.
+    pose proof HT as [Hs Hpk Hbase Hn Hj Hk].
+    assert (Hb1: Int.add (Int.repr (Z.of_nat (starts sh i))) (Int.repr 1)
+                 = Int.repr (Z.of_nat (starts sh i + 1))).
+    { rewrite add_repr. f_equal. lia. }
+    unfold visit_swap, visit_second, visit_watch, visit_len, visit_slow, visit_body,
+      visit_loop, f_visit.
+    cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
+    (* o = s->clits[b + 1]; s->clits[b] = o; *)
+    run. rewrite Htl1. store Alits Hpos0 as m1 Hst1.
+    pose proof (arr_store Alits Hpos0 Hst1) as Alits1.
+    rewrite <- (Nat.add_0_r (starts sh i)) in Hst1.
+    carry Hst1 Hnd. keep_mem m1.
+    (* s->clits[b + 1] = p; the clause is c1 :: p :: ls in x1 *)
+    run. store Alits1 Hpos1 as m2 Hst2.
+    pose proof (visit_mem_clits_twice k kept xc t m m1 m2 i 0 1 (p :: c1 :: ls) c1 p HM
+      Hi_lt Hcls ltac:(cbn [length]; lia) ltac:(cbn [length]; lia) Hc1 Hp Hst1 Hst2)
+      as HM2.
+    cbn [set_nth firstn skipn app] in HM2.
+    set (x1 := set_clause xc i (c1 :: p :: ls)) in *.
+    assert (Hcls2: tget (cmap x1) i = Some (c1 :: p :: ls)) by apply tget_tset_same.
+    pose proof HM2 as [_ _ HRep2 _ _ _ _ _ _ _].
+    pose proof (Rep.r_clits HRep2) as Fclits2.
+    pose proof (Rep.a_lits HRep2) as (tl2 & Alits2 & Hclauses2).
+    destruct (clause_lit m2 sh N lss x1 tl2 i 1 (c1 :: p :: ls) HRep2 Hclauses2 Hi_lt
+                Hcls2) as (_ & Htl2 & _).
+    { cbn [length]. lia. }
+    cbn [nth] in Htl2. keep_mem m2.
+    (* if (s->clits[b + 1] == p): it is *)
+    normal. unfold visit_second, visit_watch, visit_len, visit_slow, visit_body,
+      visit_loop, f_visit.
+    cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
+    run. rewrite Htl2. take_then by lia.
+    intros _. apply (visit_test_correct k kept x1 t i c1 ls).
+    - constructor; try tmp.
+      + constructor; try tmp.
+        constructor; tmp.
+      + assumption.
+      + assumption.
+      + assumption.
+    - tmp.
+    - assumption.
+    - assumption.
+    - assumption.
   Qed.
 
   (* The clause c0 :: c1 :: ls of the watcher at position k, with two literals or more:
@@ -782,7 +881,7 @@ Section Visit.
        {{ ClauseAt k kept xc }}
          int o = s->clits[b];
          if (o == p) { o = s->clits[b + 1];
-                       s->clits[b] = o; s->clits[b + 1] = p; }         (rep_store_clits)
+                       s->clits[b] = o; s->clits[b + 1] = p; }       (visit_swap_correct)
          if (s->clits[b + 1] == p) ...                               (visit_test_correct)
        {{ visit_chosen k, dropped: the clause does not watch p }}
 
@@ -803,7 +902,6 @@ Section Visit.
     pose proof HC as [[HT Hi Hkb] Hb He HM Hkn Hi_lt].
     pose proof HM as [Hp _ HRep _ Apool _ _ _ _ _].
     pose proof (r_n HRep) as HN.
-    pose proof (r_nodup HRep) as Hnd.
     pose proof (r_nclits_small HRep) as Hnclits.
     pose proof (key_small p N Hp HN) as Hkp.
     pose proof (r_clits HRep) as Fclits.
@@ -826,62 +924,20 @@ Section Visit.
     cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
     (* int o = s->clits[b]; if (o == p) *)
     run. rewrite Htl0. branch.
-    - (* p is first: o = s->clits[b + 1]; s->clits[b] = o; s->clits[b + 1] = p; *)
+    - (* p is first: swap the first two literals *)
       intros Hc0p. apply Z.eqb_eq in Hc0p. rewrite key_eqb in Hc0p.
       rewrite Hc0p in Hvisit. apply Lit.eqb_eq in Hc0p as Hc0p'. subst c0.
-      run. rewrite Htl1. store Alits Hpos0 as m1 Hst1.
-      rewrite <- (Nat.add_0_r (starts sh i)) in Hst1.
-      pose proof
-        (rep_store_clits m m1 i 0 (p :: c1 :: ls) c1 HRep Hi_lt
-                    Hcls ltac:(cbn [length]; lia) Hc1 Hst1) as HRep1.
-      cbn [set_nth firstn skipn app] in HRep1.
-      pose proof
-        (arr_store_other Apool Hst1 ltac:(neq Hnd)) as Apool1.
-      pose proof (Rep.r_clits HRep1) as Fclits1.
-      pose proof (Rep.a_lits HRep1) as (tl1 & Alits1 & _).
-      keep_mem m1.
-      run. store Alits1 Hpos1 as m2 Hst2.
-      pose proof
-        (rep_store_clits m1 m2 i 1 (c1 :: c1 :: ls) p HRep1 Hi_lt
-                      (tget_tset_same _ _ _)
-                    ltac:(cbn [length]; lia) Hp Hst2) as HRep2.
-      apply rep_clause_twice in HRep2. cbn [set_nth firstn skipn app] in HRep2.
-      set (x1 := set_clause xc i (c1 :: p :: ls)) in *.
-      pose proof (arr_store_other Apool1 Hst2 ltac:(neq Hnd))
-        as Apool2.
-      assert (HM2: VisitMem k kept x1 t m2).
-      { apply (visit_mem_ctx sh N lss x p k kept xc x1 t m m2).
-        - assumption.
-        - assumption.
-        - assumption.
-        - reflexivity.
-        - reflexivity. }
-      assert (Hcls2: tget (cmap x1) i = Some (c1 :: p :: ls)) by apply
-        tget_tset_same.
-      pose proof (Rep.r_clits HRep2) as Fclits2.
-      pose proof (Rep.a_lits HRep2)
-        as (tl2 & Alits2 & Hclauses2).
-      destruct (clause_lit m2 sh N lss x1 tl2 i 1
-        (c1 :: p :: ls) HRep2 Hclauses2
-                  Hi_lt Hcls2) as (_ & Htl2 & _).
-      { cbn [length]. lia. }
-      cbn [nth] in Htl2. keep_mem m2.
-      (* if (s->clits[b + 1] == p): it is *)
-      run. rewrite Htl2. branch.
-      + intros _. cbn [orb] in Hvisit.
-        apply (visit_test_correct k kept x1 t i c1 ls).
+      cbn [orb] in Hvisit.
+      apply (visit_swap_correct k kept xc t i c1 ls).
+      + constructor; try tmp.
         * constructor; try tmp.
-          -- constructor; try tmp.
-             constructor; tmp.
-          -- assumption.
-          -- assumption.
-          -- assumption.
-        * tmp.
+          constructor; tmp.
         * assumption.
         * assumption.
         * assumption.
-      + intros Hne. lia.
-    - (* p is not first *)
+      + assumption.
+      + assumption.
+    - (* p is not first: if (s->clits[b + 1] == p) *)
       intros Hc0p. apply Z.eqb_neq in Hc0p. rewrite key_eqb in Hc0p.
       rewrite Hc0p in Hvisit. apply exec_skip. normal.
       run. rewrite Htl1. branch.
@@ -889,9 +945,7 @@ Section Visit.
         intros Hc1p. apply Z.eqb_eq in Hc1p. rewrite key_eqb in Hc1p.
         rewrite Hc1p in Hvisit. apply Lit.eqb_eq in Hc1p as Hc1p'. subst c1.
         cbn [orb] in Hvisit.
-        apply (visit_test_correct k kept
-          (set_clause xc i (c0 :: p :: ls))
-                 t i c0 ls).
+        apply (visit_test_correct k kept (set_clause xc i (c0 :: p :: ls)) t i c0 ls).
         * constructor; try tmp.
           -- constructor; try tmp.
              constructor; tmp.
@@ -920,6 +974,63 @@ Section Visit.
         * rewrite Hvisit. reflexivity.
   Qed.
 
+  (* The clause [c0] of the watcher at position k is a unit clause:
+
+       {{ ClauseAt k kept xc }}
+         if (s->clits[b] == p) {
+           keep_rest(s, p, j, k, n);                                (keep_rest_correct)
+           return i + 1;                                       (visit_returns_conflict)
+       {{ result = i + 1 /\ VisitPost: the unit clause [p] is false }}
+         }
+       {{ visit_chosen k, dropped: [c0] does not watch p }}                         *)
+  Lemma visit_single_correct: forall (k: nat) (kept: list Watcher) (xc: Ctx)
+    (t: nat -> Z) (i: nat) (c0: Lit) (le: temp_env) (m: mem),
+    ClauseAt k kept xc t i le m -> tget (cmap xc) i = Some [c0] ->
+    res = (if c0 =? p then (set_watching xc p (rev_append kept (skipn k ws)), Some i)
+           else visit p (skipn (S k) ws) kept xc) ->
+    Exec ge le m visit_single (SeqK ge visit_tail (VisitK k)).
+  Proof.
+    intros k kept xc t i c0 le m HC Hcls Hvisit.
+    pose proof HC as [[HT Hi Hkb] Hb He HM Hkn Hi_lt].
+    pose proof HM as [Hp _ HRep _ _ _ _ _ _ _].
+    pose proof (r_n HRep) as HN.
+    pose proof (r_nclits_small HRep) as Hnclits.
+    pose proof (key_small p N Hp HN) as Hkp.
+    pose proof (r_clits HRep) as Fclits.
+    pose proof (a_lits HRep) as (tl & Alits & Hclauses).
+    destruct (clause_lit m sh N lss xc tl i 0 [c0] HRep Hclauses Hi_lt Hcls)
+      as (Hpos0 & Htl0 & Hc0).
+    { cbn [length]. lia. }
+    cbn [nth] in Htl0, Hc0. rewrite Nat.add_0_r in Htl0, Hpos0.
+    pose proof (key_small c0 N Hc0 HN) as Hkc0.
+    pose proof HT as [Hs Hpk Hbase Hn Hj Hk].
+    unfold visit_single, visit_len, visit_slow, visit_body, visit_loop, f_visit.
+    cbn [fn_body drop_stmts first_stmt loop_body then_stmt Swhile].
+    (* if (s->clits[b] == p) *)
+    run. rewrite Htl0. branch.
+    - (* a conflict: keep_rest(s, p, j, k, n); return i + 1; *)
+      intros Hc0p. apply Z.eqb_eq in Hc0p. rewrite key_eqb in Hc0p.
+      rewrite Hc0p in Hvisit. run.
+      call keep_rest_fun (keep_rest_correct sh N lss x p k kept xc t) by assumption.
+      intros m' v HRep'. normal. eapply exec_return.
+      + ev.
+      + ret. cbn [cast_int_int]. rewrite enc_conf_some.
+        apply (visit_returns_conflict _ i _ _ HRep').
+        * assumption.
+        * assumption.
+    - (* [c0] does not watch p: dropped *)
+      intros Hc0p. apply Z.eqb_neq in Hc0p. rewrite key_eqb in Hc0p.
+      rewrite Hc0p in Hvisit. apply exec_skip. normal. apply visit_tail_correct.
+      exists kept, xc, t, i, None. splits.
+      + constructor; try tmp.
+        constructor; tmp.
+      + assumption.
+      + assumption.
+      + assumption.
+      + intros b' Heq. discriminate.
+      + assumption.
+  Qed.
+
   (* The watcher (i, b) at position k, whose blocker is not true: its clause by its
      length.
 
@@ -927,11 +1038,7 @@ Section Visit.
          kb = -1; int b = s->cstart[i]; int e = s->cstart[i + 1];
        {{ ClauseAt k kept xc }}
          if (e - b == 1) {
-           if (s->clits[b] == p) {
-             keep_rest(s, p, j, k, n);                              (keep_rest_correct)
-             return i + 1;
-       {{ result = i + 1 /\ VisitPost: the unit clause [p] is false }}
-           }
+           if (s->clits[b] == p) { ... }                         (visit_single_correct)
          } else if (e - b >= 2) ...                                (visit_watch_correct)
        {{ visit_chosen k, dropped: a short clause that does not watch p }}
          if (kb >= 0) ...; k++;                                   (visit_tail_correct) *)
@@ -988,38 +1095,15 @@ Section Visit.
       + (* the empty clause has length 0 *)
         cbn [length] in Hone. lia.
       + (* a unit clause [c0]: false if c0 is p *)
-        destruct (clause_lit m sh N lss xc tl i 0 [c0] HRep Hclauses Hi_lt Hcls)
-          as (Hpos0 & Htl0 & Hc0).
-        { cbn [length]. lia. }
-        cbn [nth] in Htl0, Hc0. rewrite Nat.add_0_r in Htl0, Hpos0.
-        pose proof (key_small c0 N Hc0 HN) as Hkc0.
-        pose proof (r_clits HRep) as Fclits.
-        run. rewrite Htl0. branch.
-        * (* a conflict: keep_rest(s, p, j, k, n); return i + 1; *)
-          intros Hc0p. apply Z.eqb_eq in Hc0p. rewrite key_eqb in Hc0p.
-          rewrite Hc0p in Hvisit. run.
-          call keep_rest_fun (keep_rest_correct sh N lss x p k kept xc t).
-          -- assumption.
-          -- intros m' v HRep'. normal. eapply exec_return.
-             ++ ev.
-             ++ ret. cbn [cast_int_int]. rewrite enc_conf_some.
-                exists (vint (enc_conf (Some i))). split.
-                ** apply result_int.
-                ** right. rewrite Hvisit. cbn [fst snd]. splits.
-                   --- reflexivity.
-                   --- assumption.
-                   --- intros i' Heq. injection Heq as <-. assumption.
-        * (* [c0] does not watch p: dropped *)
-          intros Hc0p. apply Z.eqb_neq in Hc0p. rewrite key_eqb in Hc0p.
-          rewrite Hc0p in Hvisit. apply exec_skip. normal. apply visit_tail_correct.
-          exists kept, xc, t, i, None. splits.
+        apply (visit_single_correct k kept xc t i c0).
+        * constructor; try tmp.
           -- constructor; try tmp.
              constructor; tmp.
           -- assumption.
           -- assumption.
           -- assumption.
-          -- intros b' Heq. discriminate.
-          -- assumption.
+        * assumption.
+        * assumption.
       + (* a clause of two literals or more has length 2 or more *)
         cbn [length] in Hone. lia.
     - intros Hnot_one. destruct cls as [|c0 [|c1 ls]] eqn:Hc.
@@ -1100,54 +1184,53 @@ Section Visit.
     (* int i = s->wpool[base + 2 * k]; int kb = s->wpool[base + 2 * k + 1]; *)
     run. rewrite Hk1. run. rewrite Hk2.
     (* if (lit_value(s, kb) == 1) *)
-    call lit_value_fun (lit_value_correct sh N lss xc b).
-    - split; assumption.
-    - intros m' v [-> ->]. normal. eapply (exec_if_eq _ 1).
-      + ev.
-      + ev.
-      + reflexivity.
-      + split.
-        * apply enc_small.
-        * lia.
-      + (* the blocker is true: keep the watcher; j++; k++; continue; *)
-        intros Htrue. apply Z.eqb_eq in Htrue. rewrite enc_true in Htrue.
-        apply (visit_keep_correct k kept xc t i b _t'24 _t'23).
-        * left. split; reflexivity.
-        * constructor; try tmp.
-          constructor; tmp.
-        * assumption.
-        * assumption.
-        * assumption.
-        * assumption.
-        * intros le' m1 HW' HM'.
-          pose proof HW' as [[Hs' Hpk' Hbase' Hn' Hj' Hk'] Hi' Hkb'].
-          assert (Hj_incr: Int.add (Int.repr (Z.of_nat (length kept))) (Int.repr 1)
-                           = Int.repr (Z.of_nat (length ((i, b) :: kept)))).
-          { apply incr_nat. lia. }
-          assert (Hk_incr: Int.add (Int.repr (Z.of_nat k)) (Int.repr 1)
-                           = Int.repr (Z.of_nat (S k))).
-          { apply incr_nat. lia. }
-          run. apply exec_continue. abrupt. ints.
-          apply loopk_continue with (S k).
-          -- unfold visit_variant, ltof. lia.
-          -- exists ((i, b) :: kept), xc. eexists. splits.
-             ++ constructor; tmp.
-             ++ apply HM'.
-             ++ rewrite Hvisit,
-                  (skipn_nth ws (0%nat, Pos 0%nat) k Hkn),
-                  Hnth.
-                cbn [visit]. rewrite Htrue. reflexivity.
-      + (* look at the clause *)
-        intros Hnot_true. apply Z.eqb_neq in Hnot_true. rewrite enc_true in Hnot_true.
-        apply exec_skip. normal. apply (visit_slow_correct k kept xc t i b).
-        * constructor; tmp.
-        * tmp.
-        * assumption.
-        * assumption.
-        * assumption.
-        * assumption.
-        * assumption.
-        * assumption.
+    call lit_value_fun (lit_value_correct sh N lss xc b) by (split; assumption).
+    intros m' v [-> ->]. normal. eapply (exec_if_eq _ 1).
+    - ev.
+    - ev.
+    - reflexivity.
+    - split.
+      + apply enc_small.
+      + lia.
+    - (* the blocker is true: keep the watcher; j++; k++; continue; *)
+      intros Htrue. apply Z.eqb_eq in Htrue. rewrite enc_true in Htrue.
+      apply (visit_keep_correct k kept xc t i b _t'24 _t'23).
+      + left. split; reflexivity.
+      + constructor; try tmp.
+        constructor; tmp.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
+      + intros le' m1 HW' HM'.
+        pose proof HW' as [[Hs' Hpk' Hbase' Hn' Hj' Hk'] Hi' Hkb'].
+        assert (Hj_incr: Int.add (Int.repr (Z.of_nat (length kept))) (Int.repr 1)
+                         = Int.repr (Z.of_nat (length ((i, b) :: kept)))).
+        { apply incr_nat. lia. }
+        assert (Hk_incr: Int.add (Int.repr (Z.of_nat k)) (Int.repr 1)
+                         = Int.repr (Z.of_nat (S k))).
+        { apply incr_nat. lia. }
+        run. apply exec_continue. abrupt. ints.
+        apply loopk_continue with (S k).
+        * unfold visit_variant, ltof. lia.
+        * exists ((i, b) :: kept), xc. eexists. splits.
+          -- constructor; tmp.
+          -- apply HM'.
+          -- rewrite Hvisit,
+               (skipn_nth ws (0%nat, Pos 0%nat) k Hkn),
+               Hnth.
+             cbn [visit]. rewrite Htrue. reflexivity.
+    - (* look at the clause *)
+      intros Hnot_true. apply Z.eqb_neq in Hnot_true. rewrite enc_true in Hnot_true.
+      apply exec_skip. normal. apply (visit_slow_correct k kept xc t i b).
+      + constructor; tmp.
+      + tmp.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
+      + assumption.
   Qed.
 
   (* The loop of visit, over the watch list ws of p:

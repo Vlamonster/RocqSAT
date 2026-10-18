@@ -1131,8 +1131,88 @@ Section VisitSteps2.
     - reflexivity.
   Qed.
 
+  (* Reordering clause i keeps each blocker of ws a literal of its clause. *)
+  Lemma blockers_in_set_clause: forall (cm: ClauseMap) (ws: list Watcher) (i: nat)
+    (ls ls': list Lit),
+    BlockersIn cm ws -> tget cm i = Some ls -> Permutation ls ls' ->
+    BlockersIn (tset cm i (Some ls')) ws.
+  Proof.
+    intros cm ws i ls ls' Hblockers Hi Hperm j c ls'' Hin Hj.
+    apply tget_set_clause in Hj as [[-> ->]|[_ Hj]].
+    - apply Permutation_in with ls.
+      + assumption.
+      + now apply (Hblockers i c).
+    - now apply (Hblockers j c).
+  Qed.
+
+  (* A watcher whose blocker is a literal of its clause can be added. *)
+  Lemma blockers_in_snoc: forall (cm: ClauseMap) (ws: list Watcher) (i: nat) (b: Lit),
+    BlockersIn cm ws -> (forall (ls: list Lit), tget cm i = Some ls -> In b ls) ->
+    BlockersIn cm (ws ++ [(i, b)]).
+  Proof.
+    intros cm ws i b Hblockers Hb j c ls Hin Hj.
+    apply in_app_iff in Hin as [Hin|[Heq|[]]].
+    - now apply (Hblockers j c).
+    - injection Heq as <- <-. now apply Hb.
+  Qed.
+
+  (* A watcher can be dropped. *)
+  Lemma blockers_in_drop: forall (cm: ClauseMap) (kept rest: list Watcher) (w: Watcher),
+    BlockersIn cm (kept ++ w :: rest) -> BlockersIn cm (kept ++ rest).
+  Proof.
+    intros cm kept rest w Hblockers j c ls Hin Hj. apply (Hblockers j c ls).
+    - apply in_app_iff. apply in_app_iff in Hin as [Hin|Hin].
+      + now left.
+      + right. now right.
+    - assumption.
+  Qed.
+
+  (* The new watches o and r of the clause o :: r :: ls' were watches or are not
+     false. *)
+  Lemma watches_kept_move: forall (v: Values) (o p r: Lit) (ls ls': list Lit),
+    lookup v r <> Some false -> WatchesKept v (o :: p :: ls) (o :: r :: ls').
+  Proof.
+    intros v o p r ls ls' Hr w [<-|[<-|[]]].
+    - left. now left.
+    - now right.
+  Qed.
+
+  (* Moving the watch p of clause i = o :: p :: ls to r, the watches of all clauses have
+     their watchers: o its watcher as before, and r the new one. *)
+  Lemma listed_move: forall (p: Lit) (i: nat) (b: Lit) (rest kept: list Watcher)
+    (x: Ctx) (o r: Lit) (ls ls': list Lit),
+    (forall (j: nat) (ls0: list Lit) (z: Lit), tget (cmap x) j = Some ls0 ->
+      In z (firstn 2 ls0) -> WatchedV (wls x) p kept ((i, b) :: rest) j z) ->
+    tget (cmap x) i = Some (o :: p :: ls) -> o <> p -> r <> p ->
+    forall (j: nat) (ls0: list Lit) (z: Lit),
+      tget (cmap (move_watch x i (o :: r :: ls') r o)) j = Some ls0 ->
+      In z (firstn 2 ls0) ->
+      WatchedV (wls (move_watch x i (o :: r :: ls') r o)) p kept rest j z.
+  Proof.
+    intros p i b rest kept x o r ls ls' Hlisted Hi Hop Hrp j ls0 z Hj Hz.
+    cbn [move_watch cmap wls] in Hj |- *.
+    apply tget_set_clause in Hj as [[-> ->]|[Hne Hj]].
+    (* Clause i: its watches are now o and r *)
+    - destruct Hz as [<-|[<-|[]]].
+      + split.
+        * intros _. destruct (Hlisted i (o :: p :: ls) o Hi) as [Ho _].
+          -- now left.
+          -- destruct (Ho Hop) as [c Hc]. exists c. now apply watching_push.
+        * intros Heq. contradiction.
+      + split.
+        * intros _. exists o. apply watching_push_new.
+        * intros Heq. contradiction.
+    (* Another clause keeps its watchers *)
+    - destruct (Hlisted j ls0 z Hj Hz) as [Hother Hp]. split.
+      + intros Hzp. destruct (Hother Hzp) as [c Hc]. exists c. now apply watching_push.
+      + intros Hzp. apply (has_watcher_drop i j b).
+        * assumption.
+        * now apply Hp.
+  Qed.
+
   (* Moving the watch p of clause o :: p :: ls to a literal r of ls that is not false,
-     which changes places with p. *)
+     which changes places with p. The clause is reordered, which keeps each part of the
+     invariant; the watch lists are listed_move, and the new watcher has blocker o. *)
   Lemma visit_inv_move: forall (p: Lit) (i: nat) (b: Lit) (rest kept: list Watcher)
     (m: PA) (f: CNF) (x: Ctx) (o r: Lit) (ls ls': list Lit),
     VisitInv p kept ((i, b) :: rest) m f x ->
@@ -1145,75 +1225,47 @@ Section VisitSteps2.
     intros p i b rest kept m f x o r ls ls' Hinv Hi Hr_in Hr Hperm.
     pose proof (core_nodup (vi_core Hinv) i _ Hi) as Hnodup.
     destruct (nodup_watches o p r ls Hnodup Hr_in) as (Hop & Hro & Hrp).
-    assert (Hperm': Permutation (o :: p :: ls) (o :: r :: ls')).
-    - apply perm_skip. now apply Permutation_sym.
-    - (* The new watches: o was a watch, r is not false *)
-      assert (Hnew: WatchesKept (vals x) (o :: p :: ls) (o :: r :: ls')).
-      + intros w [<-|[<-|[]]].
-        * left. now left.
-        * now right.
-      + pose proof (core_move m f x i _ _ r o (vi_core Hinv) Hi Hperm') as Hcore'.
-        destruct Hinv as [Hcore Hq Hhead Hwatch Hsaved Hlisted Hblocked Hblockers Hkept].
-        split; simpl.
+    assert (Hperm': Permutation (o :: p :: ls) (o :: r :: ls'))
+      by now apply perm_skip, Permutation_sym.
+    pose proof (watches_kept_move (vals x) o p r ls ls' Hr) as Hnew.
+    pose proof (core_move m f x i _ _ r o (vi_core Hinv) Hi Hperm') as Hcore'.
+    destruct Hinv as [Hcore Hq Hhead Hwatch Hsaved Hlisted Hblocked Hblockers Hkept].
+    split.
+    - assumption.
+    - assumption.
+    - assumption.
+    - now apply (all_watch_q_reorder _ i (o :: p :: ls)).
+    - apply (saved_q_reorder _ m (vals x) i (o :: p :: ls)).
+      + assumption.
+      + now apply values_of_incl, Hcore.
+      + apply Hcore.
+      + assumption.
+      + assumption.
+      + assumption.
+    - now apply (listed_move p i b rest kept x o r ls ls').
+    (* The blockers: the watch list of r gets the new watcher, with blocker o *)
+    - intros l Hl. cbn [move_watch cmap wls]. rewrite watching_set.
+      destruct (Lit.eq_dec r l) as [<-|Hne].
+      + apply blockers_in_snoc.
+        * apply (blockers_in_set_clause (cmap x) _ i (o :: p :: ls)).
+          -- now apply Hblocked.
+          -- assumption.
+          -- assumption.
+        * intros ls'' Hj. rewrite tget_tset_same in Hj. injection Hj as <-. now left.
+      + apply (blockers_in_set_clause (cmap x) _ i (o :: p :: ls)).
+        * now apply Hblocked.
         * assumption.
         * assumption.
+    - apply (blockers_in_set_clause (cmap x) _ i (o :: p :: ls)).
+      + now apply (blockers_in_drop (cmap x) kept rest (i, b)).
+      + assumption.
+      + assumption.
+    - intros j c ls'' Hin Hj. cbn [move_watch cmap] in Hj.
+      apply tget_set_clause in Hj as [[-> ->]|[_ Hj]].
+      + apply some_true_perm with (o :: p :: ls).
+        * now apply (Hkept i c).
         * assumption.
-        * apply (all_watch_q_reorder _ i (o :: p :: ls)); assumption.
-        * apply (saved_q_reorder _ m (vals x) i (o :: p :: ls)).
-          -- assumption.
-          -- now apply values_of_incl, Hcore.
-          -- apply Hcore.
-          -- assumption.
-          -- assumption.
-          -- assumption.
-        (* The watch lists: o still has its watcher, r gets the new one *)
-        * intros j ls'' z Hj Hz. apply tget_set_clause in Hj as [[-> ->]|[Hne Hj]].
-          -- destruct Hz as [<-|[<-|[]]].
-             ++ split.
-                ** intros _. destruct (Hlisted i (o :: p :: ls) o Hi) as [Ho _].
-                   --- now left.
-                   --- destruct (Ho Hop) as [c Hc]. exists c. now apply watching_push.
-                ** intros Heq. contradiction.
-             ++ split.
-                ** intros _. exists o. apply watching_push_new.
-                ** intros Heq. contradiction.
-          -- destruct (Hlisted j ls'' z Hj Hz) as [Hother Hp]. split.
-             ++ intros Hzp. destruct (Hother Hzp) as [c Hc]. exists c.
-                now apply watching_push.
-             ++ intros Hzp. apply (has_watcher_drop i j b).
-                ** assumption.
-                ** now apply Hp.
-        (* The blockers: the new watcher has blocker o *)
-        * intros l Hl j c ls'' Hin Hj. rewrite watching_set in Hin.
-          destruct (Lit.eq_dec r l) as [<-|Hne].
-          -- apply in_app_iff in Hin as [Hin|[Heq|[]]].
-             ++ apply tget_set_clause in Hj as [[-> ->]|[_ Hj]].
-                ** apply Permutation_in with (o :: p :: ls).
-                   --- assumption.
-                   --- now apply (Hblocked r Hrp i c).
-                ** now apply (Hblocked r Hrp j c).
-             ++ injection Heq as -> ->. apply tget_set_clause in Hj as [[_ ->]|[Hne _]].
-                ** now left.
-                ** contradiction.
-          -- apply tget_set_clause in Hj as [[-> ->]|[_ Hj]].
-             ++ apply Permutation_in with (o :: p :: ls).
-                ** assumption.
-                ** now apply (Hblocked l Hl i c).
-             ++ now apply (Hblocked l Hl j c).
-        * intros j c ls'' Hin Hj. assert (Hin': In (j, c) (kept ++ (i, b) :: rest)).
-          -- apply in_app_iff. apply in_app_iff in Hin as [Hin|Hin].
-             ++ now left.
-             ++ right. now right.
-          -- apply tget_set_clause in Hj as [[-> ->]|[_ Hj]].
-             ++ apply Permutation_in with (o :: p :: ls).
-                ** assumption.
-                ** now apply (Hblockers i c).
-             ++ now apply (Hblockers j c).
-        * intros j c ls'' Hin Hj. apply tget_set_clause in Hj as [[-> ->]|[_ Hj]].
-          -- apply some_true_perm with (o :: p :: ls).
-             ++ now apply (Hkept i c).
-             ++ assumption.
-          -- now apply (Hkept j c).
+      + now apply (Hkept j c).
   Qed.
 
   (* Assigning an unassigned literal, which is queued. *)
@@ -1457,10 +1509,155 @@ Definition VisitSpec (p: Lit) (ws: list Watcher) (f: CNF): Prop :=
   VisitInv p kept ws m f x -> visit p ws kept x = (x', r) ->
   exists (m': PA), VisitOut p m f x m' x' r.
 
+(* lookup_true says that a literal is true. *)
+Lemma lookup_true_some: forall (v: Values) (l: Lit),
+  lookup_true v l = true -> lookup v l = Some true.
+Proof.
+  intros v l Hl. unfold lookup_true in Hl. destruct (lookup v l) as [[|]|]; easy.
+Qed.
+
+(* lookup_undef says that a literal is unassigned. *)
+Lemma lookup_undef_none: forall (v: Values) (l: Lit),
+  lookup_undef v l = true -> lookup v l = None.
+Proof. intros v l Hl. unfold lookup_undef in Hl. destruct (lookup v l); easy. Qed.
+
+(* A literal that is neither true nor unassigned is false. *)
+Lemma lookup_neither_false: forall (v: Values) (l: Lit),
+  lookup_true v l = false -> lookup_undef v l = false -> lookup v l = Some false.
+Proof.
+  intros v l Ht Hu. unfold lookup_true in Ht. unfold lookup_undef in Hu.
+  destruct (lookup v l) as [[|]|]; easy.
+Qed.
+
+(* The clause o :: p :: ls, with p and all of ls false, is a unit clause for o. *)
+Lemma unit_in_watched: forall (v: Values) (o p: Lit) (ls: list Lit),
+  lookup v p = Some false -> (forall (y: Lit), In y ls -> lookup v y = Some false) ->
+  UnitIn v o (o :: p :: ls).
+Proof.
+  intros v o p ls Hp Hls. split.
+  - now left.
+  - intros y [<-|[<-|Hy]] Hyo.
+    + contradiction.
+    + assumption.
+    + now apply Hls.
+Qed.
+
+(* A false clause i ends the visit: the watchers not visited yet go back into the watch
+   list of p, after the kept ones. *)
+Lemma visit_out_conflict: forall (p: Lit) (kept ws: list Watcher) (m: PA) (f: CNF)
+  (x: Ctx) (i: nat) (ls: list Lit),
+  VisitInv p kept ws m f x -> tget (cmap x) i = Some ls ->
+  (forall (y: Lit), In y ls -> lookup (vals x) y = Some false) ->
+  VisitOut p m f x m (set_watching x p (rev_append kept ws)) (Some i).
+Proof.
+  intros p kept ws m f x i ls Hinv Hi Hfalse. apply visit_out_end.
+  - assumption.
+  - intros Heq. discriminate.
+  - intros j Heq. injection Heq as <-. now exists ls.
+Qed.
+
+(* A watcher (i, b) whose clause has the true literal b' is kept, with blocker b', and
+   the visit goes on with the rest. *)
+Lemma visit_keep_case: forall (p: Lit) (i: nat) (b b': Lit) (rest kept: list Watcher)
+  (m: PA) (f: CNF) (x x': Ctx) (r: option nat),
+  VisitInv p kept ((i, b) :: rest) m f x -> VisitSpec p rest f ->
+  (forall (ls: list Lit), tget (cmap x) i = Some ls -> In b' ls) ->
+  lookup_true (vals x) b' = true -> visit p rest ((i, b') :: kept) x = (x', r) ->
+  exists (m': PA), VisitOut p m f x m' x' r.
+Proof.
+  intros p i b b' rest kept m f x x' r Hinv IH Hb'_in Hb' Hvisit.
+  apply (IH ((i, b') :: kept) m x x' r).
+  - apply visit_inv_keep with b.
+    + assumption.
+    + assumption.
+    + now apply lookup_true_some.
+  - assumption.
+Qed.
+
+(* A watcher (i, b) whose clause does not watch p is dropped, and the visit goes on with
+   the rest. *)
+Lemma visit_drop_case: forall (p: Lit) (i: nat) (b: Lit) (rest kept: list Watcher)
+  (m: PA) (f: CNF) (x x': Ctx) (r: option nat),
+  VisitInv p kept ((i, b) :: rest) m f x -> VisitSpec p rest f ->
+  (forall (ls: list Lit), tget (cmap x) i = Some ls -> ~ In p (firstn 2 ls)) ->
+  visit p rest kept x = (x', r) ->
+  exists (m': PA), VisitOut p m f x m' x' r.
+Proof.
+  intros p i b rest kept m f x x' r Hinv IH Hnot Hvisit.
+  apply (IH kept m x x' r).
+  - now apply (visit_inv_drop p i b).
+  - assumption.
+Qed.
+
+(* In the clause o :: p :: ls, a literal r' of ls that is not false takes the place of p
+   as a watch: the watcher goes to the watch list of r', and the visit goes on with the
+   rest. *)
+Lemma visit_move_case: forall (p: Lit) (i: nat) (b o r': Lit) (rest kept: list Watcher)
+  (m: PA) (f: CNF) (x x': Ctx) (r: option nat) (ls ls': list Lit),
+  VisitInv p kept ((i, b) :: rest) m f x -> VisitSpec p rest f ->
+  tget (cmap x) i = Some (o :: p :: ls) -> swap_watch (vals x) p ls = Some (r', ls') ->
+  visit p rest kept (move_watch x i (o :: r' :: ls') r' o) = (x', r) ->
+  exists (m': PA), VisitOut p m f x m' x' r.
+Proof.
+  intros p i b o r' rest kept m f x x' r ls ls' Hinv IH Hi Hswap Hvisit.
+  apply swap_watch_some in Hswap as (Hr_in & Hr & Hperm).
+  apply (visit_out_before p m m f x (move_watch x i (o :: r' :: ls') r' o) x' r).
+  - apply rt_refl.
+  - apply extends_refl.
+  - apply (same_rest_move x i (o :: p :: ls)).
+    + assumption.
+    + apply perm_skip. now apply Permutation_sym.
+  - apply incl_refl.
+  - apply (IH kept m _ x' r).
+    + now apply (visit_inv_move p i b rest kept m f x o r' ls ls').
+    + assumption.
+Qed.
+
+(* In the clause o :: p :: ls, all literals but the unassigned o are false: o is
+   propagated, a Unit step, the watcher is kept with blocker o, and the visit goes on
+   with the rest. *)
+Lemma visit_unit_case: forall (p: Lit) (i: nat) (b o: Lit) (rest kept: list Watcher)
+  (m: PA) (f: CNF) (x x': Ctx) (r: option nat) (ls: list Lit),
+  VisitInv p kept ((i, b) :: rest) m f x -> VisitSpec p rest f ->
+  tget (cmap x) i = Some (o :: p :: ls) ->
+  (forall (y: Lit), In y ls -> lookup (vals x) y = Some false) ->
+  lookup (vals x) o = None ->
+  visit p rest ((i, o) :: kept) (assign x o (input i)) = (x', r) ->
+  exists (m': PA), VisitOut p m f x m' x' r.
+Proof.
+  intros p i b o rest kept m f x x' r ls Hinv IH Hi Hfalse Ho Hvisit.
+  pose proof (visit_p_false p kept ((i, b) :: rest) m f x Hinv) as Hp.
+  pose proof (unit_in_watched (vals x) o p ls Hp Hfalse) as Hunit.
+  apply (visit_out_before p m ⟨m, o⟩ f x (assign x o (input i)) x' r).
+  - apply rt_step. apply (visit_unit_step m f x i (o :: p :: ls) o).
+    + apply Hinv.
+    + assumption.
+    + assumption.
+    + assumption.
+  - apply extends_snoc.
+  - apply same_rest_assign.
+  - apply incl_set_value.
+    + apply incl_refl.
+    + assumption.
+  - apply (IH ((i, o) :: kept) ⟨m, o⟩ _ x' r).
+    + apply visit_inv_keep with b.
+      * apply visit_inv_assign.
+        -- assumption.
+        -- assumption.
+        -- apply (reason_input m f x i (o :: p :: ls) o).
+           ++ apply Hinv.
+           ++ assumption.
+           ++ assumption.
+      * intros ls' Hi'. cbn [assign cmap] in Hi'. rewrite Hi in Hi'.
+        injection Hi' as <-. now left.
+      * apply lookup_add_self.
+    + assumption.
+Qed.
+
 (* The visit of a watcher with a false blocker of a clause c0 :: c1 :: ls watching p, the
    rest being visited as VisitSpec says: the clause is put in the form o :: p :: ls, and
    then kept with blocker o if o is true, its watch moves from p, o is propagated, or the
-   visit stops at a conflict. *)
+   visit stops at a conflict. Each case is a lemma above. *)
 Lemma visit_watched_spec: forall (p: Lit) (i: nat) (b: Lit) (rest kept: list Watcher)
   (m: PA) (f: CNF) (x x': Ctx) (r: option nat) (c0 c1: Lit) (ls: list Lit),
   VisitInv p kept ((i, b) :: rest) m f x -> VisitSpec p rest f ->
@@ -1476,87 +1673,47 @@ Proof.
   assert (Hinv: VisitInv p kept ((i, b) :: rest) m f x1)
     by now apply (visit_inv_reorder p i _ kept m f x (c0 :: c1 :: ls)).
   assert (Hi: tget (cmap x1) i = Some (o :: p :: ls)) by apply tget_tset_same.
-  pose proof (visit_p_false p kept ((i, b) :: rest) m f x1 Hinv) as Hp.
-  enough (Hout: exists (m': PA), VisitOut p m f x1 m' x' r).
   (* The clause is put in the form o :: p :: ls first *)
-  - apply (visit_out_before p m m f x x1 x' r).
-    + apply rt_refl.
-    + apply extends_refl.
-    + now apply (same_rest_set_clause x i (c0 :: c1 :: ls)).
-    + apply incl_refl.
-    + assumption.
-  (* The clause in the form o :: p :: ls *)
+  apply (visit_out_before p m m f x x1 x' r).
+  - apply rt_refl.
+  - apply extends_refl.
+  - now apply (same_rest_set_clause x i (c0 :: c1 :: ls)).
+  - apply incl_refl.
   - destruct (lookup_true (vals x1) o) eqn:Ho.
-    (* The other watch is true: keep the watcher, with blocker o *)
-    + apply (IH ((i, o) :: kept) m x1 x' r).
-      * apply visit_inv_keep with b.
-        -- assumption.
-        -- intros ls' Hi'. rewrite Hi in Hi'. injection Hi' as <-. now left.
-        -- unfold lookup_true in Ho. destruct (lookup (vals x1) o) as [[|]|]; easy.
+    (* The other watch o is true: keep the watcher, with blocker o *)
+    + apply (visit_keep_case p i b o rest kept m f x1 x' r).
+      * assumption.
+      * assumption.
+      * intros ls' Hi'. rewrite Hi in Hi'. injection Hi' as <-. now left.
+      * assumption.
       * assumption.
     + destruct (swap_watch (vals x1) p ls) as [[r' ls']|] eqn:Hswap.
       (* Move the watch from p to r' *)
-      * apply swap_watch_some in Hswap as (Hr_in & Hr & Hperm).
-        apply (visit_out_before p m m f x1 (move_watch x1 i (o :: r' :: ls') r' o) x' r).
-        -- apply rt_refl.
-        -- apply extends_refl.
-        -- apply (same_rest_move x1 i (o :: p :: ls)).
-           ++ assumption.
-           ++ apply perm_skip. now apply Permutation_sym.
-        -- apply incl_refl.
-        -- apply (IH kept m _ x' r).
-           ++ now apply (visit_inv_move p i b rest kept m f x1 o r' ls ls').
-           ++ assumption.
+      * now apply (visit_move_case p i b o r' rest kept m f x1 x' r ls ls').
       * pose proof (swap_watch_none (vals x1) p ls Hswap) as Hfalse.
         destruct (lookup_undef (vals x1) o) eqn:Hu.
         (* Unit: propagate o *)
-        -- assert (Hu': lookup (vals x1) o = None)
-             by (unfold lookup_undef in Hu; destruct (lookup (vals x1) o); easy).
-           assert (Hunit: UnitIn (vals x1) o (o :: p :: ls)).
-           ++ split.
-              ** now left.
-              ** intros y [<-|[<-|Hy]] Hyo.
-                 --- contradiction.
-                 --- assumption.
-                 --- now apply Hfalse.
-           ++ apply (visit_out_before p m ⟨m, o⟩ f x1 (assign x1 o (input i)) x' r).
-              ** apply rt_step. apply (visit_unit_step m f x1 i (o :: p :: ls) o).
-                 --- apply Hinv.
-                 --- assumption.
-                 --- assumption.
-                 --- assumption.
-              ** apply extends_snoc.
-              ** apply same_rest_assign.
-              ** apply incl_set_value.
-                 --- apply incl_refl.
-                 --- assumption.
-              ** apply (IH ((i, o) :: kept) ⟨m, o⟩ _ x' r).
-                 --- apply visit_inv_keep with b.
-                     +++ apply visit_inv_assign.
-                         *** assumption.
-                         *** assumption.
-                         *** apply (reason_input m f x1 i (o :: p :: ls) o).
-                             ---- apply Hinv.
-                             ---- assumption.
-                             ---- assumption.
-                     +++ intros ls' Hi'. cbn [assign cmap] in Hi'. rewrite Hi in Hi'.
-                         injection Hi' as <-. now left.
-                     +++ apply lookup_add_self.
-                 --- assumption.
-        (* Conflict: o is false too *)
-        -- injection Hvisit as <- <-. exists m. apply visit_out_end.
+        -- apply (visit_unit_case p i b o rest kept m f x1 x' r ls).
            ++ assumption.
-           ++ intros Heq. discriminate.
-           ++ intros j Heq. injection Heq as <-. exists (o :: p :: ls). split.
-              ** assumption.
-              ** intros y [<-|[<-|Hy]].
-                 --- unfold lookup_true in Ho. unfold lookup_undef in Hu.
-                     destruct (lookup (vals x1) o) as [[|]|]; easy.
-                 --- assumption.
-                 --- now apply Hfalse.
+           ++ assumption.
+           ++ assumption.
+           ++ assumption.
+           ++ now apply lookup_undef_none.
+           ++ assumption.
+        (* Conflict: o is false too *)
+        -- injection Hvisit as <- <-. exists m.
+           apply (visit_out_conflict p kept _ m f x1 i (o :: p :: ls)).
+           ++ assumption.
+           ++ assumption.
+           ++ intros y [<-|[<-|Hy]].
+              ** now apply lookup_neither_false.
+              ** now apply (visit_p_false p kept ((i, b) :: rest) m f x1).
+              ** now apply Hfalse.
 Qed.
 
-(* Every visit gives a VisitOut. *)
+(* Every visit gives a VisitOut. By induction on the watchers, following visit: each
+   watcher is kept, dropped, or ends the visit at a conflict, or its clause watches p and
+   visit_watched_spec applies. *)
 Lemma visit_spec: forall (p: Lit) (ws: list Watcher) (f: CNF), VisitSpec p ws f.
 Proof.
   intros p ws f.
@@ -1572,60 +1729,52 @@ Proof.
   - pose proof Hvisit as Hvisit_all. simpl in Hvisit.
     destruct (lookup_true (vals x) b) eqn:Hb.
     (* The blocker is true: keep the watcher *)
-    + apply (IH ((i, b) :: kept) m x x' r).
-      * apply visit_inv_keep with b.
+    + apply (visit_keep_case p i b b rest kept m f x x' r).
+      * assumption.
+      * assumption.
+      * intros ls Hi. apply (vi_blockers Hinv i b ls).
+        -- apply in_app_iff. right. now left.
         -- assumption.
-        -- intros ls Hi. apply (vi_blockers Hinv i b ls).
-           ++ apply in_app_iff. right. now left.
-           ++ assumption.
-        -- unfold lookup_true in Hb. destruct (lookup (vals x) b) as [[|]|]; easy.
+      * assumption.
       * assumption.
     + destruct (tget (cmap x) i) as [[|c0 [|c1 ls]]|] eqn:Hi.
       (* The empty clause watches nothing *)
-      * apply (IH kept m x x' r).
-        -- apply (visit_inv_drop p i b).
-           ++ assumption.
-           ++ intros ls Hi'. rewrite Hi in Hi'. injection Hi' as <-. intros [].
+      * apply (visit_drop_case p i b rest kept m f x x' r).
+        -- assumption.
+        -- assumption.
+        -- intros ls Hi'. rewrite Hi in Hi'. injection Hi' as <-. intros [].
         -- assumption.
       (* A unit clause: false if it is [p] *)
       * destruct (c0 =? p) eqn:Hc0.
-        -- injection Hvisit as <- <-. exists m. apply visit_out_end.
+        -- injection Hvisit as <- <-. apply Lit.eqb_eq in Hc0 as ->. exists m.
+           apply (visit_out_conflict p kept _ m f x i [p]).
            ++ assumption.
-           ++ intros Heq. discriminate.
-           ++ intros j Heq. injection Heq as <-. exists [c0]. split.
-              ** assumption.
-              ** apply Lit.eqb_eq in Hc0 as ->. intros y [<-|[]].
-                 now apply (visit_p_false p kept ((i, b) :: rest) m f x).
-        -- apply (IH kept m x x' r).
-           ++ apply (visit_inv_drop p i b).
-              ** assumption.
-              ** intros ls Hi'. rewrite Hi in Hi'. injection Hi' as <-. intros [Heq|[]].
-                 apply Lit.eqb_neq in Hc0. contradiction.
+           ++ assumption.
+           ++ intros y [<-|[]]. now apply (visit_p_false p kept ((i, b) :: rest) m f x).
+        -- apply (visit_drop_case p i b rest kept m f x x' r).
+           ++ assumption.
+           ++ assumption.
+           ++ intros ls Hi'. rewrite Hi in Hi'. injection Hi' as <-. intros [Heq|[]].
+              apply Lit.eqb_neq in Hc0. contradiction.
            ++ assumption.
       * destruct ((c0 =? p) || (c1 =? p)) eqn:Hwatching.
         (* The clause watches p *)
-        -- apply (visit_watched_spec p i b rest kept m f x x' r c0 c1 ls).
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
+        -- now apply (visit_watched_spec p i b rest kept m f x x' r c0 c1 ls).
         (* The clause does not watch p *)
-        -- apply (IH kept m x x' r).
-           ++ apply (visit_inv_drop p i b).
-              ** assumption.
-              ** intros ls' Hi'. rewrite Hi in Hi'. injection Hi' as <-.
-                 apply orb_false_iff in Hwatching as [H0 H1]. apply Lit.eqb_neq in H0, H1.
-                 intros [Heq|[Heq|[]]].
-                 --- now apply H0.
-                 --- now apply H1.
+        -- apply (visit_drop_case p i b rest kept m f x x' r).
+           ++ assumption.
+           ++ assumption.
+           ++ intros ls' Hi'. rewrite Hi in Hi'. injection Hi' as <-.
+              apply orb_false_iff in Hwatching as [H0 H1]. apply Lit.eqb_neq in H0, H1.
+              intros [Heq|[Heq|[]]].
+              ** now apply H0.
+              ** now apply H1.
            ++ assumption.
       (* Not a clause *)
-      * apply (IH kept m x x' r).
-        -- apply (visit_inv_drop p i b).
-           ++ assumption.
-           ++ intros ls Hi'. congruence.
+      * apply (visit_drop_case p i b rest kept m f x x' r).
+        -- assumption.
+        -- assumption.
+        -- intros ls Hi'. congruence.
         -- assumption.
 Qed.
 
@@ -1700,7 +1849,101 @@ Proof.
   - assumption.
 Qed.
 
-(* Propagation takes Unit steps until the queue is empty, or stops at a false clause. *)
+(* The result of propagating from m and x to x' with result r: Unit steps lead to m',
+   which extends m, x' has the fixed fields of x and more values, propagation is
+   consistent in m' and x', the queue is empty if there is no conflict, and clause r is
+   false. *)
+Definition PropagateOut (m: PA) (f: CNF) (x x': Ctx) (r: option nat): Prop :=
+  exists (m': PA), Extends m m' /\
+  state m f ==>*[DPLL_BJ] state m' f /\ SameFixed x x' /\ Incl (vals x) (vals x') /\
+  PropInv m' f x' /\ (r = None -> qhead x' = tlen x') /\
+  (forall (i: nat), r = Some i -> ClauseFalse x' i).
+
+(* A propagation from m1 and x1 is one from m and x, if m1 follows from m and x1 from x
+   by propagation. *)
+Lemma propagate_out_before: forall (m m1: PA) (f: CNF) (x x1 x': Ctx) (r: option nat),
+  state m f ==>*[DPLL_BJ] state m1 f -> Extends m m1 -> SameFixed x x1 ->
+  Incl (vals x) (vals x1) -> PropagateOut m1 f x1 x' r -> PropagateOut m f x x' r.
+Proof.
+  intros m m1 f x x1 x' r Hsteps Hext Hfixed Hincl
+    (m' & Hext' & Hsteps' & Hfixed' & Hincl' & Hinv' & Hnone & Hsome).
+  exists m'. splits.
+  - now apply extends_trans with m1.
+  - now apply rt_trans with (state m1 f).
+  - now apply same_fixed_trans with x1.
+  - now apply incl_trans with (vals x1).
+  - assumption.
+  - assumption.
+  - assumption.
+Qed.
+
+(* With an empty queue, propagation is done. *)
+Lemma propagate_out_done: forall (m: PA) (f: CNF) (x: Ctx),
+  PropInv m f x -> tlen x <= qhead x -> PropagateOut m f x x None.
+Proof.
+  intros m f x Hinv Hle. exists m. splits.
+  - apply extends_refl.
+  - apply rt_refl.
+  - apply same_rest_fixed, same_rest_refl.
+  - apply incl_refl.
+  - assumption.
+  - intros _. destruct Hinv as [_ Hq _ _ _ _]. lia.
+  - intros i Heq. discriminate.
+Qed.
+
+(* A visit that stops at a conflict ends the propagation. *)
+Lemma propagate_out_conflict: forall (p: Lit) (m m1: PA) (f: CNF) (x x1: Ctx) (i: nat),
+  VisitOut p m f x m1 x1 (Some i) -> PropagateOut m f x x1 (Some i).
+Proof.
+  intros p m m1 f x x1 i Hout. exists m1. splits.
+  - apply Hout.
+  - apply Hout.
+  - apply same_rest_fixed, Hout.
+  - apply Hout.
+  - split.
+    + apply Hout.
+    + pose proof (vo_qhead Hout). lia.
+    + apply Hout.
+    + apply Hout.
+    + apply Hout.
+    + apply Hout.
+  - intros Heq. discriminate.
+  - apply Hout.
+Qed.
+
+(* SameFixed ignores the queue. *)
+Lemma same_fixed_advance: forall (x x1: Ctx), SameFixed x x1 -> SameFixed x (advance x1).
+Proof. intros x x1 [Hcm Hkept]. now split. Qed.
+
+(* SameFixed keeps the number of variables. *)
+Lemma same_fixed_nvars: forall (x x1: Ctx), SameFixed x x1 -> nvars x1 = nvars x.
+Proof.
+  intros x x1 [_ Hkept]. injection Hkept as _ _ _ _ _ _ _ Hnv _ _ _ _ _. assumption.
+Qed.
+
+(* The fuel bounds the literals still to be queued, nvars minus qhead: a visit keeps
+   both, and the queue moves past one literal of the trail, which is at most nvars long.
+   *)
+Lemma visit_out_fuel: forall (p: Lit) (m m1: PA) (f: CNF) (x x1: Ctx) (r: option nat)
+  (fuel: nat),
+  VisitOut p m f x m1 x1 r -> WellFormed (state m1 f) -> S (max_atom_f f) <= nvars x ->
+  nvars x - qhead x < S fuel -> nvars (advance x1) - qhead (advance x1) < fuel.
+Proof.
+  intros p m m1 f x x1 r fuel Hout Hwf1 Hbound Hfuel.
+  destruct (vo_rest Hout) as [Hfixed Hqh].
+  pose proof (same_fixed_nvars x x1 Hfixed) as Hnv.
+  assert (Hlen: tlen x1 <= nvars x1).
+  - apply (trail_bound m1 f x1).
+    + apply Hout.
+    + assumption.
+    + now rewrite Hnv.
+  - pose proof (vo_qhead Hout). simpl. lia.
+Qed.
+
+(* Propagation takes Unit steps until the queue is empty, or stops at a false clause.
+   By induction on the fuel: the watchers of p, the negation of the first queued literal,
+   are visited (visit_spec); a conflict ends the propagation, otherwise ¬p leaves the
+   queue and propagation goes on from there, with less fuel needed. *)
 Lemma propagate_spec: forall (fuel: nat) (m: PA) (f: CNF) (x x': Ctx) (r: option nat),
   PropInv m f x ->
   WellFormed (state m f) ->
@@ -1716,76 +1959,31 @@ Proof.
   induction fuel as [|fuel IH]; intros m f x x' r Hinv Hwf Hbound Hfuel Hprop.
   - lia.
   - simpl in Hprop. destruct (qhead x <? tlen x) eqn:Hlt.
+    (* The queue is not empty: visit the watchers of p *)
     + apply Nat.ltb_lt in Hlt. set (p := ¬(tget (tr x) (qhead x))) in Hprop.
       destruct (visit p (watching (wls x) p) [] x) as [x1 r1] eqn:Hvisit.
-      destruct (visit_spec p (watching (wls x) p) f [] m x x1 r1) as [m1 Hout].
-      * now apply visit_inv_start.
-      * assumption.
-      * destruct r1 as [i|].
-        (* A conflict *)
-        -- injection Hprop as <- <-. exists m1. splits.
-           ++ apply Hout.
-           ++ apply Hout.
-           ++ apply same_rest_fixed, Hout.
-           ++ apply Hout.
-           ++ split.
-              ** apply Hout.
-              ** pose proof (vo_qhead Hout). lia.
-              ** apply Hout.
-              ** apply Hout.
-              ** apply Hout.
-              ** apply Hout.
-           ++ intros Heq. discriminate.
-           ++ apply Hout.
-      (* The watchers of p are done: move on *)
-        -- pose proof (vo_rest Hout) as [[_ Hkept] Hqh].
-           injection Hkept as _ _ _ _ _ _ _ Hnv _ _ _ _ _.
-           assert (Hwf1: WellFormed (state m1 f)).
-           ++ apply (derivation_well_formed DPLL_BJ m m1 f f).
-              ** apply Hout.
-              ** assumption.
-           ++ destruct (IH m1 f (advance x1) x' r)
-                as (m' & Hext' & Hder' & Hfixed' & Hincl' & Hres').
-              ** now apply (prop_inv_advance p m m1 f x x1).
-              ** assumption.
-              ** simpl. now rewrite Hnv.
-              ** simpl. rewrite Hnv.
-                 pose proof
-                   (trail_bound m1 f x1 (vo_core Hout) Hwf1) as Hbound1.
-                 rewrite Hnv in Hbound1. specialize (Hbound1 Hbound).
-                 pose proof (vo_qhead Hout). lia.
-              ** assumption.
-              ** exists m'. split.
-                 --- apply extends_trans with m1.
-                     +++ apply Hout.
-                     +++ assumption.
-                 --- split.
-                     +++ apply rt_trans with (state m1 f).
-                         *** apply Hout.
-                         *** assumption.
-                     +++ split.
-                         *** apply (same_fixed_trans _ x1).
-                             ---- apply same_rest_fixed, Hout.
-                             ---- apply (same_fixed_trans _ (advance x1)).
-                                  ++++ split.
-                                       **** apply reordered_refl.
-                                       **** reflexivity.
-                                  ++++ assumption.
-                         *** split.
-                             ---- apply incl_trans with (vals x1).
-                                  ++++ apply Hout.
-                                  ++++ assumption.
-                             ---- assumption.
-    + injection Hprop as <- <-. apply Nat.ltb_ge in Hlt. exists m. splits.
-      * apply extends_refl.
-      * apply rt_refl.
-      * split.
-        -- apply reordered_refl.
-        -- reflexivity.
-      * apply incl_refl.
-      * assumption.
-      * intros _. destruct Hinv as [_ Hq _ _ _ _]. lia.
-      * intros i Heq. discriminate.
+      pose proof (visit_inv_start m f x Hinv Hlt) as Hstart.
+      destruct (visit_spec p _ f [] m x x1 r1 Hstart Hvisit) as [m1 Hout].
+      destruct r1 as [i|].
+      (* A conflict: propagation stops *)
+      * injection Hprop as <- <-. now apply (propagate_out_conflict p m m1 f x x1).
+      (* No conflict: ¬p leaves the queue, and propagation goes on *)
+      * pose proof (derivation_well_formed DPLL_BJ m m1 f f (vo_steps Hout) Hwf) as Hwf1.
+        assert (Hnv: nvars x1 = nvars x)
+          by apply same_fixed_nvars, same_rest_fixed, Hout.
+        apply (propagate_out_before m m1 f x (advance x1) x' r).
+        -- apply Hout.
+        -- apply Hout.
+        -- apply same_fixed_advance, same_rest_fixed, Hout.
+        -- apply Hout.
+        -- apply IH.
+           ++ now apply (prop_inv_advance p m m1 f x x1).
+           ++ assumption.
+           ++ simpl. now rewrite Hnv.
+           ++ now apply (visit_out_fuel p m m1 f x x1 None).
+           ++ assumption.
+    (* The queue is empty: propagation is done *)
+    + injection Hprop as <- <-. apply Nat.ltb_ge in Hlt. now apply propagate_out_done.
 Qed.
 
 (* Assigning an unassigned literal keeps propagation consistent: it is queued. *)
@@ -1820,8 +2018,103 @@ Qed.
 Abbreviation ShortsShort cm sh :=
   (forall (i: nat) (ls: list Lit), In i sh -> tget cm i = Some ls -> length ls <= 1).
 
+(* The result of checking the short clauses ss from m and x, giving x' and r: Unit steps
+   lead to m', which extends m, x' is x with more values, propagation is consistent in
+   m' and x', without a conflict no clause of ss is empty, and clause r is false. *)
+Definition ShortsOut (ss: list nat) (m: PA) (f: CNF) (x x': Ctx) (r: option nat): Prop :=
+  exists (m': PA), Extends m m' /\
+  state m f ==>*[DPLL_BJ] state m' f /\ SameRest x x' /\ Incl (vals x) (vals x') /\
+  PropInv m' f x' /\
+  (r = None -> forall (i: nat) (ls: list Lit), In i ss -> tget (cmap x') i = Some ls ->
+     ls <> []) /\
+  (forall (i: nat), r = Some i -> ClauseFalse x' i).
+
+(* With no short clauses left, the check is done. *)
+Lemma shorts_out_nil: forall (m: PA) (f: CNF) (x: Ctx),
+  PropInv m f x -> ShortsOut [] m f x x None.
+Proof.
+  intros m f x Hinv. exists m. splits.
+  - apply extends_refl.
+  - apply rt_refl.
+  - apply same_rest_refl.
+  - apply incl_refl.
+  - assumption.
+  - intros _ j ls [].
+  - intros j Heq. discriminate.
+Qed.
+
+(* A false clause i ends the check. *)
+Lemma shorts_out_conflict: forall (ss: list nat) (m: PA) (f: CNF) (x: Ctx) (i: nat),
+  PropInv m f x -> ClauseFalse x i -> ShortsOut ss m f x x (Some i).
+Proof.
+  intros ss m f x i Hinv Hfalse. exists m. splits.
+  - apply extends_refl.
+  - apply rt_refl.
+  - apply same_rest_refl.
+  - apply incl_refl.
+  - assumption.
+  - intros Heq. discriminate.
+  - intros j Heq. now injection Heq as <-.
+Qed.
+
+(* A check of ss from m1 and x1 is one of i :: ss from m and x, if m1 follows from m and
+   x1 from x by propagation, and clause i of x1 is not empty: reordering keeps it so. *)
+Lemma shorts_out_before: forall (i: nat) (ss: list nat) (m m1: PA) (f: CNF)
+  (x x1 x': Ctx) (r: option nat),
+  state m f ==>*[DPLL_BJ] state m1 f -> Extends m m1 -> SameRest x x1 ->
+  Incl (vals x) (vals x1) -> tget (cmap x1) i <> Some [] ->
+  ShortsOut ss m1 f x1 x' r -> ShortsOut (i :: ss) m f x x' r.
+Proof.
+  intros i ss m m1 f x x1 x' r Hsteps Hext Hrest Hincl Hne
+    (m' & Hext' & Hsteps' & Hrest' & Hincl' & Hinv' & Hnone & Hsome).
+  exists m'. splits.
+  - now apply extends_trans with m1.
+  - now apply rt_trans with (state m1 f).
+  - now apply same_rest_trans with x1.
+  - now apply incl_trans with (vals x1).
+  - assumption.
+  - intros Hr j ls [<-|Hj] Hj'.
+    + intros ->. apply Hne. apply (reordered_empty (cmap x1) (cmap x') i).
+      * apply Hrest'.
+      * assumption.
+    + now apply (Hnone Hr j).
+  - assumption.
+Qed.
+
+(* A clause i that is skipped, being satisfied or no clause. *)
+Lemma shorts_out_skip: forall (i: nat) (ss: list nat) (m: PA) (f: CNF) (x x': Ctx)
+  (r: option nat),
+  tget (cmap x) i <> Some [] -> ShortsOut ss m f x x' r ->
+  ShortsOut (i :: ss) m f x x' r.
+Proof.
+  intros i ss m f x x' r Hne Hout. apply (shorts_out_before i ss m m f x x x' r).
+  - apply rt_refl.
+  - apply extends_refl.
+  - apply same_rest_refl.
+  - apply incl_refl.
+  - assumption.
+  - assumption.
+Qed.
+
+(* The rest of the short clauses are short. *)
+Lemma shorts_short_cons: forall (cm: ClauseMap) (i: nat) (ss: list nat),
+  ShortsShort cm (i :: ss) -> ShortsShort cm ss.
+Proof. intros cm i ss Hshort j ls Hj. apply Hshort. now right. Qed.
+
+(* A short clause that is not empty is a unit clause. *)
+Lemma short_unit: forall (cm: ClauseMap) (ss: list nat) (i: nat) (a: Lit)
+  (ls: list Lit),
+  ShortsShort cm (i :: ss) -> tget cm i = Some (a :: ls) -> ls = [].
+Proof.
+  intros cm ss i a ls Hshort Hi. destruct ls as [|b ls].
+  - reflexivity.
+  - specialize (Hshort i (a :: b :: ls) (or_introl eq_refl) Hi). simpl in Hshort. lia.
+Qed.
+
 (* Checking the short clauses ss takes Unit steps for their unassigned literals, or stops
-   at a false one. *)
+   at a false one. By induction on ss: an empty clause or a false unit clause [a] stops
+   the check, a true one is skipped, and an unassigned a is assigned, a Unit step; then
+   the check goes on with the rest. *)
 Lemma check_shorts_spec: forall (ss: list nat) (m: PA) (f: CNF) (x x': Ctx)
   (r: option nat),
   PropInv m f x -> ShortsShort (cmap x) ss ->
@@ -1835,146 +2128,127 @@ Lemma check_shorts_spec: forall (ss: list nat) (m: PA) (f: CNF) (x x': Ctx)
 Proof.
   intros ss.
   induction ss as [|i ss IH]; intros m f x x' r Hinv Hshort Hcheck; simpl in Hcheck.
-  - injection Hcheck as <- <-. exists m. splits.
-    + apply extends_refl.
-    + apply rt_refl.
-    + apply same_rest_refl.
-    + apply incl_refl.
-    + assumption.
-    + intros _ j ls [].
-    + intros j Heq. discriminate.
-  - destruct (tget (cmap x) i) as [[|a ls]|] eqn:Hi.
-    (* The empty clause *)
-    + injection Hcheck as <- <-. exists m. splits.
-      * apply extends_refl.
-      * apply rt_refl.
-      * apply same_rest_refl.
-      * apply incl_refl.
+  (* No clauses left *)
+  - injection Hcheck as <- <-. now apply shorts_out_nil.
+  - pose proof (shorts_short_cons (cmap x) i ss Hshort) as Hshort_rest.
+    destruct (tget (cmap x) i) as [[|a ls]|] eqn:Hi.
+    (* The empty clause is false *)
+    + injection Hcheck as <- <-. apply shorts_out_conflict.
       * assumption.
-      * intros Heq. discriminate.
-      * intros j Heq. injection Heq as <-. exists []. split.
+      * exists []. split.
         -- assumption.
         -- intros y [].
-    + assert (Hls: ls = []).
-      * destruct ls as [|b ls].
-        -- reflexivity.
-        -- specialize (Hshort i (a :: b :: ls) (or_introl eq_refl) Hi). simpl in Hshort.
-           lia.
-      * subst ls. destruct (lookup (vals x) a) as [[|]|] eqn:Ha.
-        (* Satisfied *)
-        -- destruct (IH m f x x' r)
-             as (m' & Hext & Hder & Hrest & Hincl & Hinv' & Hnone & Hsome).
+    (* A unit clause [a] *)
+    + assert (Hls: ls = []) by now apply (short_unit (cmap x) ss i a ls).
+      subst ls. destruct (lookup (vals x) a) as [[|]|] eqn:Ha.
+      (* a is true: skip the clause *)
+      * apply shorts_out_skip.
+        -- now rewrite Hi.
+        -- now apply IH.
+      (* a is false: the clause is false *)
+      * injection Hcheck as <- <-. apply shorts_out_conflict.
+        -- assumption.
+        -- exists [a]. split.
            ++ assumption.
-           ++ intros j ls Hj. apply Hshort. now right.
-           ++ assumption.
-           ++ exists m'. repeat (split; try assumption). intros Hr j ls [<-|Hj] Hj'.
-              ** apply (reordered_not_empty (cmap x) (cmap x') i [a] ls).
-                 --- apply Hrest.
-                 --- assumption.
-                 --- assumption.
-                 --- discriminate.
-              ** now apply (Hnone Hr j).
-        (* False *)
-        -- injection Hcheck as <- <-. exists m. splits.
-           ++ apply extends_refl.
-           ++ apply rt_refl.
-           ++ apply same_rest_refl.
+           ++ intros y [<-|[]]. assumption.
+      (* a is unassigned: a Unit step assigns it, with reason clause i *)
+      * pose proof (unit_in_single (vals x) a) as Hunit.
+        pose proof (reason_input m f x i [a] a (pi_core Hinv) Hi Hunit) as Hreason.
+        apply (shorts_out_before i ss m ⟨m, a⟩ f x (assign x a (input i)) x' r).
+        -- apply rt_step. now apply (visit_unit_step m f x i [a] a (pi_core Hinv)).
+        -- apply extends_snoc.
+        -- apply same_rest_assign.
+        -- apply incl_set_value.
            ++ apply incl_refl.
            ++ assumption.
-           ++ intros Heq. discriminate.
-           ++ intros j Heq. injection Heq as <-. exists [a]. split.
-              ** assumption.
-              ** intros y [<-|[]]. assumption.
-    (* Unassigned: propagate it *)
-        -- destruct (IH ⟨m, a⟩ f (assign x a (input i)) x' r)
-             as (m' & Hext & Hder & Hrest & Hincl & Hinv' & Hnone & Hsome).
-           ++ apply prop_inv_assign.
-              ** assumption.
-              ** assumption.
-              ** apply (reason_input m f x i [a] a).
-                 --- apply Hinv.
-                 --- assumption.
-                 --- apply unit_in_single.
-           ++ intros j ls Hj. apply Hshort. now right.
+        -- cbn [assign cmap]. now rewrite Hi.
+        -- apply IH.
+           ++ now apply prop_inv_assign.
            ++ assumption.
-           ++ exists m'. split.
-              ** now apply (extends_cons m m' a).
-              ** split.
-                 --- apply rt_trans with (state ⟨m, a⟩ f).
-                     +++ apply rt_step. apply (visit_unit_step m f x i [a] a).
-                         *** apply Hinv.
-                         *** assumption.
-                         *** apply unit_in_single.
-                         *** assumption.
-                     +++ assumption.
-                 --- split.
-                     +++ apply (same_rest_trans _ (assign x a (input i))).
-                         *** apply same_rest_assign.
-                         *** assumption.
-                     +++ split.
-                         *** apply incl_trans with (vals (assign x a (input i))).
-                             ---- apply incl_set_value.
-                                  ++++ apply incl_refl.
-                                  ++++ assumption.
-                             ---- assumption.
-                         *** repeat (split; try assumption). intros Hr j ls [<-|Hj] Hj'.
-                             ---- apply (reordered_not_empty (cmap (assign x a (input i)))
-                                    (cmap x') i [a] ls).
-                                  ++++ apply Hrest.
-                                  ++++ assumption.
-                                  ++++ assumption.
-                                  ++++ discriminate.
-                             ---- now apply (Hnone Hr j).
-    (* Not a clause *)
-    + destruct (IH m f x x' r)
-        as (m' & Hext & Hder & Hrest & Hincl & Hinv' & Hnone & Hsome).
-      * assumption.
-      * intros j ls Hj. apply Hshort. now right.
-      * assumption.
-      * exists m'. repeat (split; try assumption). intros Hr j ls [<-|Hj] Hj'.
-        -- destruct (reordered_some_l (cmap x) (cmap x') i ls) as [ls0 [Hi0 _]].
-           ++ apply Hrest.
            ++ assumption.
-           ++ congruence.
-        -- now apply (Hnone Hr j).
+    (* Not a clause: skip it *)
+    + apply shorts_out_skip.
+      * now rewrite Hi.
+      * now apply IH.
 Qed.
 
-(* A visit keeps the positions of the decisions and the lower literals. *)
+Section Preserves.
+  (* A property of contexts that each step of a visit keeps. The steps are: setting a
+     clause (to put it in the form o :: p :: ls), moving a watch, assigning a literal,
+     and setting the watch list of p at the end. *)
+  Variable P: Ctx -> Prop.
+  Hypothesis Hclause: forall (y: Ctx) (i: nat) (ls: list Lit),
+    P y -> P (set_clause y i ls).
+  Hypothesis Hmove: forall (y: Ctx) (i: nat) (ls: list Lit) (l b: Lit),
+    P y -> P (move_watch y i ls l b).
+  Hypothesis Hassign: forall (y: Ctx) (l: Lit) (rs: Reason), P y -> P (assign y l rs).
+  Hypothesis Hwatching: forall (y: Ctx) (l: Lit) (ws: list Watcher),
+    P y -> P (set_watching y l ws).
+
+  (* The visit of a watcher with a false blocker of a clause c0 :: c1 :: ls watching p
+     keeps P if the visit of the rest does: the clause is set to o :: p :: ls, then kept,
+     moved, propagated or false. *)
+  Lemma visit_watched_preserves: forall (p: Lit) (i: nat) (b: Lit)
+    (rest kept: list Watcher) (x x': Ctx) (r: option nat) (c0 c1: Lit) (ls: list Lit),
+    (forall (kept': list Watcher) (y y': Ctx) (r': option nat),
+      P y -> visit p rest kept' y = (y', r') -> P y') ->
+    lookup_true (vals x) b = false -> tget (cmap x) i = Some (c0 :: c1 :: ls) ->
+    (c0 =? p) || (c1 =? p) = true ->
+    P x -> visit p ((i, b) :: rest) kept x = (x', r) -> P x'.
+  Proof.
+    intros p i b rest kept x x' r c0 c1 ls IH Hb Hi Hw Hx Hvisit.
+    cbn [visit] in Hvisit. rewrite Hb, Hi, Hw in Hvisit.
+    set (o := if c0 =? p then c1 else c0) in Hvisit.
+    apply (Hclause x i (o :: p :: ls)) in Hx.
+    destruct (lookup_true _ o).
+    (* o is true: kept *)
+    - now apply IH in Hvisit.
+    - destruct (swap_watch _ p ls) as [[r' ls']|].
+      (* The watch moves *)
+      + apply (Hmove _ i (o :: r' :: ls') r' o) in Hx. now apply IH in Hvisit.
+      + destruct (lookup_undef _ o).
+        (* o is propagated *)
+        * apply (Hassign _ o (input i)) in Hx. now apply IH in Hvisit.
+        (* A conflict *)
+        * injection Hvisit as <- <-. now apply Hwatching.
+  Qed.
+
+  (* P holds after a visit if it holds before. *)
+  Lemma visit_preserves: forall (p: Lit) (ws kept: list Watcher) (x x': Ctx)
+    (r: option nat),
+    P x -> visit p ws kept x = (x', r) -> P x'.
+  Proof.
+    intros p ws.
+    induction ws as [|[i b] rest IH]; intros kept x x' r Hx Hvisit.
+    - simpl in Hvisit. injection Hvisit as <- <-. now apply Hwatching.
+    - pose proof Hvisit as Hvisit_all. simpl in Hvisit.
+      destruct (lookup_true (vals x) b) eqn:Hb.
+      + now apply IH in Hvisit.
+      + destruct (tget (cmap x) i) as [[|c0 [|c1 ls]]|] eqn:Hi.
+        * now apply IH in Hvisit.
+        * destruct (c0 =? p).
+          -- injection Hvisit as <- <-. now apply Hwatching.
+          -- now apply IH in Hvisit.
+        * destruct ((c0 =? p) || (c1 =? p)) eqn:Hw.
+          -- now apply (visit_watched_preserves p i b rest kept x x' r c0 c1 ls).
+          -- now apply IH in Hvisit.
+        * now apply IH in Hvisit.
+  Qed.
+End Preserves.
+
+(* A visit keeps the positions of the decisions and the lower literals: no step of it
+   changes them. *)
 Lemma visit_stacks: forall (p: Lit) (ws kept: list Watcher) (x: Ctx),
   SameStacks x (fst (visit p ws kept x)).
 Proof.
-  intros p ws. induction ws as [|[i b] ws IH]; intros kept x; simpl.
+  intros p ws kept x. destruct (visit p ws kept x) as [x' r] eqn:Hvisit. simpl.
+  apply (visit_preserves (SameStacks x)) with p ws kept x r.
+  - intros y i ls [Hl Hlow]. now split.
+  - intros y i ls l b [Hl Hlow]. now split.
+  - intros y l rs [Hl Hlow]. now split.
+  - intros y l ws' [Hl Hlow]. now split.
   - split; reflexivity.
-  - destruct (lookup_true (vals x) b).
-    + apply IH.
-    + destruct (tget (cmap x) i) as [[|c0 [|c1 ls]]|].
-      * apply IH.
-      * destruct (c0 =? p).
-        -- split; reflexivity.
-        -- apply IH.
-      * destruct ((c0 =? p) || (c1 =? p)).
-        -- (* the clause is reordered first, then kept, moved or unit *)
-           set (x1 := set_clause x i ((if c0 =? p then c1 else c0) :: p :: ls)).
-           assert (H1: SameStacks x x1) by (split; reflexivity).
-           destruct (lookup_true _ (if c0 =? p then c1 else c0)).
-           ++ destruct (IH ((i, if c0 =? p then c1 else c0) :: kept) x1) as [Hl Hlow].
-              destruct H1 as [Hl1 Hlow1]. split; congruence.
-           ++ destruct (swap_watch _ p ls) as [[r' ls']|].
-              ** destruct (IH kept (move_watch x1 i ((if c0 =? p then c1 else c0) :: r'
-                             :: ls') r' (if c0 =? p then c1 else c0))) as [Hl Hlow].
-                 destruct H1 as [Hl1 Hlow1]. split.
-                 --- rewrite Hl. apply Hl1.
-                 --- rewrite Hlow. apply Hlow1.
-              ** destruct (lookup_undef _ (if c0 =? p then c1 else c0)).
-                 --- destruct (IH ((i, if c0 =? p then c1 else c0) :: kept)
-                                (assign x1 (if c0 =? p then c1 else c0) (input i)))
-                       as [Hl Hlow].
-                     destruct H1 as [Hl1 Hlow1]. split.
-                     +++ rewrite Hl. apply Hl1.
-                     +++ rewrite Hlow. apply Hlow1.
-                 --- split; reflexivity.
-        -- apply IH.
-      * apply IH.
+  - assumption.
 Qed.
 
 (* Propagation keeps the positions of the decisions and the lower literals. *)
@@ -2013,46 +2287,23 @@ Proof.
     + apply IH.
 Qed.
 
-(* A visit keeps the queue, and only extends the trail. *)
+(* A visit keeps the queue, and only extends the trail: so does each step of it. *)
 Lemma visit_qhead: forall (p: Lit) (ws kept: list Watcher) (x x': Ctx) (r: option nat),
   visit p ws kept x = (x', r) -> qhead x' = qhead x /\ (tlen x <= tlen x')%nat.
 Proof.
-  intros p ws. induction ws as [|[i b] ws IH]; intros kept x x' r Hv; simpl in Hv.
-  - injection Hv as <- <-. cbn [set_watching qhead tlen]. split.
+  intros p ws kept x x' r Hvisit.
+  apply (visit_preserves (fun y => qhead y = qhead x /\ (tlen x <= tlen y)%nat))
+    with p ws kept x r.
+  - intros y i ls [Hq Ht]. now split.
+  - intros y i ls l b [Hq Ht]. now split.
+  - intros y l rs [Hq Ht]. cbn [assign qhead tlen]. split.
+    + assumption.
+    + lia.
+  - intros y l ws' [Hq Ht]. now split.
+  - split.
     + reflexivity.
     + lia.
-  - destruct (lookup_true (vals x) b).
-    + now apply IH in Hv.
-    + destruct (tget (cmap x) i) as [[|c0 [|c1 ls]]|].
-      * now apply IH in Hv.
-      * destruct (c0 =? p).
-        -- injection Hv as <- <-. cbn [set_watching qhead tlen]. split.
-           ++ reflexivity.
-           ++ lia.
-        -- now apply IH in Hv.
-      * destruct ((c0 =? p) || (c1 =? p)).
-        -- destruct (lookup_true _ (if c0 =? p then c1 else c0)).
-           ++ apply IH in Hv as [Hq Ht]. cbn [set_clause qhead tlen] in Hq, Ht. split.
-              ** assumption.
-              ** lia.
-           ++ destruct (swap_watch _ p ls) as [[r' ls']|].
-              ** apply IH in Hv as [Hq Ht].
-                 cbn [move_watch set_clause qhead tlen] in Hq, Ht.
-                 split.
-                 --- assumption.
-                 --- lia.
-              ** destruct (lookup_undef _ (if c0 =? p then c1 else c0)).
-                 --- apply IH in Hv as [Hq Ht].
-                     cbn [assign set_clause qhead tlen] in Hq, Ht.
-                     split.
-                     +++ assumption.
-                     +++ lia.
-                 --- injection Hv as <- <-. cbn [set_watching set_clause qhead tlen].
-                     split.
-                     +++ reflexivity.
-                     +++ lia.
-        -- now apply IH in Hv.
-      * now apply IH in Hv.
+  - assumption.
 Qed.
 Arguments visit_qhead {p ws kept x x' r}.
 

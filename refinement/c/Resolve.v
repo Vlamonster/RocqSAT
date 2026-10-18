@@ -68,6 +68,20 @@ Lemma back_level: forall (x: Ctx) (j c: nat) (st: list nat) (d: nat) (ls: list n
   back x j c st d ls = set_level (cut x j) c st d ls.
 Proof. intros x j c st d ls. unfold back. apply set_level_setters. Qed.
 
+(* The context y is represented between steps: by RepL, without lower literals, and with
+   the watch-list pool free beyond its watch lists. *)
+Lemma rep_intro: forall (m: mem) (sh: Shape) (N: nat) (lss: list (list Lit)) (y: Ctx)
+  (tp: nat -> Z),
+  RepL m sh N lss y -> lower y = [] -> PoolArr m sh tp -> PoolFree sh N tp (wls y) ->
+  Rep m sh N lss y.
+Proof.
+  intros m sh N lss y tp HRep Hlow Apool Hpool. split.
+  - assumption.
+  - split.
+    + assumption.
+    + exists tp. split; assumption.
+Qed.
+
 (* A part of resolve that returns can be followed by more statements: they do not run. *)
 Lemma returns_seq: forall (Q: mem -> val -> Prop) (rest s: statement) (le: temp_env)
   (m: mem),
@@ -128,33 +142,114 @@ Proof.
       return_int.
       right. split.
       * reflexivity.
-      * split.
-        -- assumption.
-        -- split.
-           ++ assumption.
-           ++ exists tp. split; assumption.
+      * apply (rep_intro m sh N lss x' tp); assumption.
 Qed.
 
 (* The statements of resolve after the backjump: flipping the last decision. *)
 Definition resolve_flip: statement := drop_stmts 7 (fn_body f_resolve).
 
-(* Flipping the last decision of the context y, at trail position j0, with the cursor c0
-   saved for it:
+(* The statements of the flip after cut: from s->cur = s->saved[d - 1]. *)
+Definition resolve_flip_level: statement := drop_stmts 3 resolve_flip.
+
+(* After the flip has cut the trail of y at the last decision j0, with l = tget (tr y) j0
+   and the cursor c0 saved for it:
+
+     {{ RepL (cut (y <| lower := [] |>) j0) /\ saved y = c0 :: st }}
+       s->cur = s->saved[d - 1];
+       s->dl = d - 1;                                                  (rep_store_level)
+     {{ RepL xb, xb = back (y <| lower := [] |>) j0 c0 st (dl y - 1) (tl (lims y)) }}
+       if (!assign(s, l ^ 1, 0)) return -1;                           (assign_correct)
+       return 2;                                                      (resolve_assigned)
+     {{ ResolvePost (flip y j0) }}                                                   *)
+Lemma resolve_flip_level_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
+  (y: Ctx) (lims0: list nat) (j0 c0: nat) (st: list nat) (P: mem -> Prop)
+  (tp: nat -> Z) (le: temp_env) (m: mem),
+  RepL m sh N lss (cut (y <| lower := [] |>) j0) -> lims y = j0 :: lims0 ->
+  saved y = c0 :: st -> (extract (tget (tr y) j0) < N)%nat ->
+  PoolArr m sh tp -> PoolFree sh N tp (wls y) ->
+  le ! _s = Some (sptr sh) -> le ! _l = Some (vint (key (tget (tr y) j0))) ->
+  le ! _d = Some (vnat (length (j0 :: lims0))) ->
+  Exec ge le m resolve_flip_level
+    (Returns f_resolve (ResolvePost sh N lss P (flip y j0))).
+Proof.
+  intros sh N lss y lims0 j0 c0 st P tp le m HRep Hlims Hsv Hl Apool Hpool Hs Hlv Hd.
+  pose proof (r_n HRep) as HN.
+  pose proof (r_nodup HRep) as Hnd.
+  pose proof (r_dl_eq HRep) as Hdl.
+  pose proof (r_saved_len HRep) as Hslen.
+  pose proof (r_dl_le HRep) as Hdle.
+  cbn [cut set_vals set_tlen set_qhead set_nr set_hr set_lower dl lims saved]
+    in Hdl, Hslen, Hdle.
+  rewrite Hsv, Hlims in Hslen. rewrite Hlims in Hdl, Hdle.
+  cbn [length] in Hdl, Hslen, Hdle.
+  pose proof (key_small _ N Hl HN) as Hkl.
+  (* the flipped literal ¬l, as C computes it: l ^ 1 *)
+  assert (Hxor: Int.xor (Int.repr (key (tget (tr y) j0))) (Int.repr 1)
+                = Int.repr (key (¬(tget (tr y) j0)))).
+  { apply xor_key. lia. }
+  assert (Hnl: (extract (¬(tget (tr y) j0)) < N)%nat) by (now destruct (tget (tr y) j0)).
+  (* the level d - 1 below the last decision is the number of cursors saved before it *)
+  assert (Hsub: Int.sub (Int.repr (Z.of_nat (length (j0 :: lims0)))) (Int.repr 1)
+                = Int.repr (Z.of_nat (length st))).
+  { rewrite sub_repr. f_equal. cbn [length]. lia. }
+  pose proof (r_cur HRep) as Fcur.
+  pose proof (r_dl HRep) as Fdl.
+  pose proof (r_saved HRep) as Fsaved.
+  pose proof (a_saved HRep) as (tsv & Asaved & Htsv).
+  cbn [cut set_vals set_tlen set_qhead set_nr set_hr set_lower saved] in Htsv.
+  rewrite Hsv in Htsv. cbn [length] in Htsv.
+  assert (Htc0: tsv (length st) = Z.of_nat c0).
+  { rewrite Htsv by lia. cbn [rev]. rewrite <- length_rev, nth_middle. reflexivity. }
+  unfold resolve_flip_level, resolve_flip, f_resolve. cbn [fn_body drop_stmts].
+  (* s->cur = s->saved[d - 1]; *)
+  run. rewrite Htc0. store Fcur as m1 Hst1.
+  assert (Fdl1: IntAt m1 sh o_dl (length (lims y))).
+  { apply (fld_store_other Fdl Hst1). right.
+    cbn [size_chunk]. lia. }
+  (* s->dl = d - 1; *)
+  run. store Fdl1 as m2 Hst2.
+  cbn [cast_int_int] in Hst2. rewrite Hsub in Hst2. normal.
+  (* the context after going back, as flip has it *)
+  pose proof (rep_store_level m m1 m2 0 c0 st HRep Hsv Hst1 Hst2) as HRep2.
+  change (lims (cut (y <| lower := [] |>) j0)) with (lims y) in HRep2.
+  rewrite <- back_level in HRep2.
+  set (xb := back (y <| lower := [] |>) j0 c0 st (length st) (skipn 1 (lims y)))
+    in HRep2.
+  assert (Apool1: PoolArr m1 sh tp).
+  { apply (arr_store_other Apool Hst1). neq Hnd. }
+  assert (Apool2: PoolArr m2 sh tp).
+  { apply (arr_store_other Apool1 Hst2). neq Hnd. }
+  keep_mem m2.
+  (* if (!assign(s, l ^ 1, 0)) return -1; return 2; *)
+  run. eapply (exec_call_triple assign_fun
+                 (assign_correct sh N lss xb (¬(tget (tr y) j0)) no_reason tp)).
+  - reflexivity.
+  - unfold vint. rewrite <- Hxor. evs.
+  - splits.
+    + apply HRep2.
+    + assumption.
+    + constructor.
+    + assumption.
+  - intros m3 w Hw. normal. unfold flip. rewrite Hsv.
+    replace (dl y - 1)%nat with (length st) by lia.
+    replace (tl (lims y)) with (skipn 1 (lims y)) by (now rewrite Hlims).
+    apply (resolve_assigned sh N lss P _ tp _t'5 w).
+    + tmp.
+    + assumption.
+    + reflexivity.
+    + assumption.
+Qed.
+
+(* Flipping the last decision of the context y, at trail position j0:
 
      {{ RepL y /\ lims y = j0 :: lims0 /\ saved y = c0 :: st }}
        s->ltlen = 0;                                              (rep_store_ltlen_zero)
      {{ RepL y1, y1 = y <| lower := [] |> }}
        int l = s->tr[lo];
        cut(s, lo);                                                       (cut_correct)
-     {{ RepL (cut y1 j0) }}
-       s->cur = s->saved[d - 1];
-       s->dl = d - 1;                                                  (rep_store_level)
-     {{ RepL (back y1 j0 c0 st (dl y - 1) (tl (lims y))) }}
-       if (!assign(s, l ^ 1, 0)) return -1;                           (assign_correct)
-       return 2;                                                      (resolve_assigned)
-     {{ ResolvePost (flip y j0) }}
-
-   where l = tget (tr y) j0. *)
+     {{ RepL (cut y1 j0) /\ l = key (tget (tr y) j0) }}
+       ...                                                (resolve_flip_level_correct)
+     {{ ResolvePost (flip y j0) }}                                                   *)
 Lemma resolve_flip_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (y: Ctx)
   (lims0: list nat) (j0 c0: nat) (st: list nat) (P: mem -> Prop) (tp: nat -> Z)
   (le: temp_env) (m: mem),
@@ -166,26 +261,12 @@ Lemma resolve_flip_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (
   Exec ge le m resolve_flip (Returns f_resolve (ResolvePost sh N lss P (flip y j0))).
 Proof.
   intros sh N lss y lims0 j0 c0 st P tp le m HRep Hlims Hsv Hj0 Apool Hpool Hs Hlo Hd.
-  pose proof (r_n HRep) as HN.
   pose proof (r_nodup HRep) as Hnd.
-  pose proof (r_dl_eq HRep) as Hdl.
-  rewrite Hlims in Hdl. cbn [length] in Hdl.
-  pose proof (r_saved_len HRep) as Hslen.
-  rewrite Hsv, Hlims in Hslen. cbn [length] in Hslen.
+  pose proof (r_n HRep) as HN.
   pose proof (r_ltlen HRep) as Fltlen.
   pose proof (r_tlen_le HRep) as Htlen.
-  pose proof (r_dl_le HRep) as Hdle.
-  rewrite Hlims in Hdle. cbn [length] in Hdle.
   assert (Hl: (extract (tget (tr y) j0) < N)%nat)
     by (apply (r_tr_atoms HRep); assumption).
-  pose proof (key_small _ N Hl HN) as Hkl.
-  assert (Hxor: Int.xor (Int.repr (key (tget (tr y) j0))) (Int.repr 1)
-                = Int.repr (key (¬(tget (tr y) j0)))).
-  { apply xor_key. lia. }
-  assert (Hnl: (extract (¬(tget (tr y) j0)) < N)%nat) by (now destruct (tget (tr y) j0)).
-  assert (Hsub: Int.sub (Int.repr (Z.of_nat (length (j0 :: lims0)))) (Int.repr 1)
-                = Int.repr (Z.of_nat (length st))).
-  { rewrite sub_repr. f_equal. cbn [length]. lia. }
   unfold resolve_flip, f_resolve. cbn [fn_body drop_stmts].
   (* s->ltlen = 0; *)
   run. store Fltlen as m1 Hst1.
@@ -203,50 +284,16 @@ Proof.
     + cbn [set_lower tlen y1]. lia.
     + assumption.
   - intros m2 v [HRep2 Apool2]. normal. keep_mem m2.
-    pose proof (r_cur HRep2) as Fcur2.
-    pose proof (r_dl HRep2) as Fdl2.
-    pose proof (r_saved HRep2) as Fsaved2.
-    pose proof (a_saved HRep2) as (tsv & Asaved & Htsv).
-    cbn [cut set_vals set_tlen set_qhead set_nr set_hr set_lower saved y1] in Htsv.
-    rewrite Hsv in Htsv. cbn [length] in Htsv.
-    assert (Htc0: tsv (length st) = Z.of_nat c0).
-    { rewrite Htsv by lia. cbn [rev]. rewrite <- length_rev, nth_middle. reflexivity. }
-    (* s->cur = s->saved[d - 1]; *)
-    run. rewrite Htc0. store Fcur2 as m3 Hst3.
-    assert (Fdl3: IntAt m3 sh o_dl (length (lims y))).
-    { apply (fld_store_other Fdl2 Hst3). right.
-      cbn [size_chunk]. lia. }
-    (* s->dl = d - 1; *)
-    run. store Fdl3 as m4 Hst4.
-    cbn [cast_int_int] in Hst4. rewrite Hsub in Hst4. normal.
-    (* the context after going back, as flip has it *)
-    pose proof (rep_store_level m2 m3 m4 0 c0 st HRep2 Hsv Hst3 Hst4) as HRep4.
-    change (lims (cut y1 j0)) with (lims y) in HRep4.
-    rewrite <- back_level in HRep4.
-    set (xb := back y1 j0 c0 st (length st) (skipn 1 (lims y))) in HRep4.
-    assert (Apool3: PoolArr m3 sh tp).
-    { apply (arr_store_other Apool2 Hst3). neq Hnd. }
-    assert (Apool4: PoolArr m4 sh tp).
-    { apply (arr_store_other Apool3 Hst4). neq Hnd. }
-    keep_mem m4.
-    (* if (!assign(s, l ^ 1, 0)) return -1; return 2; *)
-    run. eapply (exec_call_triple assign_fun
-                   (assign_correct sh N lss xb (¬(tget (tr y) j0)) no_reason tp)).
-    + reflexivity.
-    + unfold vint. rewrite <- Hxor. evs.
-    + splits.
-      * apply HRep4.
-      * assumption.
-      * constructor.
-      * assumption.
-    + intros m5 w Hw. normal. unfold flip. rewrite Hsv.
-      replace (dl y - 1)%nat with (length st) by lia.
-      replace (tl (lims y)) with (skipn 1 (lims y)) by (now rewrite Hlims).
-      apply (resolve_assigned sh N lss P _ tp _t'5 w).
-      * tmp.
-      * assumption.
-      * reflexivity.
-      * assumption.
+    apply (resolve_flip_level_correct sh N lss y lims0 j0 c0 st P tp).
+    + apply HRep2.
+    + assumption.
+    + assumption.
+    + assumption.
+    + assumption.
+    + assumption.
+    + tmp.
+    + tmp.
+    + tmp.
 Qed.
 
 (* The backjump: the statements of resolve when the analysis gives a literal to assert
@@ -265,13 +312,32 @@ Record LevelAt (y: Ctx) (mx j c0: nat) (st ls: list nat): Prop := {
   la_rest: skipn (S (length (lims y) - S mx)) (lims y) = ls;
 }.
 
-(* Going back from the context y to level mx, below the current one, and asserting u:
+(* The arrays hold the stacks oldest first: at a level mx + 1 below the current one,
+   entry mx of lims is its decision position j and entry mx of saved its cursor c0, and
+   the mx cursors st are saved before it. *)
+Lemma level_at_entries: forall (y: Ctx) (mx j c0: nat) (st ls: list nat),
+  LevelAt y mx j c0 st ls -> length (saved y) = length (lims y) ->
+  length st = mx /\ nth mx (rev (lims y)) 0%nat = j /\ nth mx (rev (saved y)) 0%nat = c0.
+Proof.
+  intros y mx j c0 st ls [Hmx Hj Hsv _] Hslen.
+  set (k := (length (lims y) - S mx)%nat) in Hj, Hsv.
+  assert (Hk: k = (length (lims y) - S mx)%nat) by reflexivity. clearbody k.
+  splits.
+  - assert (Hlen: length (skipn k (saved y)) = S (length st))
+      by (rewrite Hsv; reflexivity).
+    rewrite length_skipn in Hlen. lia.
+  - rewrite rev_nth by assumption. rewrite <- Hk. apply nth_error_nth. assumption.
+  - rewrite rev_nth by lia. rewrite Hslen, <- Hk.
+    rewrite (skipn_nth (saved y) 0%nat k) in Hsv by lia. injection Hsv as Hc0 _.
+    assumption.
+Qed.
 
-     {{ RepL y /\ LevelAt y mx j c0 st ls /\ u in the temporaries }}
-       cut(s, s->lims[mx]);                                              (cut_correct)
-       s->cur = s->saved[mx];
-       s->dl = mx;                                                     (rep_store_level)
-     {{ RepL xj, xj = back y j c0 st mx ls }}
+(* The backjump after going back: the statements from int r = push_reason(s, u). *)
+Definition resolve_push: statement := drop_stmts 3 resolve_jump.
+
+(* Asserting u with the reason push_reason gives, in the context xj after going back:
+
+     {{ RepL xj /\ Arr pool tp /\ u in the temporaries }}
        int r = push_reason(s, u);                                (push_reason_correct)
      {{ RepL x4, for push_reason xj u = (x4, r) }}
        s->ltlen = 0;                                              (rep_store_ltlen_zero)
@@ -279,6 +345,66 @@ Record LevelAt (y: Ctx) (mx j c0: nat) (st ls: list nat): Prop := {
        if (!assign(s, u, r)) return -1;                               (assign_correct)
        return 2;                                                      (resolve_assigned)
      {{ ResolvePost (CNext (assign (x4 <| lower := [] |>) u r)) }}                 *)
+Lemma resolve_push_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
+  (xj: Ctx) (u: Lit) (P: mem -> Prop) (tp: nat -> Z) (le: temp_env) (m: mem),
+  RepL m sh N lss xj -> PoolArr m sh tp -> PoolFree sh N tp (wls xj) ->
+  (extract u < N)%nat ->
+  le ! _s = Some (sptr sh) -> le ! _u = Some (vint (key u)) ->
+  Exec ge le m resolve_push
+    (Returns f_resolve (ResolvePost sh N lss P
+       (match push_reason xj u with
+        | (x4, r) => CNext (assign (x4 <| lower := [] |>) u r)
+        end))).
+Proof.
+  intros sh N lss xj u P tp le m HRep Apool Hpool Hu Hs Hu'.
+  pose proof (r_nodup HRep) as Hnd.
+  unfold resolve_push, resolve_jump, f_resolve.
+  cbn [fn_body drop_stmts first_stmt then_stmt].
+  (* int r = push_reason(s, u); *)
+  run. call push_reason_fun (push_reason_correct sh N lss xj u).
+  - split.
+    + assumption.
+    + assumption.
+  - intros m4 w Hpost. unfold PushPost in Hpost.
+    (* push_reason keeps the watch lists *)
+    assert (Hwls: wls (fst (push_reason xj u)) = wls xj)
+      by (rewrite push_reason_wls; reflexivity).
+    destruct (push_reason xj u) as [x4 r] eqn:Hpush.
+    destruct Hpost as (Hr & -> & HRep4 & Hun4). normal.
+    transfer Hun4 Hnd. keep_mem m4.
+    cbn [fst] in Hwls.
+    pose proof (r_ltlen HRep4) as Fltlen4.
+    (* s->ltlen = 0; *)
+    run. store Fltlen4 as m5 Hst5.
+    pose proof (rep_store_ltlen_zero m4 m5 HRep4 Hst5) as HRep5.
+    assert (Apool5: PoolArr m5 sh tp).
+    { apply (arr_store_other Apool Hst5). neq Hnd. }
+    keep_mem m5.
+    (* if (!assign(s, u, r)) return -1; return 2; *)
+    run. call assign_fun (assign_correct sh N lss (x4 <| lower := [] |>) u r tp).
+    + split.
+      * apply HRep5.
+      * split.
+        -- assumption.
+        -- split; assumption.
+    + intros m6 w Hw. normal.
+      apply (resolve_assigned sh N lss P _ tp _t'4 w).
+      * tmp.
+      * assumption.
+      * reflexivity.
+      * cbn [assign set_lower wls]. rewrite Hwls. assumption.
+Qed.
+
+(* Going back from the context y to level mx, below the current one, and asserting u:
+
+     {{ RepL y /\ LevelAt y mx j c0 st ls /\ u in the temporaries }}
+       cut(s, s->lims[mx]);                                              (cut_correct)
+       s->cur = s->saved[mx];
+       s->dl = mx;                                                     (rep_store_level)
+     {{ RepL xj, xj = back y j c0 st mx ls }}
+       ...                                                      (resolve_push_correct)
+     {{ ResolvePost (CNext (assign (x4 <| lower := [] |>) u r)),
+        for push_reason xj u = (x4, r) }}                                          *)
 Lemma resolve_jump_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (y: Ctx)
   (u: Lit) (mx j c0: nat) (st ls: list nat) (P: mem -> Prop) (tp: nat -> Z)
   (le: temp_env) (m: mem),
@@ -292,31 +418,20 @@ Lemma resolve_jump_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (
         | (x4, r) => CNext (assign (x4 <| lower := [] |>) u r)
         end))).
 Proof.
-  intros sh N lss y u mx j c0 st ls P tp le m HRep Apool Hpool Hlims [Hmx Hj Hsv Hls] Hu
+  intros sh N lss y u mx j c0 st ls P tp le m HRep Apool Hpool Hlims Hlevel Hu
     Hs Hu' Hmx'.
+  pose proof Hlevel as [Hmx Hj Hsv Hls].
   (* k: the entry of the stacks, from the newest *)
   set (k := (length (lims y) - S mx)%nat) in Hj, Hsv, Hls.
-  assert (Hk: k = (length (lims y) - S mx)%nat) by reflexivity. clearbody k.
   subst ls.
   pose proof (r_n HRep) as HN.
   pose proof (r_nodup HRep) as Hnd.
   pose proof (r_saved_len HRep) as Hslen.
   pose proof (r_dl_le HRep) as Hdle.
   pose proof (r_tlen_le HRep) as Htlen.
-  pose proof (key_small u N Hu HN) as Hku.
-  (* The decision of level mx + 1: entry mx of the arrays, oldest first. *)
-  assert (Hjin: In j (lims y)) by (apply nth_error_In with k; assumption).
-  assert (Hjt: (j < tlen y)%nat) by (apply Hlims; assumption).
-  assert (Hst: length st = mx).
-  { assert (Hlen: length (skipn k (saved y)) = S (length st))
-      by (rewrite Hsv; reflexivity).
-    rewrite length_skipn in Hlen. lia. }
-  assert (Hlj: nth mx (rev (lims y)) 0%nat = j).
-  { rewrite rev_nth by assumption. rewrite <- Hk. apply nth_error_nth. assumption. }
-  assert (Hsc0: nth mx (rev (saved y)) 0%nat = c0).
-  { rewrite rev_nth by lia. rewrite Hslen, <- Hk.
-    rewrite (skipn_nth (saved y) 0%nat k) in Hsv by lia. injection Hsv as Hc0 _.
-    assumption. }
+  destruct (level_at_entries y mx j c0 st _ Hlevel Hslen) as (Hst & Hlj & Hsc0).
+  assert (Hjt: (j < tlen y)%nat).
+  { apply Hlims. apply nth_error_In with k. assumption. }
   pose proof (r_lims HRep) as Flims.
   pose proof (a_lims HRep) as (tl & Alims & Htl).
   unfold resolve_jump, f_resolve.
@@ -347,44 +462,344 @@ Proof.
     pose proof (rep_store_level m1 m2 m3 k c0 st HRep1 Hsv Hst2 Hst3) as HRep3.
     change (lims (cut y j)) with (lims y) in HRep3.
     rewrite <- back_level in HRep3.
-    set (xj := back y j c0 st (length st) (skipn (S k) (lims y))) in HRep3 |- *.
     assert (Apool2: PoolArr m2 sh tp).
     { apply (arr_store_other Apool1 Hst2). neq Hnd. }
     assert (Apool3: PoolArr m3 sh tp).
     { apply (arr_store_other Apool2 Hst3). neq Hnd. }
     keep_mem m3.
-    (* int r = push_reason(s, u); *)
-    run. call push_reason_fun (push_reason_correct sh N lss xj u).
-    + split.
-      * apply HRep3.
+    apply (resolve_push_correct sh N lss _ u P tp).
+    + apply HRep3.
+    + assumption.
+    + assumption.
+    + assumption.
+    + tmp.
+    + tmp.
+Qed.
+
+(* What resolve does after the analysis gave the literal u to assert and unmarking the
+   lower literals gave the highest level mx among them, in the context y with u
+   unmarked: it goes back to level mx and asserts u when mx is below the current level,
+   or else flips the last decision j0. *)
+Definition jump_or_flip (y: Ctx) (j0 mx: nat) (u: Lit): CResult :=
+  if (mx <? dl y)%nat then
+    match nth_error (lims y) (dl y - S mx)%nat with
+    | Some j =>
+      match skipn (dl y - S mx)%nat (saved y) with
+      | c0 :: st =>
+        match push_reason (back y j c0 st mx (skipn (S (dl y - S mx)) (lims y))) u
+        with
+        | (x4, r) => CNext (assign (x4 <| lower := [] |>) u r)
+        end
+      | []       => flip y j0
+      end
+    | None   => flip y j0
+    end
+  else flip y j0.
+
+(* What resolve does after the analysis gave ou and unmarking the lower literals gave
+   the context x2 and the highest level mx among them: assert the literal, or else flip
+   the last decision j0. *)
+Definition assert_or_flip (x2: Ctx) (j0 mx: nat) (ou: option Lit): CResult :=
+  match ou with
+  | Some u => jump_or_flip (x2 <| mrk := tset (mrk x2) (lit_key u) false |>) j0 mx u
+  | None   => flip x2 j0
+  end.
+
+(* The analysis and the unmarking change only the marks, the lower literals and the
+   heuristic: the levels, the trail and the watch lists stay those of x. *)
+Lemma analysed_keeps: forall (x x1 x2: Ctx) (hd: Heur) (i d lo mx: nat)
+  (ou: option Lit),
+  analyze (x <| hr := hd |>) i d lo = (x1, ou) -> unmark_lower x1 = (x2, mx) ->
+  dl x2 = dl x /\ lims x2 = lims x /\ saved x2 = saved x /\ tlen x2 = tlen x /\
+  wls x2 = wls x.
+Proof.
+  intros x x1 x2 hd i d lo mx ou Han Hul.
+  pose proof (resolve_analysed x x1 x2 hd i d lo mx ou Han Hul) as Hx2.
+  rewrite Hx2. splits; reflexivity.
+Qed.
+
+(* resolve in its parts: the analysis, the unmarking, and then assert_or_flip, which
+   reads the levels of the context after them (they are those of x). *)
+Lemma resolve_parts: forall (x: Ctx) (i j0: nat) (lims0: list nat),
+  lims x = j0 :: lims0 ->
+  resolve x i =
+    match analyze (x <| hr := decay (hr x) (nvars x) |>) i (dl x) j0 with
+    | (x1, ou) =>
+      match unmark_lower x1 with
+      | (x2, mx) => assert_or_flip x2 j0 mx ou
+      end
+    end.
+Proof.
+  intros x i j0 lims0 Hlims. unfold resolve. rewrite Hlims.
+  destruct (analyze _ i (dl x) j0) as [x1 ou] eqn:Han.
+  destruct (unmark_lower x1) as [x2 mx] eqn:Hul.
+  destruct (analysed_keeps x x1 x2 _ i (dl x) j0 mx ou Han Hul)
+    as (Hdl2 & Hlims2 & Hsaved2 & _ & _).
+  destruct ou as [u|].
+  - unfold assert_or_flip, jump_or_flip. cbn [set_mrk dl lims saved].
+    rewrite Hdl2, Hlims2, Hsaved2, Hlims. reflexivity.
+  - reflexivity.
+Qed.
+
+(* Below the current level, the stacks have an entry for level mx + 1. *)
+Lemma level_at_below: forall (y: Ctx) (mx: nat),
+  (mx < length (lims y))%nat -> length (saved y) = length (lims y) ->
+  exists (j c0: nat) (st ls: list nat), LevelAt y mx j c0 st ls.
+Proof.
+  intros y mx Hmx Hslen.
+  set (k := (length (lims y) - S mx)%nat).
+  exists (nth k (lims y) 0%nat), (nth k (saved y) 0%nat), (skipn (S k) (saved y)),
+    (skipn (S k) (lims y)).
+  constructor.
+  - assumption.
+  - apply nth_error_nth'. unfold k. lia.
+  - apply skipn_nth. unfold k. lia.
+  - reflexivity.
+Qed.
+
+(* Below the current level, jump_or_flip goes back to level mx and asserts u. *)
+Lemma jump_or_flip_below: forall (y: Ctx) (j0 mx j c0: nat) (st ls: list nat) (u: Lit),
+  dl y = length (lims y) -> LevelAt y mx j c0 st ls ->
+  jump_or_flip y j0 mx u =
+    match push_reason (back y j c0 st mx ls) u with
+    | (x4, r) => CNext (assign (x4 <| lower := [] |>) u r)
+    end.
+Proof.
+  intros y j0 mx j c0 st ls u Hdl [Hmx Hj Hsv Hls].
+  unfold jump_or_flip. rewrite Hdl.
+  replace (mx <? length (lims y))%nat with true by (symmetry; now apply Nat.ltb_lt).
+  rewrite Hj, Hsv, Hls. reflexivity.
+Qed.
+
+(* At or above the current level, jump_or_flip flips the last decision. *)
+Lemma jump_or_flip_above: forall (y: Ctx) (j0 mx: nat) (u: Lit),
+  (dl y <= mx)%nat -> jump_or_flip y j0 mx u = flip y j0.
+Proof.
+  intros y j0 mx u Hge. unfold jump_or_flip.
+  replace (mx <? dl y)%nat with false by (symmetry; now apply Nat.ltb_ge).
+  reflexivity.
+Qed.
+
+
+(* The test of resolve after the analysis and the unmarking: if (u >= 0) { ... }, and
+   its then branch, when the analysis gave a literal u to assert. *)
+Definition resolve_assert: statement := first_stmt (drop_stmts 6 (fn_body f_resolve)).
+Definition resolve_unmark: statement := then_stmt resolve_assert.
+
+(* Asserting the literal u the analysis gave, in the context y after unmarking the lower
+   literals, with mx the highest level among them:
+
+     {{ RepL y /\ lims y = j0 :: lims0 /\ saved y = c0 :: st /\ u in the temporaries }}
+       s->mrk[u] = 0;                                                  (rep_store_mrk)
+     {{ RepL y3, y3 = y <| mrk := tset (mrk y) (lit_key u) false |> }}
+       if (mx < d) { ... }                         (level_at_below, resolve_jump_correct)
+     {{ d <= mx }}
+       ...                                                      (resolve_flip_correct)
+     {{ ResolvePost (jump_or_flip y3 j0 mx u) }}                                   *)
+Lemma resolve_unmark_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
+  (y: Ctx) (lims0: list nat) (j0 c0 mx: nat) (st: list nat) (u: Lit) (P: mem -> Prop)
+  (tp: nat -> Z) (le: temp_env) (m: mem),
+  RepL m sh N lss y -> lims y = j0 :: lims0 -> saved y = c0 :: st -> LimsBelow y ->
+  PoolArr m sh tp -> PoolFree sh N tp (wls y) -> (extract u < N)%nat -> (mx <= N)%nat ->
+  le ! _s = Some (sptr sh) -> le ! _u = Some (vint (key u)) ->
+  le ! _mx = Some (vnat mx) -> le ! _d = Some (vnat (length (j0 :: lims0))) ->
+  le ! _lo = Some (vnat j0) ->
+  Exec ge le m resolve_unmark
+    (SeqK ge resolve_flip (Returns f_resolve (ResolvePost sh N lss P
+       (jump_or_flip (y <| mrk := tset (mrk y) (lit_key u) false |>) j0 mx u)))).
+Proof.
+  intros sh N lss y lims0 j0 c0 mx st u P tp le m HRep Hlims_y Hsv Hlims Apool Hpool
+    Hu Hmx Hs Hu' Hmx' Hd Hlo.
+  pose proof (r_n HRep) as HN.
+  pose proof (r_nodup HRep) as Hnd.
+  pose proof (r_dl_le HRep) as Hdle.
+  rewrite Hlims_y in Hdle.
+  pose proof (key_small u N Hu HN) as Hku.
+  pose proof (r_mrk HRep) as Fmrk.
+  pose proof (a_mrk HRep) as Amrk.
+  assert (Hk: (lit_key u < 2 * N)%nat) by (apply lit_key_lt; assumption).
+  unfold resolve_unmark, resolve_assert, f_resolve.
+  cbn [fn_body drop_stmts first_stmt then_stmt].
+  (* s->mrk[u] = 0; *)
+  run. store Amrk Hk as m3 Hst3.
+  pose proof (rep_store_mrk m m3 (lit_key u) false HRep Hk Hst3) as HRep3.
+  set (y3 := y <| mrk := tset (mrk y) (lit_key u) false |>) in HRep3 |- *.
+  pose proof (r_dl_eq HRep3) as Hdl3.
+  pose proof (r_saved_len HRep3) as Hslen3.
+  assert (Hlims3: lims y3 = j0 :: lims0) by apply Hlims_y.
+  assert (Apool3: PoolArr m3 sh tp).
+  { apply (arr_store_other Apool Hst3). neq Hnd. }
+  keep_mem m3.
+  (* if (mx < d) *)
+  eapply exec_if_lt.
+  - ev.
+  - ev.
+  - reflexivity.
+  - cbn [length] in *. lia.
+  - (* below the current level: the backjump *)
+    intros Hlt.
+    assert (Hbelow: (mx < length (lims y3))%nat) by (rewrite Hlims3; lia).
+    destruct (level_at_below y3 mx Hbelow Hslen3) as (j & c0' & st' & ls & Hlevel).
+    rewrite (jump_or_flip_below y3 j0 mx j c0' st' ls u Hdl3 Hlevel).
+    apply returns_seq.
+    apply (resolve_jump_correct sh N lss y3 u mx j c0' st' ls P tp).
+    + assumption.
+    + assumption.
+    + assumption.
+    + assumption.
+    + assumption.
+    + assumption.
+    + tmp.
+    + tmp.
+    + tmp.
+  - (* at or above the current level: the flip *)
+    intros Hge.
+    rewrite jump_or_flip_above by (rewrite Hdl3, Hlims3; lia).
+    apply exec_skip. normal.
+    apply (resolve_flip_correct sh N lss y3 lims0 j0 c0 st P tp).
+    + assumption.
+    + assumption.
+    + apply Hsv.
+    + apply Hlims. rewrite Hlims_y. now left.
+    + assumption.
+    + assumption.
+    + tmp.
+    + tmp.
+    + tmp.
+Qed.
+
+
+(* After the analysis gave ou and unmarking the lower literals gave the context y and the
+   highest level mx among them:
+
+     {{ RepL y /\ lims y = j0 :: lims0 /\ saved y = c0 :: st /\ u = enc_lit ou }}
+       if (u >= 0) { ... }                                    (resolve_unmark_correct)
+     {{ ou = None }}
+     then, after the if:
+       ...                                                      (resolve_flip_correct)
+     {{ ResolvePost (assert_or_flip y j0 mx ou) }}                                 *)
+Lemma resolve_assert_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
+  (y: Ctx) (lims0: list nat) (j0 c0 mx: nat) (st: list nat) (ou: option Lit)
+  (P: mem -> Prop) (tp: nat -> Z) (le: temp_env) (m: mem),
+  RepL m sh N lss y -> lims y = j0 :: lims0 -> saved y = c0 :: st -> LimsBelow y ->
+  PoolArr m sh tp -> PoolFree sh N tp (wls y) ->
+  (forall (u: Lit), ou = Some u -> (extract u < N)%nat) -> (mx <= N)%nat ->
+  le ! _s = Some (sptr sh) -> le ! _u = Some (vint (enc_lit ou)) ->
+  le ! _mx = Some (vnat mx) -> le ! _d = Some (vnat (length (j0 :: lims0))) ->
+  le ! _lo = Some (vnat j0) ->
+  Exec ge le m resolve_assert
+    (SeqK ge resolve_flip
+       (Returns f_resolve (ResolvePost sh N lss P (assert_or_flip y j0 mx ou)))).
+Proof.
+  intros sh N lss y lims0 j0 c0 mx st ou P tp le m HRep Hlims_y Hsv Hlims Apool Hpool
+    Hou Hmx Hs Hu' Hmx' Hd Hlo.
+  pose proof (r_n HRep) as HN.
+  unfold resolve_assert, f_resolve. cbn [fn_body drop_stmts first_stmt].
+  (* if (u >= 0) *)
+  eapply exec_if_ge.
+  - ev.
+  - ev.
+  - reflexivity.
+  - destruct ou as [u|].
+    + pose proof (key_small u N (Hou u eq_refl) HN). cbn [enc_lit]. lia.
+    + cbn [enc_lit]. lia.
+  - intros Hnonneg. destruct ou as [u|].
+    + (* a literal to assert *)
+      apply (resolve_unmark_correct sh N lss y lims0 j0 c0 mx st u P tp).
       * assumption.
-    + intros m4 w Hpost. unfold PushPost in Hpost.
-      assert (Hwls: wls (fst (push_reason xj u)) = wls y)
-        by (rewrite push_reason_wls; reflexivity).
-      destruct (push_reason xj u) as [x4 r] eqn:Hpush.
-      destruct Hpost as (HRep4 & -> & Hr & Hun4). normal.
-      transfer Hun4 Hnd. keep_mem m4.
-      cbn [fst] in Hwls.
-      pose proof (r_ltlen HRep4) as Fltlen4.
-      (* s->ltlen = 0; *)
-      run. store Fltlen4 as m5 Hst5.
-      pose proof (rep_store_ltlen_zero m4 m5 HRep4 Hst5) as HRep5.
-      assert (Apool5: PoolArr m5 sh tp).
-      { apply (arr_store_other Apool3 Hst5). neq Hnd. }
-      keep_mem m5.
-      (* if (!assign(s, u, r)) return -1; return 2; *)
-      run. call assign_fun (assign_correct sh N lss (x4 <| lower := [] |>) u r tp).
-      * split.
-        -- apply HRep5.
-        -- split.
-           ++ assumption.
-           ++ split; assumption.
-      * intros m6 w Hw. normal.
-        apply (resolve_assigned sh N lss P _ tp _t'4 w).
-        -- tmp.
-        -- assumption.
-        -- reflexivity.
-        -- cbn [assign set_lower wls]. rewrite Hwls. assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * apply Hou. reflexivity.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+    + (* enc_lit None is -1, not at least 0 *)
+      cbn [enc_lit] in Hnonneg. lia.
+  - intros Hneg. destruct ou as [u|].
+    + (* the key of a literal is not negative *)
+      pose proof (key_small u N (Hou u eq_refl) HN). cbn [enc_lit] in Hneg. lia.
+    + (* nothing to assert: flip *)
+      apply exec_skip. normal.
+      apply (resolve_flip_correct sh N lss y lims0 j0 c0 st P tp).
+      * assumption.
+      * assumption.
+      * assumption.
+      * apply Hlims. rewrite Hlims_y. now left.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+Qed.
+
+(* The statements of resolve after the analysis: from int mx = unmark_lower(s). *)
+Definition resolve_unmark_lower: statement := drop_stmts 5 (fn_body f_resolve).
+
+(* After the analysis of x with the decayed heuristic hd gave x1 and ou, with
+   d = length (j0 :: lims0) decisions:
+
+     {{ RepL x1, for analyze (x <| hr := hd |>) i d j0 = (x1, ou) }}
+       int mx = unmark_lower(s);                                (unmark_lower_correct)
+     {{ RepL x2, for unmark_lower x1 = (x2, mx), x2 with the levels of x }}
+                                                                      (analysed_keeps)
+       ...                                                    (resolve_assert_correct)
+     {{ ResolvePost (assert_or_flip x2 j0 mx ou) }}                                *)
+Lemma resolve_unmark_lower_correct: forall (sh: Shape) (N: nat)
+  (lss: list (list Lit)) (x x1: Ctx) (hd: Heur) (i j0 c0: nat) (lims0 st: list nat)
+  (ou: option Lit) (P: mem -> Prop) (tp: nat -> Z) (le: temp_env) (m: mem),
+  RepL m sh N lss x1 ->
+  analyze (x <| hr := hd |>) i (length (j0 :: lims0)) j0 = (x1, ou) ->
+  (forall (u: Lit), ou = Some u -> (extract u < N)%nat) ->
+  lims x = j0 :: lims0 -> saved x = c0 :: st -> LimsBelow x ->
+  PoolArr m sh tp -> PoolFree sh N tp (wls x) ->
+  le ! _s = Some (sptr sh) -> le ! _u = Some (vint (enc_lit ou)) ->
+  le ! _d = Some (vnat (length (j0 :: lims0))) -> le ! _lo = Some (vnat j0) ->
+  Exec ge le m resolve_unmark_lower
+    (Returns f_resolve (ResolvePost sh N lss P
+       (match unmark_lower x1 with
+        | (x2, mx) => assert_or_flip x2 j0 mx ou
+        end))).
+Proof.
+  intros sh N lss x x1 hd i j0 c0 lims0 st ou P tp le m HRep1 Han Hou Hlims_x Hsv Hlims
+    Apool Hpool Hs Hu Hd Hlo.
+  pose proof (r_nodup HRep1) as Hnd.
+  unfold resolve_unmark_lower, f_resolve. cbn [fn_body drop_stmts].
+  (* int mx = unmark_lower(s); *)
+  run. call unmark_lower_fun (unmark_lower_correct sh N lss x1) by (apply HRep1).
+  intros m2 v2 (-> & HRep2 & Hun2). normal. transfer Hun2 Hnd. keep_mem m2.
+  (* the highest level among the lower literals is at most N *)
+  assert (Hmx: (snd (unmark_lower x1) <= N)%nat).
+  { apply unmark_lower_le. intros y Hy. apply (r_lvl_le HRep1).
+    apply (r_lt_atoms HRep1). assumption. }
+  destruct (unmark_lower x1) as [x2 mx] eqn:Hul.
+  cbn [fst snd] in HRep2, Hmx |- *.
+  (* x2 has the levels, the trail and the watch lists of x *)
+  destruct (analysed_keeps x x1 x2 hd i (length (j0 :: lims0)) j0 mx ou Han Hul)
+    as (_ & Hlims2 & Hsaved2 & Htlen2 & Hwls2).
+  rewrite Hlims_x in Hlims2. rewrite Hsv in Hsaved2.
+  (* if (u >= 0) { ... } and the flip *)
+  run. apply (resolve_assert_correct sh N lss x2 lims0 j0 c0 mx st ou P tp).
+  - apply HRep2.
+  - assumption.
+  - assumption.
+  - (* the decision positions of x2 are those of x, on its trail *)
+    intros j Hj. rewrite Htlen2. apply Hlims.
+    rewrite Hlims_x, <- Hlims2. assumption.
+  - assumption.
+  - rewrite Hwls2. assumption.
+  - assumption.
+  - assumption.
+  - tmp.
+  - tmp.
+  - tmp.
+  - tmp.
+  - tmp.
 Qed.
 
 (* The analysis: the statements of resolve after decay. *)
@@ -397,15 +812,9 @@ Definition resolve_analysis: statement := drop_stmts 3 (fn_body f_resolve).
        int lo = s->lims[d - 1];
        int u = analyze(s, i, d, lo);                                 (analyze_correct)
      {{ RepL x1, for analyze (x <| hr := hd |>) i d j0 = (x1, ou) }}
-       int mx = unmark_lower(s);                                (unmark_lower_correct)
-     {{ RepL x2, for unmark_lower x1 = (x2, mx) }}                  (resolve_analysed)
-       if (u >= 0) {
-         s->mrk[u] = 0;                                                  (rep_store_mrk)
-     {{ RepL x3, x3 = x2 <| mrk := tset (mrk x2) (lit_key u) false |> }}
-         if (mx < d) { ... }                                    (resolve_jump_correct)
-       }
-       ...                                                      (resolve_flip_correct)
-     {{ ResolvePost (resolve x i) }}                                               *)
+       ...                                              (resolve_unmark_lower_correct)
+     {{ ResolvePost (assert_or_flip x2 j0 mx ou), for unmark_lower x1 = (x2, mx),
+        which is ResolvePost (resolve x i) }}                       (resolve_parts) *)
 Lemma resolve_analysis_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   (x: Ctx) (j0: nat) (lims0: list nat) (i: nat) (P: mem -> Prop) (tp: nat -> Z)
   (le: temp_env) (m: mem),
@@ -431,9 +840,15 @@ Proof.
   pose proof (r_nvars HRep) as Hnv.
   cbn [set_hr dl lims tlen saved nvars] in Hdl, Hdle, Htlen, Hslen, Hnv.
   rewrite Hlims_x in Hdle, Hslen. cbn [length] in Hdle.
-  remember (resolve x i) as cr eqn:Hcr.
-  unfold resolve in Hcr. rewrite Hdl, Hnv, Hlims_x in Hcr. fold hd in Hcr.
+  rewrite (resolve_parts x i j0 lims0 Hlims_x), Hdl, Hnv, Hlims_x. fold hd.
   assert (Hj0: (j0 < tlen x)%nat) by (apply Hlims; rewrite Hlims_x; now left).
+  (* a cursor is saved for each decision *)
+  assert (Hsv: exists (c0: nat) (st: list nat), saved x = c0 :: st).
+  { destruct (saved x) as [|c0 st].
+    - cbn [length] in Hslen. lia.
+    - exists c0, st. reflexivity. }
+  destruct Hsv as (c0 & st & Hsv).
+  (* the last decision position j0, as the array holds it: entry d - 1, oldest first *)
   pose proof (r_lims HRep) as Flims.
   pose proof (a_lims HRep) as (tl & Alims & Htl).
   cbn [set_hr lims] in Htl. rewrite Hlims_x in Htl.
@@ -455,117 +870,24 @@ Proof.
     + lia.
   - intros m1 v1 Hpost. normal. unfold AnalyzePost in Hpost.
     destruct (analyze (x <| hr := hd |>) i (length (j0 :: lims0)) j0) as [x1 ou] eqn:Han.
-    destruct Hpost as (-> & HRep1 & Hou & Hun1). transfer Hun1 Hnd. keep_mem m1.
-    (* int mx = unmark_lower(s); *)
-    run. call unmark_lower_fun (unmark_lower_correct sh N lss x1).
-    + apply HRep1.
-    + intros m2 v2 (HRep2 & -> & Hun2). normal. transfer Hun2 Hnd. keep_mem m2.
-      (* the highest level among the lower literals is at most N *)
-      assert (Hmx: (snd (unmark_lower x1) <= N)%nat).
-      { apply unmark_lower_le. intros y Hy. apply (r_lvl_le HRep1).
-        apply (r_lt_atoms HRep1). assumption. }
-      destruct (unmark_lower x1) as [x2 mx] eqn:Hul.
-      cbn [fst snd] in HRep2, Hmx |- *.
-      (* x2 is x with other marks, lower literals and heuristic *)
-      pose proof (resolve_analysed x x1 x2 hd i (length (j0 :: lims0)) j0 mx ou Han Hul)
-        as Hx2.
-      assert (Hlims2: lims x2 = j0 :: lims0) by (rewrite Hx2; apply Hlims_x).
-      assert (Htlen2: tlen x2 = tlen x) by (rewrite Hx2; reflexivity).
-      assert (Hwls2: wls x2 = wls x) by (rewrite Hx2; reflexivity).
-      assert (Hsaved2: saved x2 = saved x) by (rewrite Hx2; reflexivity).
-      destruct (saved x) as [|c0 st] eqn:Hsv.
-      { cbn [length] in Hslen. lia. }
-      (* if (u >= 0) *)
-      run. eapply exec_if_ge.
-      * ev.
-      * ev.
-      * reflexivity.
-      * destruct ou as [u|].
-        -- pose proof (Hou u eq_refl) as Hu. pose proof (key_small u N Hu HN).
-           cbn [enc_lit]. lia.
-        -- cbn [enc_lit]. lia.
-      * intros Hnonneg. destruct ou as [u|].
-        -- (* a literal to assert: s->mrk[u] = 0; *)
-           pose proof (Hou u eq_refl) as Hu. pose proof (key_small u N Hu HN) as Hku.
-           pose proof (r_mrk HRep2) as Fmrk.
-           pose proof (a_mrk HRep2) as Amrk.
-           assert (Hk: (lit_key u < 2 * N)%nat) by (apply lit_key_lt; assumption).
-           change (enc_lit (Some u)) with (key u).
-           run. store Amrk Hk as m3 Hst3.
-           pose proof (rep_store_mrk m2 m3 (lit_key u) false HRep2 Hk Hst3) as HRep3.
-           set (x3 := x2 <| mrk := tset (mrk x2) (lit_key u) false |>) in HRep3.
-           assert (Apool3: PoolArr m3 sh tp).
-           { apply (arr_store_other Apool Hst3). neq Hnd. }
-           keep_mem m3.
-           (* if (mx < d) *)
-           eapply exec_if_lt.
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ cbn [length]. lia.
-           ++ (* below the current level: the backjump *)
-              intros Hlt. assert (Hbelow: (mx < length (j0 :: lims0))%nat) by lia.
-              apply returns_seq.
-              set (k := (length (j0 :: lims0) - S mx)%nat) in *.
-              replace (mx <? length (j0 :: lims0))%nat with true in Hcr
-                by (symmetry; now apply Nat.ltb_lt).
-              rewrite (nth_error_nth' (j0 :: lims0) (n := k) 0%nat) in Hcr
-                by (unfold k; lia).
-              rewrite (skipn_nth (c0 :: st) 0%nat k) in Hcr
-                by (unfold k; cbn [length] in *; lia).
-              rewrite Hcr.
-              apply (resolve_jump_correct sh N lss x3 u mx _ _ _ _ P tp).
-              ** assumption.
-              ** assumption.
-              ** cbn [x3 set_mrk wls]. rewrite Hwls2. assumption.
-              ** cbn [x3 set_mrk lims tlen]. rewrite Hlims2, Htlen2, <- Hlims_x.
-                 assumption.
-              ** constructor.
-                 --- cbn [x3 set_mrk lims]. rewrite Hlims2. assumption.
-                 --- cbn [x3 set_mrk lims]. rewrite Hlims2. apply nth_error_nth'.
-                     cbn [length] in *. lia.
-                 --- cbn [x3 set_mrk lims saved]. rewrite Hlims2, Hsaved2.
-                     apply skipn_nth. cbn [length] in *. lia.
-                 --- cbn [x3 set_mrk lims]. rewrite Hlims2. reflexivity.
-              ** assumption.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-           ++ (* not below: flip *)
-              intros Hge.
-              replace (mx <? length (j0 :: lims0))%nat with false in Hcr
-                by (symmetry; apply Nat.ltb_ge; lia).
-              apply exec_skip. normal. normal.
-              rewrite Hcr.
-              apply (resolve_flip_correct sh N lss x3 lims0 j0 c0 st P tp).
-              ** assumption.
-              ** apply Hlims2.
-              ** apply Hsaved2.
-              ** cbn [x3 set_mrk tlen]. rewrite Htlen2. assumption.
-              ** assumption.
-              ** cbn [x3 set_mrk wls]. rewrite Hwls2. assumption.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-        -- (* enc_lit None is -1, not at least 0 *)
-           cbn [enc_lit] in Hnonneg. lia.
-      * intros Hneg. destruct ou as [u|].
-        -- (* the key of a literal is not negative *)
-           pose proof (Hou u eq_refl) as Hu. pose proof (key_small u N Hu HN).
-           cbn [enc_lit] in Hneg. lia.
-        -- (* nothing to assert: flip *)
-           apply exec_skip. normal.
-           rewrite Hcr.
-           apply (resolve_flip_correct sh N lss x2 lims0 j0 c0 st P tp).
-           ++ apply HRep2.
-           ++ assumption.
-           ++ assumption.
-           ++ rewrite Htlen2. assumption.
-           ++ assumption.
-           ++ rewrite Hwls2. assumption.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
+    destruct Hpost as (Hou & -> & HRep1 & Hun1). transfer Hun1 Hnd. keep_mem m1.
+    eapply exec_set.
+    + ev.
+    + normal.
+      (* int mx = unmark_lower(s); ... *)
+      apply (resolve_unmark_lower_correct sh N lss x x1 hd i j0 c0 lims0 st ou P tp).
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * assumption.
+      * tmp.
+      * tmp.
+      * tmp.
+      * tmp.
 Qed.
 
 (* resolve resolves the conflict on clause i:
@@ -607,21 +929,20 @@ Proof.
         cbn [length] in Hnonzero. lia.
       * apply exec_skip. normal.
         (* decay(s); *)
-        run. call decay_fun (decay_correct sh N lss x).
-        -- apply HRep.
-        -- intros m0 v0 [HRep0 Hun0]. normal. transfer Hun0 Hnd. keep_mem m0.
-           rewrite Hcr.
-           apply (resolve_analysis_correct sh N lss x j0 lims0 i P tp).
-           ++ apply HRep0.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ rewrite Hlims_x. assumption.
-           ++ assumption.
-           ++ tmp.
-           ++ tmp.
-           ++ tmp.
+        run. call decay_fun (decay_correct sh N lss x) by (apply HRep).
+        intros m0 v0 [HRep0 Hun0]. normal. transfer Hun0 Hnd. keep_mem m0.
+        rewrite Hcr.
+        apply (resolve_analysis_correct sh N lss x j0 lims0 i P tp).
+        -- apply HRep0.
+        -- assumption.
+        -- assumption.
+        -- assumption.
+        -- assumption.
+        -- rewrite Hlims_x. assumption.
+        -- assumption.
+        -- tmp.
+        -- tmp.
+        -- tmp.
 Qed.
 
 Lemma resolve_fun: FunAt _resolve f_resolve.

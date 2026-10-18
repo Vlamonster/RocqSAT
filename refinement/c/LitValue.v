@@ -36,7 +36,7 @@ Lemma lit_value_correct: forall (sh: Shape) (N: nat)
   (lss: list (list Lit)) (x: Ctx) (l: Lit),
   {{ m | RepL m sh N lss x /\ (extract l < N)%nat }}
     f_lit_value(sptr sh, vint (key l))
-  {{ m', v | m' = m /\ v = vint (enc_value (lookup (vals x) l)) }}.
+  {{ m', v | Reads m m' v (vint (enc_value (lookup (vals x) l))) }}.
 Proof.
   intros sh N lss x l m [HRep Hl].
   pose proof (key_small l N Hl (r_n HRep)) as Hkey.
@@ -44,7 +44,8 @@ Proof.
   eapply call_simple.
   - reflexivity.
   - reflexivity.
-  - unfold f_lit_value. cbn [fn_body fn_return]. destruct HRep. unfold key in *.
+  - unfold f_lit_value. cbn [fn_body fn_return]. destruct HRep as [[] [] []].
+    unfold key in *.
     (* return s->vals[l]; *)
     run. return_int.
     split.

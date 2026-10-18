@@ -177,9 +177,8 @@ Lemma add_atoms_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   (x: Ctx),
   {{ m | RepL m sh N lss x }}
     f_add_atoms(sptr sh)
-  {{ m', v | RepL m' sh N lss
-               (x <| hr := add_atoms (hr x) (alls x) N (nlits x) 0 (nlits x) |>) /\
-             Mem.unchanged_on (HeurFrame sh) m m' }}.
+  {{ m', v | HeurPost sh N lss x m (add_atoms (hr x) (alls x) N (nlits x) 0 (nlits x))
+               m' }}.
 Proof.
   intros sh N lss x m HRep.
   pose proof (r_n HRep) as HN.

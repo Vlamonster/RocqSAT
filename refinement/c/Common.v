@@ -299,6 +299,18 @@ Tactic Notation "branch" open_constr(z1) open_constr(z2) := lazymatch goal with
 Tactic Notation "branch" open_constr(z) :=
   eapply (exec_if_nonzero z); [ev | reflexivity | lia | | ].
 
+(* A branch of which one side cannot be taken: take_then closes the else branch with t
+   (after introducing the outcome of the test) and goes on in the then branch, take_else
+   the other way round. The values are given as for branch. *)
+Tactic Notation "take_then" "by" tactic3(t) := branch; [ | intros; t].
+Tactic Notation "take_then" open_constr(z1) open_constr(z2) "by" tactic3(t) :=
+  branch z1 z2; [ | intros; t].
+Tactic Notation "take_then" open_constr(z) "by" tactic3(t) := branch z; [ | intros; t].
+Tactic Notation "take_else" "by" tactic3(t) := branch; [intros; t | ].
+Tactic Notation "take_else" open_constr(z1) open_constr(z2) "by" tactic3(t) :=
+  branch z1 z2; [intros; t | ].
+Tactic Notation "take_else" open_constr(z) "by" tactic3(t) := branch z; [intros; t | ].
+
 (* Split a frame fact H, a conjunction of disequalities of blocks with frames such as
    HeurFrame nested in it, into its disequalities. *)
 Ltac frame_split H := hnf in H; lazymatch type of H with
@@ -356,6 +368,10 @@ Tactic Notation "call" constr(Hf) open_constr(T) := lazymatch goal with
   | |- Exec _ _ _ (Scall None _ _) _ =>
     eapply (exec_call_triple_none Hf T); [reflexivity | evs | | ]
   end.
+
+(* A call whose precondition t proves: only the rest of the proof remains. *)
+Tactic Notation "call" constr(Hf) open_constr(T) "by" tactic3(t) :=
+  call Hf T; [solve [t] | ].
 
 (* The negation of a literal flips the lowest bit of its key. *)
 Lemma xor_key: forall (l: Lit), 0 <= key l < small_bound ->

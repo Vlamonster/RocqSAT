@@ -84,12 +84,12 @@ Section Stores.
       rewrite length_skipn in Hk. lia. }
     assert (Hst: st = skipn (S k) (saved x)).
     { rewrite <- (skipn_skipn 1 k), Hsv. reflexivity. }
-    destruct HRep. carry Hst1 Hnd.
+    destruct HRep as [[] [] []]. carry Hst1 Hnd.
     pose proof (fld_store Fdl Hst2) as Fdl2.
     carry Hst2 Hnd. cbn [Val.load_result] in Fcur1, Fdl2.
     (* Every field is as before, but the cursor, the saved cursors and the decision
        positions, which lose their newest k + 1 entries; Hlen gives their number. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the number of decisions *)
       cbn [set_level lims]. rewrite <- Hlen. assumption.
     - (* the saved cursors: the first entries of the same array *)
@@ -121,9 +121,9 @@ Section Stores.
     intros m m' k b HRep Hk Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (arr_store (a_mrk HRep) Hk Hst) as Amrk.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field but the marks is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the marks: key k now has mark b *)
       cbn [set_mrk mrk]. arr_tset.
   Qed.
@@ -138,9 +138,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_rsn_below HRep) as Hbelow.
     pose proof (arr_store (a_rsn HRep) Ha Hst) as Arsn.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field but the reasons is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the reasons: atom a now has reason r *)
       cbn [set_rsn rsn]. arr_tset.
     - (* the reasons have clauses that C can find, r too *)
@@ -160,9 +160,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_lvl_le HRep) as Hlvl.
     pose proof (arr_store (a_lvl HRep) Ha Hst) as Alvl.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field but the levels is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the levels: atom a now has level d *)
       cbn [set_lvl lvl]. arr_tset.
     - (* the levels are at most N, d too *)
@@ -187,11 +187,11 @@ Section Stores.
     pose proof (a_lt HRep) as (tlt & Alt & Htlt).
     pose proof (r_ltlen HRep) as Fltlen.
     pose proof (arr_store Alt Hlen Hst1) as Alt1.
-    destruct HRep. carry Hst1 Hnd.
+    destruct HRep as [[] [] []]. carry Hst1 Hnd.
     pose proof (fld_store Fltlen Hst2) as Fltlen2.
     carry Hst2 Hnd. cbn [Val.load_result] in Fltlen2.
     (* Every field but the lower literals is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* their number *)
       cbn [set_lower lower]. rewrite length_app. cbn [length]. rewrite Nat.add_1_r.
       assumption.
@@ -222,21 +222,12 @@ Section Stores.
     intros m m' HRep Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (fld_store (r_ltlen HRep) Hst) as Fltlen.
-    cbn [Val.load_result] in Fltlen. destruct HRep. unpack. carry Hst Hnd.
+    cbn [Val.load_result] in Fltlen. destruct HRep as [[] [] []]. unpack. carry Hst Hnd.
     (* Every field but the lower literals is as before, and there are none. *)
-    constructor; try assumption.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
+    constructor; constructor; try assumption; try repack.
     - eexists. split.
       + eassumption.
       + intros k Hk. cbn [set_lower lower length] in Hk. lia.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
     - cbn [set_lower lower length]. lia.
     - intros y [].
   Qed.
@@ -259,11 +250,11 @@ Section Stores.
     pose proof (a_rpos HRep) as (tp & Arp & Htp).
     pose proof (r_nr HRep) as Fnr.
     pose proof (fld_store (r_rtop HRep) Hst1) as Frtop.
-    destruct HRep. carry Hst1 Hnd.
+    destruct HRep as [[] [] []]. carry Hst1 Hnd.
     pose proof (fld_store Fnr Hst2) as Fnr2.
     carry Hst2 Hnd. cbn [Val.load_result] in Frtop, Fnr2.
     (* Every field is as before, but the reason clauses, which keep their first n. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* their literals *)
       exists trl. split.
       + assumption.
@@ -332,22 +323,14 @@ Section Stores.
                    = (reasons_size (rcl x) (nr x) + length c)%nat).
     { cbn [add_reason rcl nr reasons_size]. rewrite reasons_size_tset by lia.
       rewrite tget_tset_same. reflexivity. }
-    destruct HRep. unpack. transfer Hun Hnd. keep_mem m1.
+    destruct HRep as [[] [] []]. unpack. transfer Hun Hnd. keep_mem m1.
     pose proof (fld_store Frtop Hst2) as Frtop2.
     carry Hst2 Hnd.
     pose proof (fld_store Fnr Hst3) as Fnr3.
     carry Hst3 Hnd. cbn [Val.load_result] in Frtop2, Fnr3. rewrite <- Hsize in Frtop2.
     (* Every field is as before, but the reason clauses, which get c; Hnr bounds their
        number. *)
-    constructor; try assumption.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
-    - (* their literals *)
-      exists trl. split; assumption.
+    constructor; constructor; try assumption; try repack.
     - (* their starts *)
       exists tb. split.
       + assumption.
@@ -382,4 +365,7 @@ End Stores.
 Lemma rep_nr_same: forall (m: mem) (sh: Shape) (N: nat)
   (lss: list (list Lit)) (x: Ctx) (n: nat),
   RepL m sh N lss x -> n = nr x -> RepL m sh N lss (x <| nr := n |>).
-Proof. intros m sh N lss x n HRep ->. destruct HRep. constructor; assumption. Qed.
+Proof.
+  intros m sh N lss x n HRep ->. destruct HRep as [[] [] []].
+  constructor; constructor; assumption.
+Qed.

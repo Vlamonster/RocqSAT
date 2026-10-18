@@ -64,7 +64,7 @@ Lemma pop_reasons_correct: forall (sh: Shape) (N: nat)
   (lss: list (list Lit)) (x: Ctx) (j: nat),
   {{ m | RepL m sh N lss x /\ (j <= N)%nat }}
     f_pop_reasons(sptr sh, vnat j)
-  {{ m', v | m' = m /\ v = vnat (pop_reasons (rps x) j (nr x)) }}.
+  {{ m', v | Reads m m' v (vnat (pop_reasons (rps x) j (nr x))) }}.
 Proof.
   intros sh N lss x j m [HRep Hj]. pose proof (r_n HRep) as HN.
   remember (pop_reasons (rps x) j (nr x)) as res eqn:Hres.
@@ -72,7 +72,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold f_pop_reasons. cbn [fn_body fn_return].
-    pose proof HRep as HRep'. destruct HRep'.
+    pose proof HRep as HRep'. destruct HRep' as [[] [] []].
     destruct a_rpos as (tp & Arpos & Htp). unpack.
     (* int n = s->nr; *)
     run. unfold Swhile.

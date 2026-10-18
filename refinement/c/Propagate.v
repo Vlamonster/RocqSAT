@@ -75,7 +75,7 @@ Proof.
   intros sh N lss res xc f le m1 HI.
   destruct HI as [Hs Hf Hfle [HRepc [Hlower [tp [Apool Hpool]]]] Hprop].
   pose proof (r_n HRepc) as HN.
-  pose proof HRepc as HRepc'. destruct HRepc'. unpack.
+  pose proof HRepc as HRepc'. destruct HRepc' as [[] [] []]. unpack.
   unfold prop_body, prop_loop, f_propagate.
   cbn [fn_body drop_stmts first_stmt loop_body Swhile].
   cbn [propagate] in Hprop.

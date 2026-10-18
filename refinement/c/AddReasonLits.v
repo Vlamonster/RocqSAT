@@ -46,7 +46,7 @@ Definition ReasonPost (sh: Shape) (N: nat) (lss: list (list Lit)) (y: Ctx) (t: L
   (d pathc: nat) (m m': mem) (v: val): Prop :=
   match reason_add y t d pathc with
   | (y', r) =>
-    v = vint (enc_count r) /\ RepL m' sh N lss y' /\ Mem.unchanged_on (AddFrame sh) m m'
+    Gives sh N lss (AddFrame sh) y' (vint (enc_count r)) m m' v
   end.
 
 (* Without a reason clause, nothing changes and the result is -1. *)
@@ -308,12 +308,11 @@ Proof.
     + (* no reason: neither branch, return -1; *)
       branch.
       * intros Hgt. lia.
-      * intros _. apply exec_skip. normal. run. branch.
-        -- intros Hlt. lia.
-        -- intros _. apply exec_skip. normal. return_int.
-           apply reason_post_none.
-           ++ assumption.
-           ++ unfold reason_lits. rewrite Hr. reflexivity.
+      * intros _. apply exec_skip. normal. run. take_else by lia.
+        intros _. apply exec_skip. normal. return_int.
+        apply reason_post_none.
+        -- assumption.
+        -- unfold reason_lits. rewrite Hr. reflexivity.
     + (* input clause i: r = i + 1 > 0 *)
       branch.
       * intros _. apply (input_branch_correct sh N lss y t d pathc i).
@@ -329,17 +328,16 @@ Proof.
     + (* reason clause j: r = -(j + 1) < 0 *)
       branch.
       * intros Hgt. lia.
-      * intros _. apply exec_skip. normal. run. branch.
-        -- intros _. apply (learnt_branch_correct sh N lss y t d pathc j).
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ constructor; tmp.
-           ++ tmp.
-        -- intros Hge. lia.
+      * intros _. apply exec_skip. normal. run. take_then by lia.
+        intros _. apply (learnt_branch_correct sh N lss y t d pathc j).
+        -- assumption.
+        -- assumption.
+        -- assumption.
+        -- assumption.
+        -- assumption.
+        -- assumption.
+        -- constructor; tmp.
+        -- tmp.
 Qed.
 
 Lemma add_reason_lits_fun: FunAt _add_reason_lits f_add_reason_lits.

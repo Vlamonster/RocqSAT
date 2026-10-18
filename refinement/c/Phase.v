@@ -44,7 +44,7 @@ Lemma phase_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
   (l: Lit),
   {{ m | RepL m sh N lss x /\ (extract l < N)%nat }}
     f_phase(sptr sh, vint (key l))
-  {{ m', v | m' = m /\ v = vint (key (phase (phs x) l)) }}.
+  {{ m', v | Reads m m' v (vint (key (phase (phs x) l))) }}.
 Proof.
   intros sh N lss x l m [HRep Hl].
   pose proof (key_small l N Hl (r_n HRep)) as Hkey.
@@ -62,7 +62,7 @@ Proof.
   eapply call_simple.
   - reflexivity.
   - reflexivity.
-  - unfold f_phase. cbn [fn_body fn_return]. destruct HRep.
+  - unfold f_phase. cbn [fn_body fn_return]. destruct HRep as [[] [] []].
     (* int a = l >> 1; int v = s->phs[a]; *)
     run.
     (* if (v == 1) *)

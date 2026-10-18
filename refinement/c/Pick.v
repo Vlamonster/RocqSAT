@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -86,7 +87,7 @@ Qed.
 Definition PickPost (m: mem) (sh: Shape) (N: nat) (lss: list (list Lit))
   (x: Ctx) (res: Heur * option Lit) (m': mem) (v: val): Prop :=
   match res with
-  | (h, ol) => HeurPost sh N lss x m h m' /\ v = vint (enc_lit ol)
+  | (h, ol) => Gives sh N lss (HeurFrame sh) (x <| hr := h |>) (vint (enc_lit ol)) m m' v
   end.
 
 (* The statement after the loop of pick, return -1, and what follows the loop: it and
@@ -168,11 +169,10 @@ Proof.
            intros Hz. assert (Hu: lookup_undef (vals x) l = true).
            { rewrite <- enc_undef. now apply Z.eqb_eq. }
            rewrite Hu in Hres. return_int.
-           unfold PickPost. rewrite <- Hres. split.
-           ++ split.
-              ** apply HRep2.
-              ** assumption.
+           unfold PickPost. rewrite <- Hres. splits.
            ++ reflexivity.
+           ++ apply HRep2.
+           ++ assumption.
         -- (* assigned: the loop goes on *)
            intros Hz. assert (Hu: lookup_undef (vals x) l = false).
            { rewrite <- enc_undef. now apply Z.eqb_neq. }
@@ -265,11 +265,10 @@ Proof.
               intros Hempty. replace (hsize h <=? 0)%nat with true in Hres
                 by (symmetry; apply Nat.leb_le; lia).
               return_int.
-              unfold PickPost. rewrite <- Hres. split.
-              ** split.
-                 --- apply HRep1.
-                 --- assumption.
+              unfold PickPost. rewrite <- Hres. splits.
               ** reflexivity.
+              ** apply HRep1.
+              ** assumption.
            ++ (* int b = heap_pop(s); *)
               intros Hsize. replace (hsize h <=? 0)%nat with false in Hres
                 by (symmetry; apply Nat.leb_gt; lia).
@@ -280,7 +279,7 @@ Proof.
               ** split.
                  --- apply HRep1.
                  --- cbn [set_hr hr]. lia.
-              ** intros m2 v2 ((HRep2 & Hun2) & ->). normal. keep_mem m2.
+              ** intros m2 v2 (-> & HRep2 & Hun2). normal. keep_mem m2.
                  change (hr (x <| hr := h |>)) with h in HRep2 |- *.
                  destruct (heap_pop h) as [h1 a] eqn:Hpop.
                  cbn [fst snd] in HRep2, Hb |- *.
@@ -306,11 +305,10 @@ Proof.
         apply exec_break. abrupt. apply loopk_break.
         unfold PickExit. normal. unfold pick_ret, f_pick. cbn [fn_body drop_stmts].
         return_int.
-        unfold PickPost. cbn [pick] in Hres. rewrite <- Hres. split.
-        -- split.
-           ++ apply HRep1.
-           ++ assumption.
+        unfold PickPost. cbn [pick] in Hres. rewrite <- Hres. splits.
         -- reflexivity.
+        -- apply HRep1.
+        -- assumption.
     + (* The invariant holds at N. *)
       constructor.
       * tmp.

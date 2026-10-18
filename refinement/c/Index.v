@@ -223,11 +223,13 @@ Proof.
 Qed.
 
 (* The parts of index_clauses proved in lemmas of their own: the loop, its body after the
-   test, and in the body the watchers of the clause and the bookkeeping of a short
-   clause. *)
+   test, and in the body the watchers of the clause (for two literals or more, and for
+   one) and the bookkeeping of a short clause. *)
 Definition index_loop: statement := first_stmt (drop_stmts 2 (fn_body f_index_clauses)).
 Definition index_body: statement := drop_stmts 1 (loop_body index_loop).
 Definition index_watch: statement := first_stmt (drop_stmts 2 index_body).
+Definition index_watch_two: statement := then_stmt index_watch.
+Definition index_watch_one: statement := then_stmt (else_stmt index_watch).
 Definition index_short: statement := drop_stmts 3 index_body.
 
 (* A call of wpush, which C makes in three places, with the temporary tr for its result:
@@ -312,7 +314,36 @@ Section Loop.
       apply (clause_length sh N lss x t k); assumption.
   Qed.
 
+  (* While indexing there are no lower literals, so RepL and a pool that holds the watch
+     lists give Rep. *)
+  Lemma ictx_rep: forall (m: mem) (tp: nat -> Z) (k: nat),
+    RepL m sh N lss (ictx lss al nl N rc k) -> PoolArr m sh tp ->
+    PoolFree sh N tp (wls (ictx lss al nl N rc k)) ->
+    Rep m sh N lss (ictx lss al nl N rc k).
+  Proof.
+    intros m tp k HRep Apool Hpool. split.
+    - assumption.
+    - split.
+      + reflexivity.
+      + exists tp. split; assumption.
+  Qed.
+
+  (* Pushing k on the stack ss that the array ts holds: k goes into entry length ss. *)
+  Lemma stack_in_push: forall (ts: nat -> Z) (ss: list nat) (k: nat),
+    StackIn ts ss ->
+    StackIn (fun (j: nat) => if Nat.eqb (length ss) j then Z.of_nat k else ts j)
+      (k :: ss).
+  Proof.
+    intros ts ss k Hts q Hq. cbn [length rev] in Hq |- *.
+    destruct (Nat.eq_dec (length ss) q) as [<- | Hne].
+    - rewrite Nat.eqb_refl, <- length_rev, nth_middle. reflexivity.
+    - replace (Nat.eqb (length ss) q) with false by (symmetry; now apply Nat.eqb_neq).
+      rewrite app_nth1 by (rewrite length_rev; lia). apply Hts. lia.
+  Qed.
+
   (* The end of the loop body of clause k: a short clause is added to the array; and k++.
+     By cases on the test; in both the loop goes on with IndexInv (k + 1), with the
+     pool unchanged, and the array of short clauses one entry longer for a short clause.
 
        {{ IndexAt (ictx (k + 1)) }}
          if (len <= 1) { s->shorts[ns] = k; ns++; }              (rep_store_short_entry)
@@ -330,6 +361,7 @@ Section Loop.
     pose proof (idx_lists lss k (Nat.lt_le_incl _ _ Hlt)) as (Hwl & Hshk & Hshl).
     destruct (ictx_clause m (S k) k _ HRep eq_refl Hlt)
       as [_ Hlen_cl].
+    (* clause k joins the short clauses when it has at most one literal *)
     assert (Hshn: ish (idx lss (S k)) =
                   if Nat.leb (length (nth k lss [])) 1 then k :: ish (idx lss k)
                   else ish (idx lss k)).
@@ -342,7 +374,7 @@ Section Loop.
     cbn [fn_body drop_stmts first_stmt loop_body Swhile].
     (* if (len <= 1) *)
     apply exec_seq. branch.
-    - (* a short clause: s->shorts[ns] = k; ns++; *)
+    - (* a short clause: s->shorts[ns] = k; ns++; k++; *)
       intros Hshort. assert (Hleb: Nat.leb (starts sh (S k) - starts sh k) 1 = true)
         by (apply Nat.leb_le; lia).
       rewrite Hleb in Hshn.
@@ -363,26 +395,19 @@ Section Loop.
         * tmp.
         * tmp.
         * lia.
-        * split.
+        * (* the store into the array of short clauses changes nothing else *)
+          apply (ictx_rep m1 tp).
           -- apply (rep_store_short_entry m m1 ts
                       (length (ish (idx lss k))) (Z.of_nat k) HRep).
              ++ reflexivity.
              ++ assumption.
              ++ assumption.
              ++ assumption.
-          -- split.
-             ++ reflexivity.
-             ++ exists tp. split.
-                ** apply (arr_store_other Apool Hst1). neq Hnd.
-                ** assumption.
+          -- apply (arr_store_other Apool Hst1). neq Hnd.
+          -- assumption.
         * apply (arr_store Ats Hnsk Hst1).
         * (* clause k is the newest short clause *)
-          intros q Hq. rewrite Hshn in Hq |- *. cbn [length rev] in Hq |- *.
-          destruct (Nat.eq_dec (length (ish (idx lss k))) q) as [<- | Hne].
-          -- rewrite Nat.eqb_refl, <- length_rev, nth_middle. reflexivity.
-          -- replace (Nat.eqb (length (ish (idx lss k))) q) with false
-               by (symmetry; now apply Nat.eqb_neq).
-             rewrite app_nth1 by (rewrite length_rev; lia). apply Hts. lia.
+          rewrite Hshn. apply stack_in_push. assumption.
     - (* not a short clause: k++; *)
       intros Hlong. assert (Hleb: Nat.leb (starts sh (S k) - starts sh k) 1 = false)
         by (apply Nat.leb_gt; lia).
@@ -394,11 +419,7 @@ Section Loop.
         * tmp.
         * rewrite Hshn. tmp.
         * lia.
-        * split.
-          -- assumption.
-          -- split.
-             ++ reflexivity.
-             ++ exists tp. split; assumption.
+        * apply (ictx_rep m tp); assumption.
         * assumption.
         * rewrite Hshn. assumption.
   Qed.
@@ -470,15 +491,191 @@ Section Loop.
           -- assumption.
   Qed.
 
-  (* The watchers of clause k, by its length:
+  (* Out of room while watching clause k: index_clauses returns -1. *)
+  Lemma index_out_of_room: forall (k: nat) (le: temp_env) (m: mem),
+    SeqK ge index_short (IndexK k) le m (ret_int (-1)).
+  Proof. intros k le m. abrupt. apply loopk_return. right. reflexivity. Qed.
+
+  (* After the watchers of clause k: the temporaries still hold s, k, ns and len, the
+     memory represents ictx (k + 1) with the pool tp', and only the pool changed since
+     the memory m at the start of the watchers. Then the end of the loop body runs
+     (index_short_correct). *)
+  Lemma index_watched: forall (ts tp tp': nat -> Z) (k: nat) (le le': temp_env)
+    (m m': mem),
+    IndexAt ts tp k (ictx lss al nl N rc k) le m ->
+    le' ! _s = Some (sptr sh) -> le' ! _k = Some (vnat k) ->
+    le' ! _ns = Some (vnat (length (ish (idx lss k)))) ->
+    le' ! _len = Some (vnat (starts sh (S k) - starts sh k)) ->
+    RepL m' sh N lss (ictx lss al nl N rc (S k)) -> PoolArr m' sh tp' ->
+    PoolFree sh N tp' (wls (ictx lss al nl N rc (S k))) ->
+    Mem.unchanged_on (PoolFrame sh) m m' ->
+    SeqK ge index_short (IndexK k) le' m' Out_normal.
+  Proof.
+    intros ts tp tp' k le le' m m' HA Hs' Hk' Hns' Hlen' HRep' Apool' Hpool' Hun.
+    destruct HA as [_ _ _ _ Hlt HRep _ _ Ats Hts].
+    pose proof (r_nodup HRep) as Hnd.
+    normal. apply (index_short_correct ts tp' k). constructor.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - (* the array of short clauses is outside the pool *)
+      apply (arr_unchanged _ m m' (b_shorts sh) (length lss) ts Hun).
+      + intros ofs. split; neq Hnd.
+      + assumption.
+    - assumption.
+  Qed.
+
+  (* The watchers of a clause c0 :: c1 :: ls of two literals or more: c0 and c1 watch it,
+     each with the other as blocker. Two pushes, each of which may run out of room.
 
        {{ IndexAt (ictx k) /\ b, the start of clause k, in the temporaries }}
-         if (len >= 2) { int a = s->clits[b]; int c = s->clits[b + 1];
-                         push (a, k, c); push (c, k, a); }        (index_push_correct)
-         else if (len == 1) { int a = s->clits[b]; push (a, k, a); }
+         int a = s->clits[b];
+         int c = s->clits[b + 1];
+         if (!wpush(s, a, k, c)) return -1;                       (index_push_correct)
+         if (!wpush(s, c, k, a)) return -1;
        {{ result = -1 (out of room) }}
-       {{ IndexAt (ictx (k + 1)) }}                                           (ictx_step)
-         ...                                                     (index_short_correct) *)
+       {{ RepL (ictx (k + 1)), and its pool }}                                (ictx_step)
+         ...                                                           (index_watched) *)
+  Lemma index_watch_two_correct: forall (ts tp: nat -> Z) (k: nat) (c0 c1: Lit)
+    (ls: list Lit) (le: temp_env) (m: mem),
+    IndexAt ts tp k (ictx lss al nl N rc k) le m ->
+    le ! _b = Some (vnat (starts sh k)) -> nth k lss [] = c0 :: c1 :: ls ->
+    Exec ge le m index_watch_two (SeqK ge index_short (IndexK k)).
+  Proof.
+    intros ts tp k c0 c1 ls le m HA Hb Hcl. pose proof HA as HA'.
+    destruct HA' as [Hs Hk Hns Hlen Hlt HRep Apool Hpool Ats Hts].
+    pose proof (r_n HRep) as HN.
+    pose proof (r_nclits_small HRep) as Hncl.
+    pose proof (Rep.r_starts HRep k Hlt) as Hrange.
+    pose proof (r_clits HRep) as Fclits.
+    pose proof (a_lits HRep) as (tl & Alits & Hclauses).
+    destruct (ictx_clause m k k _ HRep eq_refl Hlt) as [Hcls Hlen_cl].
+    rewrite Hcl in Hcls, Hlen_cl.
+    (* the two literals, at positions b and b + 1 of clits *)
+    destruct (clause_lit m sh N lss _ tl k 0 (c0 :: c1 :: ls) HRep Hclauses Hlt Hcls)
+      as (Hpos0 & Htl0 & Hc0).
+    { cbn [length]. lia. }
+    destruct (clause_lit m sh N lss _ tl k 1 (c0 :: c1 :: ls) HRep Hclauses Hlt Hcls)
+      as (Hpos1 & Htl1 & Hc1).
+    { cbn [length]. lia. }
+    cbn [nth] in Htl0, Hc0, Htl1, Hc1. rewrite Nat.add_0_r in Htl0, Hpos0.
+    pose proof (key_small c0 N Hc0 HN) as Hkc0.
+    pose proof (key_small c1 N Hc1 HN) as Hkc1.
+    assert (Hb1: Int.add (Int.repr (Z.of_nat (starts sh k))) (Int.repr 1)
+                 = Int.repr (Z.of_nat (starts sh k + 1))).
+    { rewrite add_repr. f_equal. lia. }
+    unfold index_watch_two, index_watch, index_body, index_loop, f_index_clauses.
+    cbn [fn_body drop_stmts first_stmt loop_body then_stmt Swhile].
+    fold (push_stmt _t'1 _a _c) (push_stmt _t'2 _c _a).
+    (* int a = s->clits[b]; int c = s->clits[b + 1]; *)
+    run. rewrite Htl0. run. rewrite Htl1.
+    (* if (!wpush(s, a, k, c)) return -1; *)
+    apply (index_push_correct (ictx lss al nl N rc k) k c0 c1 tp _t'1 _a _c).
+    - assumption.
+    - assumption.
+    - assumption.
+    - constructor; tmp.
+    - assumption.
+    - assumption.
+    - assumption.
+    - intros le' m'. abrupt. apply index_out_of_room.
+    - intros m1 tp1 HRep1 Apool1 Hpool1 Hun1. normal.
+      set (x1 := set_watching (ictx lss al nl N rc k) c0
+                   (watching (wls (ictx lss al nl N rc k)) c0 ++ [(k, c1)])) in *.
+      (* if (!wpush(s, c, k, a)) return -1; *)
+      apply (index_push_correct x1 k c1 c0 tp1 _t'2 _c _a).
+      + assumption.
+      + assumption.
+      + assumption.
+      + constructor; tmp.
+      + assumption.
+      + assumption.
+      + assumption.
+      + apply index_out_of_room.
+      + (* the two watchers are those of watch_first *)
+        intros m2 tp2 HRep2 Apool2 Hpool2 Hun2. apply (index_watched ts tp tp2 k le _ m).
+        * assumption.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * rewrite ictx_step by assumption. rewrite Hcl. apply HRep2.
+        * assumption.
+        * rewrite ictx_step by assumption. rewrite Hcl. apply Hpool2.
+        * frame.
+  Qed.
+
+  (* The watcher of a unit clause [c0]: c0 watches it, with itself as blocker.
+
+       {{ IndexAt (ictx k) /\ b, the start of clause k, in the temporaries }}
+         int a = s->clits[b];
+         if (!wpush(s, a, k, a)) return -1;                       (index_push_correct)
+       {{ result = -1 (out of room) }}
+       {{ RepL (ictx (k + 1)), and its pool }}                                (ictx_step)
+         ...                                                           (index_watched) *)
+  Lemma index_watch_one_correct: forall (ts tp: nat -> Z) (k: nat) (c0: Lit)
+    (le: temp_env) (m: mem),
+    IndexAt ts tp k (ictx lss al nl N rc k) le m ->
+    le ! _b = Some (vnat (starts sh k)) -> nth k lss [] = [c0] ->
+    Exec ge le m index_watch_one (SeqK ge index_short (IndexK k)).
+  Proof.
+    intros ts tp k c0 le m HA Hb Hcl. pose proof HA as HA'.
+    destruct HA' as [Hs Hk Hns Hlen Hlt HRep Apool Hpool Ats Hts].
+    pose proof (r_n HRep) as HN.
+    pose proof (r_nclits_small HRep) as Hncl.
+    pose proof (Rep.r_starts HRep k Hlt) as Hrange.
+    pose proof (r_clits HRep) as Fclits.
+    pose proof (a_lits HRep) as (tl & Alits & Hclauses).
+    destruct (ictx_clause m k k _ HRep eq_refl Hlt) as [Hcls Hlen_cl].
+    rewrite Hcl in Hcls, Hlen_cl.
+    (* the literal, at position b of clits *)
+    destruct (clause_lit m sh N lss _ tl k 0 [c0] HRep Hclauses Hlt Hcls)
+      as (Hpos0 & Htl0 & Hc0).
+    { cbn [length]. lia. }
+    cbn [nth] in Htl0, Hc0. rewrite Nat.add_0_r in Htl0, Hpos0.
+    pose proof (key_small c0 N Hc0 HN) as Hkc0.
+    unfold index_watch_one, index_watch, index_body, index_loop, f_index_clauses.
+    cbn [fn_body drop_stmts first_stmt loop_body then_stmt else_stmt Swhile].
+    fold (push_stmt _t'3 _a__1 _a__1).
+    (* int a = s->clits[b]; *)
+    run. rewrite Htl0.
+    (* if (!wpush(s, a, k, a)) return -1; *)
+    apply (index_push_correct (ictx lss al nl N rc k) k c0 c0 tp _t'3 _a__1 _a__1).
+    - assumption.
+    - assumption.
+    - assumption.
+    - constructor; tmp.
+    - assumption.
+    - assumption.
+    - assumption.
+    - apply index_out_of_room.
+    - (* the watcher is that of watch_first *)
+      intros m' tp' HRep' Apool' Hpool' Hun. apply (index_watched ts tp tp' k le _ m).
+      + assumption.
+      + tmp.
+      + tmp.
+      + tmp.
+      + tmp.
+      + rewrite ictx_step by assumption. rewrite Hcl. apply HRep'.
+      + assumption.
+      + rewrite ictx_step by assumption. rewrite Hcl. apply Hpool'.
+      + assumption.
+  Qed.
+
+  (* The watchers of clause k, by its length: two literals or more, one, or none (the
+     empty clause, which nothing watches).
+
+       {{ IndexAt (ictx k) /\ b, the start of clause k, in the temporaries }}
+         if (len >= 2) { ... }                               (index_watch_two_correct)
+         else if (len == 1) { ... }                          (index_watch_one_correct)
+       {{ result = -1 (out of room) }}
+       {{ IndexAt (ictx (k + 1)) }}
+         ...                                                           (index_watched) *)
   Lemma index_watch_correct: forall (ts tp: nat -> Z) (k: nat) (le: temp_env) (m: mem),
     IndexAt ts tp k (ictx lss al nl N rc k) le m ->
     le ! _b = Some (vnat (starts sh k)) ->
@@ -486,132 +683,33 @@ Section Loop.
   Proof.
     intros ts tp k le m HA Hb. pose proof HA as HA'.
     destruct HA' as [Hs Hk Hns Hlen Hlt HRep Apool Hpool Ats Hts].
-    pose proof (r_n HRep) as HN.
-    pose proof (r_nodup HRep) as Hnd.
     pose proof (r_nclits_small HRep) as Hncl.
     pose proof (Rep.r_starts HRep k Hlt) as Hrange.
-    pose proof (r_clits HRep) as Fclits.
-    pose proof (a_lits HRep) as (tl & Alits & Hclauses).
-    destruct (ictx_clause m k k _ HRep eq_refl Hlt) as [Hcls Hlen_cl].
-    (* What is left after the watchers: IndexAt for ictx (k + 1) *)
-    assert (Hnext: forall (le': temp_env) (m': mem) (tp': nat -> Z),
-      le' ! _s = Some (sptr sh) -> le' ! _k = Some (vnat k) ->
-      le' ! _ns = Some (vnat (length (ish (idx lss k)))) ->
-      le' ! _len = Some (vnat (starts sh (S k) - starts sh k)) ->
-      RepL m' sh N lss (ictx lss al nl N rc (S k)) ->
-      PoolArr m' sh tp' ->
-      PoolFree sh N tp' (wls (ictx lss al nl N rc (S k))) ->
-      Mem.unchanged_on (PoolFrame sh)
-        m m' ->
-      SeqK ge index_short (IndexK k) le' m' Out_normal).
-    { intros le' m' tp' Hs' Hk' Hns' Hlen' HRep' Apool' Hpool' Hun. normal.
-      apply (index_short_correct ts tp' k). constructor.
-      - assumption.
-      - assumption.
-      - assumption.
-      - assumption.
-      - assumption.
-      - assumption.
-      - assumption.
-      - assumption.
-      - apply (arr_unchanged _ m m' (b_shorts sh) (length lss) ts Hun).
-        + intros ofs. split; neq Hnd.
-        + assumption.
-      - assumption. }
-    assert (Hfail: forall (le': temp_env) (m': mem),
-      SeqK ge index_short (IndexK k) le' m'
-        (ret_int (-1))).
-    { intros le' m'. abrupt. apply loopk_return. right. reflexivity. }
+    destruct (ictx_clause m k k _ HRep eq_refl Hlt) as [_ Hlen_cl].
     unfold index_watch, index_body, index_loop, f_index_clauses.
     cbn [fn_body drop_stmts first_stmt loop_body Swhile].
     (* if (len >= 2) *)
     branch.
-    - (* len >= 2 *)
+    - (* len >= 2: a clause c0 :: c1 :: ls *)
       intros Hge. destruct (nth k lss []) as [|c0 [|c1 ls]] eqn:Hcl.
       + (* not the empty clause *)
         cbn [length] in Hlen_cl. lia.
       + (* not a unit clause *)
         cbn [length] in Hlen_cl. lia.
-      + (* two literals or more: watched by c0 and c1, each with the other as blocker *)
-        destruct (clause_lit m sh N lss _ tl k 0 (c0 :: c1 :: ls) HRep Hclauses Hlt Hcls)
-          as (Hpos0 & Htl0 & Hc0).
-        { cbn [length]. lia. }
-        destruct (clause_lit m sh N lss _ tl k 1 (c0 :: c1 :: ls) HRep Hclauses Hlt Hcls)
-          as (Hpos1 & Htl1 & Hc1).
-        { cbn [length]. lia. }
-        cbn [nth] in Htl0, Hc0, Htl1, Hc1. rewrite Nat.add_0_r in Htl0, Hpos0.
-        pose proof (key_small c0 N Hc0 HN) as Hkc0.
-        pose proof (key_small c1 N Hc1 HN) as Hkc1.
-        assert (Hb1: Int.add (Int.repr (Z.of_nat (starts sh k))) (Int.repr 1)
-                     = Int.repr (Z.of_nat (starts sh k + 1))).
-        { rewrite add_repr. f_equal. lia. }
-        fold (push_stmt _t'1 _a _c) (push_stmt _t'2 _c _a).
-        run. rewrite Htl0. run. rewrite Htl1.
-        apply (index_push_correct (ictx lss al nl N rc k) k c0 c1 tp _t'1 _a _c).
-        * assumption.
-        * assumption.
-        * assumption.
-        * constructor; tmp.
-        * assumption.
-        * assumption.
-        * assumption.
-        * intros le' m'. abrupt. apply Hfail.
-        * intros m1 tp1 HRep1 Apool1 Hpool1 Hun1. normal.
-          set (x1 := set_watching (ictx lss al nl N rc k) c0
-                       (watching (wls (ictx lss al nl N rc k)) c0 ++ [(k, c1)])) in *.
-          apply (index_push_correct x1 k c1 c0 tp1 _t'2 _c _a).
-          -- assumption.
-          -- assumption.
-          -- assumption.
-          -- constructor; tmp.
-          -- assumption.
-          -- assumption.
-          -- assumption.
-          -- assumption.
-          -- intros m2 tp2 HRep2 Apool2 Hpool2 Hun2. apply Hnext with tp2.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ rewrite ictx_step by assumption. rewrite Hcl. apply HRep2.
-             ++ assumption.
-             ++ rewrite ictx_step by assumption. rewrite Hcl. apply Hpool2.
-             ++ frame.
+      + apply (index_watch_two_correct ts tp k c0 c1 ls); assumption.
     - (* else if (len == 1) *)
       intros Hlt2. branch.
-      + (* a unit clause [c0]: watched by c0 *)
+      + (* len = 1: a unit clause [c0] *)
         intros Hone. destruct (nth k lss []) as [|c0 [|c1 ls]] eqn:Hcl.
         * (* not the empty clause *)
           cbn [length] in Hlen_cl. lia.
-        * destruct (clause_lit m sh N lss _ tl k 0 [c0] HRep Hclauses Hlt Hcls)
-            as (Hpos0 & Htl0 & Hc0).
-          { cbn [length]. lia. }
-          cbn [nth] in Htl0, Hc0. rewrite Nat.add_0_r in Htl0, Hpos0.
-          pose proof (key_small c0 N Hc0 HN) as Hkc0.
-          fold (push_stmt _t'3 _a__1 _a__1). run. rewrite Htl0.
-          apply (index_push_correct (ictx lss al nl N rc k) k c0 c0 tp _t'3 _a__1 _a__1).
-          -- assumption.
-          -- assumption.
-          -- assumption.
-          -- constructor; tmp.
-          -- assumption.
-          -- assumption.
-          -- assumption.
-          -- assumption.
-          -- intros m' tp' HRep' Apool' Hpool' Hun. apply Hnext with tp'.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ rewrite ictx_step by assumption. rewrite Hcl. apply HRep'.
-             ++ assumption.
-             ++ rewrite ictx_step by assumption. rewrite Hcl. apply Hpool'.
-             ++ assumption.
+        * apply (index_watch_one_correct ts tp k c0); assumption.
         * (* not two literals or more *)
           cbn [length] in Hlen_cl. lia.
-      + (* the empty clause: no watcher *)
-        intros Hnot1. destruct (nth k lss []) as [|c0 [|c1 ls]] eqn:Hcl.
-        * apply exec_skip. apply (Hnext le m tp).
+      + (* len = 0: the empty clause, no watcher *)
+        intros Hnot1. destruct (nth k lss []) as [|c0 ls] eqn:Hcl.
+        * apply exec_skip. apply (index_watched ts tp tp k le le m m).
+          -- assumption.
           -- assumption.
           -- assumption.
           -- assumption.
@@ -619,10 +717,8 @@ Section Loop.
           -- rewrite ictx_step by assumption. rewrite Hcl. apply HRep.
           -- assumption.
           -- rewrite ictx_step by assumption. rewrite Hcl. apply Hpool.
-          -- frame.
-        * (* not a unit clause *)
-          cbn [length] in Hlen_cl. lia.
-        * (* not two literals or more *)
+          -- apply Mem.unchanged_on_refl.
+        * (* not a unit clause or longer *)
           cbn [length] in Hlen_cl. lia.
   Qed.
 
@@ -699,11 +795,7 @@ Section Loop.
           -- tmp.
           -- tmp.
           -- assumption.
-          -- split.
-             ++ assumption.
-             ++ split.
-                ** reflexivity.
-                ** exists tp. split; assumption.
+          -- apply (ictx_rep m1 tp); assumption.
           -- assumption.
           -- assumption.
       + (* k = ncl: break; every clause is indexed *)
@@ -715,11 +807,7 @@ Section Loop.
           -- tmp.
           -- tmp.
           -- lia.
-          -- split.
-             ++ assumption.
-             ++ split.
-                ** reflexivity.
-                ** exists tp. split; assumption.
+          -- apply (ictx_rep m1 tp); assumption.
           -- assumption.
           -- assumption.
     - assumption.

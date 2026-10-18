@@ -37,8 +37,8 @@ Lemma set_value_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   (x: Ctx) (a: nat) (o: option bool),
   {{ m | RepL m sh N lss x /\ (a < N)%nat }}
     f_set_value(sptr sh, vnat a, vint (enc_value o))
-  {{ m', v | RepL m' sh N lss (x <| vals := tset (vals x) a o |>) /\
-             Mem.unchanged_on (AllBut (b_vals sh)) m m' }}.
+  {{ m', v | Changes sh N lss (AllBut (b_vals sh)) (x <| vals := tset (vals x) a o |>)
+               m m' }}.
 Proof.
   intros sh N lss x a o m [HRep Ha].
   pose proof (r_n HRep) as HN.

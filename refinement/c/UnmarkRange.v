@@ -74,8 +74,7 @@ Lemma unmark_range_correct: forall (sh: Shape) (N: nat)
   (lss: list (list Lit)) (x: Ctx) (idx lo: nat),
   {{ m | RepL m sh N lss x /\ (idx <= tlen x)%nat /\ (lo <= N)%nat }}
     f_unmark_range(sptr sh, vnat idx, vnat lo)
-  {{ m', v | RepL m' sh N lss (unmark_range x idx lo) /\
-             Mem.unchanged_on (AllBut (b_mrk sh)) m m' }}.
+  {{ m', v | Changes sh N lss (AllBut (b_mrk sh)) (unmark_range x idx lo) m m' }}.
 Proof.
   intros sh N lss x idx lo m (HRep & Hidx & Hlo).
   pose proof (r_n HRep) as HN.

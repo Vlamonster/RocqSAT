@@ -168,13 +168,21 @@ separate blocks for the tables, and that the clauses are exactly those of `f`.
   tactic per kind of statement, which applies its rule of `c/Logic.v` and proves the side goals that only
   evaluate expressions: `store F as m' Hst` (a field) and `store A Hk as m' Hst` (an array entry), `branch`
   (`branch z1 z2` when the compared values must be given; two goals remain, the branches), `call Hf T` (two
-  goals remain: the precondition of the triple `T` and the rest), `return_int` and `return_none` (the
-  postcondition remains), and `frame` for `Mem.unchanged_on` goals (it walks back over the stores and calls
-  that made the memory).
+  goals remain: the precondition of the triple `T` and the rest; `call Hf T by tac` proves the precondition
+  with `tac`), `take_then by tac` and `take_else by tac` (a branch of which one side cannot be taken: `tac`
+  closes it, and the proof goes on in the other side), `return_int` and `return_none` (the postcondition
+  remains), and `frame` for `Mem.unchanged_on` goals (it walks back over the stores and calls that made the
+  memory). With these, the proof of straight-line C code reads down the page, one tactic per statement.
 - `c/Rep.v`: `RepL`, how the memory of `solver.c` holds a context (`Rep` between steps: no lower literals,
-  and the watch lists in the pool):
-  the values per literal (`key_value`, so that `lit_value` is one load), the marks, reasons (`enc_reason`) and
-  levels, the stack of reason clauses (`ReasonsIn`) and the heuristic (`HeurOk`); and the store lemmas
+  and the watch lists in the pool), in three parts, each also a coercion so that its facts apply to `RepL`
+  directly: `Layout` (the blocks, the pointers of struct solver, and what never changes), `Holds` (the int
+  fields and arrays that hold the tables of the context: the values per literal (`key_value`, so that
+  `lit_value` is one load), the marks, reasons (`enc_reason`) and levels, the stack of reason clauses
+  (`ReasonsIn`) and the heuristic) and `Bounded` (the bounds on the context that keep the C code within its
+  arrays and ints, such as `HeurOk`; they do not mention memory). The specs of the C functions use three
+  shapes: `Reads` (stores nothing and returns a value), `Changes B x'` (the memory represents `x'`, and
+  only the blocks in the frame `B` changed) and `Gives B x' r` (returns `r`, and `Changes B x'`). Then the
+  store lemmas
   (`rep_store_*`): what a store of the C code does to the represented context, those of the analysis in
   `c/RepReasons.v` and those of the heuristic in `c/RepHeur.v` (split to keep each file below 1 GB).
 - One file per function of `../solver/solver.c`, each proving that it computes its model function, or gives up:

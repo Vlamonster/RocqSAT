@@ -100,7 +100,7 @@ Proof.
   - unfold f_find_watch. cbn [fn_body fn_return].
     pose proof (a_lits HRep) as (t & Alits & Hclauses).
     destruct (r_starts HRep i Hi) as [Hsi Hsn].
-    pose proof HRep as HRep'. destruct HRep'.
+    pose proof HRep as HRep'. destruct HRep' as [[] [] []].
     pose proof (clause_length sh N lss x t i cls Hclauses Hi Hcls) as Hlen.
     apply exec_seq. unfold Swhile.
     apply exec_loop
@@ -121,42 +121,41 @@ Proof.
                        = Int.repr (Z.of_nat (starts sh i + S d))).
         { rewrite add_repr. f_equal. lia. }
         run. rewrite Ht.
-        call lit_value_fun (lit_value_correct sh N lss x y).
-        -- split; assumption.
-        -- intros m' v [-> ->]. normal.
-           eapply (exec_if_ne _ (-1)).
-           ++ ev.
-           ++ ev.
+        call lit_value_fun (lit_value_correct sh N lss x y) by (split; assumption).
+        intros m' v [-> ->]. normal.
+        eapply (exec_if_ne _ (-1)).
+        -- ev.
+        -- ev.
+        -- reflexivity.
+        -- pose proof (enc_small (lookup (vals x) y)). lia.
+        -- (* y is not false: return q; *)
+           intros Hnot_false.
+           assert (Hnf: not_false (vals x) y = true).
+           { rewrite <- enc_not_false. apply negb_true_iff. now apply Z.eqb_neq. }
+           return_int.
+           split.
            ++ reflexivity.
-           ++ pose proof (enc_small (lookup (vals x) y)). lia.
-           ++ (* y is not false: return q; *)
-              intros Hnot_false.
-              assert (Hnf: not_false (vals x) y = true).
-              { rewrite <- enc_not_false. apply negb_true_iff. now apply Z.eqb_neq. }
-              return_int.
-              split.
+           ++ apply found_watch_at.
+              ** lia.
+              ** unfold not_false in Hnf. fold y.
+                 destruct (lookup (vals x) y) as [[|]|]; easy.
+              ** assumption.
+        -- (* y is false: q++; *)
+           intros Hfalse.
+           assert (Hnf: not_false (vals x) y = false).
+           { rewrite <- enc_not_false, Hfalse. reflexivity. }
+           run. normal. run. ints. apply loopk_next with (S d).
+           ++ unfold ltof. lia.
+           ++ constructor.
+              ** tmp.
+              ** tmp.
+              ** tmp.
               ** reflexivity.
-              ** apply found_watch_at.
-                 --- lia.
+              ** lia.
+              ** intros d' Hd'. destruct (Nat.eq_dec d' d) as [-> | Hne].
                  --- unfold not_false in Hnf. fold y.
                      destruct (lookup (vals x) y) as [[|]|]; easy.
-                 --- assumption.
-           ++ (* y is false: q++; *)
-              intros Hfalse.
-              assert (Hnf: not_false (vals x) y = false).
-              { rewrite <- enc_not_false, Hfalse. reflexivity. }
-              run. normal. run. ints. apply loopk_next with (S d).
-              ** unfold ltof. lia.
-              ** constructor.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- reflexivity.
-                 --- lia.
-                 --- intros d' Hd'. destruct (Nat.eq_dec d' d) as [-> | Hne].
-                     +++ unfold not_false in Hnf. fold y.
-                         destruct (lookup (vals x) y) as [[|]|]; easy.
-                     +++ apply Hbefore. lia.
+                 --- apply Hbefore. lia.
       * (* q >= e: break; return -1; every literal from d0 on is false *)
         intros Hge. apply exec_break. abrupt. apply loopk_break. normal.
         return_int.

@@ -258,29 +258,28 @@ Section Loop.
                      = Int.repr (Z.of_nat (S pathc))).
       { rewrite add_repr. f_equal. lia. }
       apply exec_skip. normal. run.
-      call mark_fun (mark_correct sh N lss x1 y).
-      + split; assumption.
-      + intros m2 v [HRep2 Hun2]. normal.
-        destruct (add_frame_mark m m1 m2 sh b n tc Hb Hnd Alits Hkept Hun2)
-          as [Alits2 Hkept2].
-        run. ints. left. split.
-        * reflexivity.
-        * exists (mark x1 y), (S pathc).
-          constructor.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- lia.
-          -- intros k Hk. apply Hkeys. lia.
-          -- assumption.
-          -- assumption.
-          -- apply HRep2.
-          -- lia.
-          -- assumption.
+      call mark_fun (mark_correct sh N lss x1 y) by (split; assumption).
+      intros m2 v [HRep2 Hun2]. normal.
+      destruct (add_frame_mark m m1 m2 sh b n tc Hb Hnd Alits Hkept Hun2)
+        as [Alits2 Hkept2].
+      run. ints. left. split.
+      + reflexivity.
+      + exists (mark x1 y), (S pathc).
+        constructor.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * lia.
+        * intros k Hk. apply Hkeys. lia.
+        * assumption.
+        * assumption.
+        * apply HRep2.
+        * lia.
+        * assumption.
   Qed.
 
   (* The literal y at q < e, not t, not marked, of a lower level: it is appended to the
@@ -332,50 +331,49 @@ Section Loop.
                      = Int.repr (Z.of_nat (S (length (lower x1))))).
       { rewrite add_repr. f_equal. lia. }
       apply exec_skip. normal. run.
-      call mark_fun (mark_correct sh N lss x1 y).
-      + split; assumption.
-      + intros m2 v [HRep2 Hun2]. normal.
-        destruct (add_frame_mark m m1 m2 sh b n tc Hb Hnd Alits Hkept Hun2)
-          as [Alits2 Hkept2].
-        keep_mem m2.
-        pose proof (r_lt HRep2) as Flt.
-        pose proof (r_ltlen HRep2) as Fltlen.
-        pose proof (a_lt HRep2) as (tlt & Alt & _).
-        (* s->lt[n] = y; *)
-        run. store Alt Hroom as m3 Hst3.
-        assert (Hlt_in: In (b_lt sh) [b_mrk sh; b_lt sh; b_s sh]).
-        { right. now left. }
-        destruct (add_frame_store m m2 m3 sh b (b_lt sh) n tc _ _ _ Hb Hnd
-                    Hlt_in Alits2 Hkept2 Hst3) as [Alits3 Hkept3].
-        assert (Fltlen3: IntAt m3 sh o_ltlen (length (lower x1))).
-        { apply (fld_store_other Fltlen Hst3). left. neq Hnd. }
-        (* s->ltlen = n + 1; *)
-        store Fltlen3 as m4 Hst4.
-        cbn [cast_int_int] in Hst4. rewrite Hincr in Hst4.
-        pose proof (rep_store_lt m2 m3 m4 y HRep2
-                      Hroom Hy Hst3 Hst4) as HRep4.
-        assert (Hs_in: In (b_s sh) [b_mrk sh; b_lt sh; b_s sh]).
-        { right. right. now left. }
-        destruct (add_frame_store m m3 m4 sh b (b_s sh) n tc _ _ _ Hb
-                    Hnd Hs_in Alits3 Hkept3 Hst4) as [Alits4 Hkept4].
-        left. split.
-        * reflexivity.
-        * exists ((mark x1 y) <| lower := lower x1 ++ [y] |>), pathc.
-          constructor.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- tmp.
-          -- lia.
-          -- intros k Hk. apply Hkeys. lia.
-          -- assumption.
-          -- assumption.
-          -- apply HRep4.
-          -- assumption.
-          -- assumption.
+      call mark_fun (mark_correct sh N lss x1 y) by (split; assumption).
+      intros m2 v [HRep2 Hun2]. normal.
+      destruct (add_frame_mark m m1 m2 sh b n tc Hb Hnd Alits Hkept Hun2)
+        as [Alits2 Hkept2].
+      keep_mem m2.
+      pose proof (r_lt HRep2) as Flt.
+      pose proof (r_ltlen HRep2) as Fltlen.
+      pose proof (a_lt HRep2) as (tlt & Alt & _).
+      (* s->lt[n] = y; *)
+      run. store Alt Hroom as m3 Hst3.
+      assert (Hlt_in: In (b_lt sh) [b_mrk sh; b_lt sh; b_s sh]).
+      { right. now left. }
+      destruct (add_frame_store m m2 m3 sh b (b_lt sh) n tc _ _ _ Hb Hnd
+                  Hlt_in Alits2 Hkept2 Hst3) as [Alits3 Hkept3].
+      assert (Fltlen3: IntAt m3 sh o_ltlen (length (lower x1))).
+      { apply (fld_store_other Fltlen Hst3). left. neq Hnd. }
+      (* s->ltlen = n + 1; *)
+      store Fltlen3 as m4 Hst4.
+      cbn [cast_int_int] in Hst4. rewrite Hincr in Hst4.
+      pose proof (rep_store_lt m2 m3 m4 y HRep2
+                    Hroom Hy Hst3 Hst4) as HRep4.
+      assert (Hs_in: In (b_s sh) [b_mrk sh; b_lt sh; b_s sh]).
+      { right. right. now left. }
+      destruct (add_frame_store m m3 m4 sh b (b_s sh) n tc _ _ _ Hb
+                  Hnd Hs_in Alits3 Hkept3 Hst4) as [Alits4 Hkept4].
+      left. split.
+      + reflexivity.
+      + exists ((mark x1 y) <| lower := lower x1 ++ [y] |>), pathc.
+        constructor.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * lia.
+        * intros k Hk. apply Hkeys. lia.
+        * assumption.
+        * assumption.
+        * apply HRep4.
+        * assumption.
+        * assumption.
   Qed.
 
   (* The statement for the literal y at q < e, whose key is in the temporary y:
@@ -618,8 +616,7 @@ Lemma add_lits_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
                vint (enc_lit t), vnat d, vnat pathc)
   {{ m', v | match add_lits x d t (span_lits tc q e) pathc with
              | (x', r) =>
-               v = vint (enc_count r) /\ RepL m' sh N lss x' /\
-               Mem.unchanged_on (AddFrame sh) m m'
+               Gives sh N lss (AddFrame sh) x' (vint (enc_count r)) m m' v
              end }}.
 Proof.
   intros sh N lss x b n tc q e t d pathc m

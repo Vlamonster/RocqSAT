@@ -67,7 +67,7 @@ Lemma prev_marked_correct: forall (sh: Shape) (N: nat)
   (lss: list (list Lit)) (x: Ctx) (idx lo: nat),
   {{ m | RepL m sh N lss x /\ (idx <= tlen x)%nat /\ (lo <= N)%nat }}
     f_prev_marked(sptr sh, vnat idx, vnat lo)
-  {{ m', v | m' = m /\ v = vnat (newest_marked x lo idx) }}.
+  {{ m', v | Reads m m' v (vnat (newest_marked x lo idx)) }}.
 Proof.
   intros sh N lss x idx lo m (HRep & Hidx & Hlo).
   pose proof (r_n HRep) as HN.
@@ -77,7 +77,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold f_prev_marked. cbn [fn_body fn_return].
-    pose proof HRep as HRep'. destruct HRep'. unpack.
+    pose proof HRep as HRep'. destruct HRep' as [[] [] []]. unpack.
     run. unfold Swhile.
     apply exec_loop with (R := Peano.lt) (I := PrevInv m sh x lo res) (a := idx).
     + apply lt_wf.

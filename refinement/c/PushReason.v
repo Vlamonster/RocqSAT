@@ -65,8 +65,8 @@ Definition PushPost (m: mem) (sh: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx
   (u: Lit) (m': mem) (v: val): Prop :=
   match push_reason x u with
   | (x', r) =>
-    RepL m' sh N lss x' /\ v = vint (enc_reason r) /\ ReasonBelow (length lss) N r /\
-    Mem.unchanged_on (PushFrame sh) m m'
+    ReasonBelow (length lss) N r /\
+    Gives sh N lss (PushFrame sh) x' (vint (enc_reason r)) m m' v
   end.
 
 (* With room, push_reason stores u :: lower x as reason clause nr x. *)
@@ -164,10 +164,10 @@ Proof.
     exists (vint (enc_reason (learnt (nr x)))). split.
     + apply result_int.
     + unfold PushPost. rewrite Hpush. splits.
+      * cbn [ReasonBelow]. assumption.
+      * reflexivity.
       * apply (rep_store_push m m1 m2 m3 (u :: lower x) trl tb tn tp
                  HRep Hnr Hroom Hc Hun Arl Htrl Arb Htb Arn Htn Arp Htp Hst2 Hst3).
-      * reflexivity.
-      * cbn [ReasonBelow]. assumption.
       * (* only the reason clauses and the struct changed *)
         frame.
 Qed.
@@ -451,9 +451,9 @@ Lemma push_none: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   PushPost m sh N lss x u m (vint 0).
 Proof.
   intros sh N lss x u m HRep Hpush. unfold PushPost. rewrite Hpush. splits.
-  - assumption.
-  - reflexivity.
   - cbn [ReasonBelow]. apply I.
+  - reflexivity.
+  - assumption.
   - frame.
 Qed.
 

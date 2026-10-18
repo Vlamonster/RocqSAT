@@ -33,13 +33,41 @@ From RocqSAT.refinement.c Require Import Visit.
 
 (* The parts of check_shorts proved in lemmas of their own: its loop, the body of the
    loop after its test, and in the body the test if (v == 0) that assigns the first
-   literal of a short clause. *)
+   literal of a short clause and the q-- after it. *)
 Definition shorts_loop: statement := first_stmt (drop_stmts 1 (fn_body f_check_shorts)).
 Definition shorts_body: statement := drop_stmts 1 (loop_body shorts_loop).
 Definition shorts_assign: statement := first_stmt (drop_stmts 6 shorts_body).
+Definition shorts_decr: statement := drop_stmts 7 shorts_body.
 
 (* The last q short clauses of x. *)
 Abbreviation last_shorts x q := (skipn (length (shorts x) - q) (shorts x)).
+
+(* The last q + 1 entries of l begin with entry q of the reverse of l (C reads the short
+   clauses from the end of its array). *)
+Lemma skipn_rev_nth: forall (l: list nat) (q: nat), (q < length l)%nat ->
+  skipn (length l - S q) l = nth q (rev l) 0%nat :: skipn (length l - q) l.
+Proof.
+  intros l q Hq. rewrite rev_nth by assumption.
+  rewrite (skipn_nth _ 0%nat) by lia.
+  replace (S (length l - S q)) with (length l - q)%nat by lia.
+  reflexivity.
+Qed.
+
+(* The memory represents the context after an assignment between steps when it holds
+   it, the context had no lower literals, and the watch pool did not change. *)
+Lemma rep_assign: forall (m: mem) (sh: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
+  (l: Lit) (r: Reason) (t: nat -> Z),
+  RepL m sh N lss (assign x l r) -> lower x = [] -> PoolArr m sh t ->
+  PoolFree sh N t (wls x) -> Rep m sh N lss (assign x l r).
+Proof.
+  intros m sh N lss x l r t HRep Hlow Apool Hpool. split.
+  - assumption.
+  - split.
+    + cbn [assign lower]. assumption.
+    + exists t. split.
+      * assumption.
+      * assumption.
+Qed.
 
 Section Loop.
   Variables (sh: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx) (res: Ctx * option nat).
@@ -73,6 +101,20 @@ Section Loop.
        Rep m sh N lss xc' /\ shorts xc' = shorts x /\
        res = check_shorts (last_shorts x q) xc') \/
     out = ret_int (-1).
+
+  (* A conflict on clause i, which the model finds in xc: the loop ends with the result
+     i + 1. *)
+  Lemma shorts_conflict: forall (xc: Ctx) (i: nat) (le: temp_env) (m1: mem),
+    Rep m1 sh N lss xc -> (i < length lss)%nat -> res = (xc, Some i) ->
+    LoopOut sh N lss res le m1 (ret_int (enc_conf (Some i))).
+  Proof.
+    intros xc i le m1 HRep Hi Hres. right. exists (enc_conf (Some i)). split.
+    - reflexivity.
+    - right. rewrite Hres. cbn [fst snd]. splits.
+      + reflexivity.
+      + assumption.
+      + intros i' Hsome. injection Hsome as <-. assumption.
+  Qed.
 
   (* The test of v when the first literal a of clause i is true or unassigned (v is 1 or
      0); res is what the model gives on the short clauses after i:
@@ -118,39 +160,34 @@ Section Loop.
         - discriminate.
         - discriminate.
         - reflexivity. }
+      (* if (!assign(s, a, i + 1)) return -1; *)
       run.
       eapply (exec_call_triple assign_fun
                 (assign_correct sh N lss xc a (input i) tp)).
       + reflexivity.
       + cbn [enc_reason]. unfold vint. rewrite <- add_repr. evs.
-      + split.
-        * assumption.
-        * split.
-          -- assumption.
-          -- split; assumption.
+      + splits; assumption.
       + intros m3 v Hassign. normal.
         destruct Hassign as [-> | (-> & HRep3 & Apool3)].
         * (* out of room: return -1; *)
-          branch 1.
-          -- intros Hnonzero. eapply exec_return.
-             ++ ev.
-             ++ right. reflexivity.
-          -- intros Hzero. lia.
-        * branch 0.
-          -- intros Hnonzero. lia.
-          -- intros Hzero. apply exec_skip. left. splits.
-             ++ reflexivity.
-             ++ tmp.
-             ++ tmp.
-             ++ exists (assign xc a (input i)). split.
-                ** split.
-                   --- assumption.
-                   --- split.
-                       +++ cbn [assign lower]. assumption.
-                       +++ exists tp. split; assumption.
-                ** split.
-                   --- assumption.
-                   --- rewrite Hl in Hcheck. assumption.
+          take_then 1 by lia.
+          intros Hnonzero. eapply exec_return.
+          -- ev.
+          -- right. reflexivity.
+        * (* assigned: the model goes on from assign xc a (input i) *)
+          take_else 0 by lia.
+          intros Hzero. apply exec_skip. left. splits.
+          -- reflexivity.
+          -- tmp.
+          -- tmp.
+          -- exists (assign xc a (input i)). splits.
+             ++ apply (rep_assign m3 sh N lss xc a (input i) tp).
+                ** assumption.
+                ** assumption.
+                ** assumption.
+                ** assumption.
+             ++ assumption.
+             ++ rewrite Hl in Hcheck. assumption.
     - (* a is true: nothing to do *)
       intros Hassigned.
       assert (Hl: lookup (vals xc) a = Some true).
@@ -162,11 +199,42 @@ Section Loop.
       + reflexivity.
       + tmp.
       + tmp.
-      + exists xc. split.
+      + exists xc. splits.
         * assumption.
-        * split.
-          -- assumption.
-          -- rewrite Hl in Hcheck. assumption.
+        * assumption.
+        * rewrite Hl in Hcheck. assumption.
+  Qed.
+
+  (* After the test of v, the loop goes on at q, or returns -1:
+
+       {{ ShortsAssignPost: ShortsInv xc' (q + 1) or result = -1 }}
+         q--;
+       {{ ShortsInv xc' q }}                                                          *)
+  Lemma shorts_decr_correct: forall (q: nat) (le: temp_env) (m: mem) (out: outcome),
+    (S q <= length (shorts x))%nat -> ShortsAssignPost q le m out ->
+    SeqK ge shorts_decr (LoopK shorts_variant shorts_inv (LoopOut sh N lss res) (S q))
+      le m out.
+  Proof.
+    intros q le m out Hqle [(-> & Hs & Hq & xc' & HRep & Hsh & Hres) | ->].
+    - (* q--; and the loop goes on *)
+      assert (Hsub: Int.sub (Int.repr (Z.of_nat (S q))) (Int.repr 1)
+                    = Int.repr (Z.of_nat q)).
+      { rewrite sub_repr. f_equal. lia. }
+      unfold shorts_decr, shorts_body, shorts_loop, f_check_shorts.
+      cbn [fn_body drop_stmts first_stmt loop_body Swhile].
+      normal. run. ints. apply loopk_next with q.
+      + unfold shorts_variant, ltof. lia.
+      + exists xc'. constructor.
+        * tmp.
+        * tmp.
+        * lia.
+        * assumption.
+        * assumption.
+        * assumption.
+    - (* out of room *)
+      ret. right. exists (-1). split.
+      + reflexivity.
+      + now left.
   Qed.
 
   (* One pass of the loop, for the short clause i at position q - 1:
@@ -185,7 +253,7 @@ Section Loop.
        {{ result = -1 (out of room) }}
        {{ ShortsInv xc' q, with xc' = xc if a is true and assign xc a (input i)
           otherwise }}
-         q--;
+         q--;                                                       (shorts_decr_correct)
        {{ ShortsInv xc' (q - 1) }}                                                    *)
   Lemma shorts_body_correct: forall (xc: Ctx) (q: nat) (le: temp_env) (m1: mem),
     ShortsInv xc (S q) le m1 ->
@@ -196,25 +264,21 @@ Section Loop.
     destruct HI as [Hs Hq Hqle HRep Hsh Hcheck].
     pose proof HRep as [HRepc [Hlow [tp [Apool Hpool]]]].
     pose proof (r_n HRepc) as HN.
-    pose proof HRepc as HRepc'. destruct HRepc'. destruct a_shorts as (tsh & Ash & Htsh).
+    pose proof HRepc as HRepc'. destruct HRepc' as [[] [] []].
+    destruct a_shorts as (tsh & Ash & Htsh).
     destruct a_lits as (tl & Alits & Hlits). unpack. rewrite Hsh in *.
     unfold shorts_body, shorts_loop, f_check_shorts.
     cbn [fn_body drop_stmts first_stmt loop_body Swhile].
     (* The short clause i at position q - 1 from the end: the next one of the model. *)
+    rewrite skipn_rev_nth in Hcheck by lia.
+    assert (Hi_in: In (nth q (rev (shorts x)) 0%nat) (shorts x)).
+    { apply in_rev, nth_In. rewrite length_rev. lia. }
     assert (Hsub: Int.sub (Int.repr (Z.of_nat (S q))) (Int.repr 1)
                   = Int.repr (Z.of_nat q)).
     { rewrite sub_repr. f_equal. lia. }
-    assert (Hpos: (length (shorts x) - S q < length (shorts x))%nat) by lia.
-    rewrite (skipn_nth _ 0%nat _ Hpos) in Hcheck.
-    assert (Hi_in: In (nth (length (shorts x) - S q) (shorts x) 0%nat)
-                      (shorts x)).
-    { now apply nth_In. }
-    assert (Hi_nth: nth q (rev (shorts x)) 0%nat
-                    = nth (length (shorts x) - S q) (shorts x) 0%nat).
-    { apply rev_nth. lia. }
     (* int i = s->shorts[q - 1]; *)
-    run. rewrite (Htsh q), Hi_nth by lia.
-    remember (nth (length (shorts x) - S q) (shorts x) 0%nat) as i eqn:Hi.
+    run. rewrite (Htsh q) by lia.
+    remember (nth q (rev (shorts x)) 0%nat) as i eqn:Hi.
     pose proof (r_shorts_cls i Hi_in) as Hi_lt.
     pose proof (r_starts i Hi_lt) as Hrange.
     assert (Hadd: Int.add (Int.repr (Z.of_nat i)) (Int.repr 1)
@@ -229,12 +293,11 @@ Section Loop.
       rewrite Heq, Nat.sub_diag in Hcheck. cbn [seq map] in Hcheck.
       eapply exec_return.
       + ev.
-      + ret. right. exists (enc_conf (Some i)). split.
-        * cbn [cast_int_int]. rewrite enc_conf_some. reflexivity.
-        * right. rewrite Hcheck. cbn [fst snd]. splits.
-          -- reflexivity.
-          -- assumption.
-          -- intros i' Hsome. injection Hsome as <-. assumption.
+      + ret. cbn [cast_int_int]. rewrite enc_conf_some.
+        apply (shorts_conflict xc).
+        * assumption.
+        * assumption.
+        * assumption.
     - (* clause i has a first literal a: int a = s->clits[b]; int v = lit_value(s, a); *)
       intros Hne.
       replace (starts sh (S i) - starts sh i)%nat
@@ -247,67 +310,52 @@ Section Loop.
       rewrite Hta, lit_of_key in Hcheck.
       pose proof (key_small _ N Ha HN) as Hka.
       run. rewrite Hta.
-      call lit_value_fun (lit_value_correct sh N lss xc a).
-      + split; assumption.
-      + intros m2 v [-> ->]. normal. run.
-        (* if (v == -1) return i + 1; *)
-        eapply (exec_if_eq _ (-1)).
+      call lit_value_fun (lit_value_correct sh N lss xc a) by (split; assumption).
+      intros m2 v [-> ->]. normal. run.
+      (* if (v == -1) return i + 1; *)
+      eapply (exec_if_eq _ (-1)).
+      + ev.
+      + ev.
+      + reflexivity.
+      + split.
+        * apply enc_small.
+        * lia.
+      + (* a is false: a conflict, return i + 1; *)
+        intros Hfalse.
+        assert (Hl: lookup (vals xc) a = Some false).
+        { destruct (lookup (vals xc) a) as [[|]|].
+          - discriminate.
+          - reflexivity.
+          - discriminate. }
+        rewrite Hl in Hcheck.
+        eapply exec_return.
         * ev.
-        * ev.
-        * reflexivity.
-        * split.
-          -- apply enc_small.
+        * ret. cbn [cast_int_int]. rewrite enc_conf_some.
+          apply (shorts_conflict xc).
+          -- assumption.
+          -- assumption.
+          -- assumption.
+      + (* a is true or unassigned *)
+        intros Hnotfalse. run.
+        (* if (v == 0) { if (!assign(s, a, i + 1)) return -1; } ends with a context
+           xc' that the model goes on from, or returns -1. *)
+        apply exec_weaken with (Q := ShortsAssignPost q).
+        * apply (shorts_assign_correct xc q i a).
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+        * (* q--; and the loop goes on, or returns -1 *)
+          intros le3 m3 out Hpost. apply shorts_decr_correct.
           -- lia.
-        * (* a is false: a conflict, return i + 1; *)
-          intros Hfalse.
-          assert (Hl: lookup (vals xc) a = Some false).
-          { destruct (lookup (vals xc) a) as [[|]|].
-            - discriminate.
-            - reflexivity.
-            - discriminate. }
-          rewrite Hl in Hcheck.
-          eapply exec_return.
-          -- ev.
-          -- ret. right. exists (enc_conf (Some i)). split.
-             ++ cbn [cast_int_int]. rewrite enc_conf_some. reflexivity.
-             ++ right. rewrite Hcheck. cbn [fst snd]. splits.
-                ** reflexivity.
-                ** assumption.
-                ** intros i' Hsome. injection Hsome as <-. assumption.
-        * (* a is true or unassigned *)
-          intros Hnotfalse. run.
-          (* if (v == 0) { if (!assign(s, a, i + 1)) return -1; } ends with a context
-             xc' that the model goes on from, or returns -1. *)
-          apply exec_weaken with (Q := ShortsAssignPost q).
-          -- apply (shorts_assign_correct xc q i a).
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ assumption.
-             ++ assumption.
-             ++ assumption.
-             ++ assumption.
-             ++ assumption.
-             ++ assert (Hnext: (S (length (shorts x) - S q)
-                                = length (shorts x) - q)%nat) by lia.
-                rewrite Hnext in Hcheck. assumption.
-          -- intros le3 m3 out [(-> & Hs3 & Hq3 & xc' & HRep3 & Hsh3 & Hres3) | ->].
-             ++ (* q--; and the loop goes on *)
-                normal. run. ints. apply loopk_next with q.
-                ** unfold shorts_variant, ltof. lia.
-                ** exists xc'. constructor.
-                   --- tmp.
-                   --- tmp.
-                   --- lia.
-                   --- assumption.
-                   --- assumption.
-                   --- assumption.
-             ++ (* out of room *)
-                ret. right. exists (-1). split.
-                ** reflexivity.
-                ** now left.
+          -- assumption.
   Qed.
 
   (* The loop of check_shorts:

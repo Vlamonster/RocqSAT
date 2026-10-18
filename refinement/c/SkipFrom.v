@@ -67,8 +67,7 @@ Arguments SkipInv : clear implicits.
 Lemma skip_from_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx),
   {{ m | RepL m sh N lss x }}
     f_skip_from(sptr sh)
-  {{ m', v | m' = m /\
-             v = vnat (next_undef x) }}.
+  {{ m', v | Reads m m' v (vnat (next_undef x)) }}.
 Proof.
   intros sh N lss x m HRep. pose proof (r_n HRep) as HN.
   unfold next_undef.
@@ -78,7 +77,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold f_skip_from. cbn [fn_body fn_return].
-    pose proof HRep as HRep'. destruct HRep'.
+    pose proof HRep as HRep'. destruct HRep' as [[] [] []].
     destruct a_alls as (ta & Aalls & Hta). unpack.
     (* int c = s->cur; int n = s->nlits; *)
     run. unfold Swhile.
@@ -103,38 +102,38 @@ Proof.
           by (symmetry; apply Nat.ltb_lt; lia).
         (* lit_value(s, s->alls[c]) *)
         run. rewrite (Hta c) by lia.
-        call lit_value_fun (lit_value_correct sh N lss x (tget (alls x) c)).
-        -- split; assumption.
-        -- intros m' v [-> ->]. normal.
-           (* if (... == 0) return c; *)
-           eapply (exec_if_eq _ 0).
-           ++ ev.
-           ++ ev.
+        call lit_value_fun (lit_value_correct sh N lss x (tget (alls x) c))
+          by (split; assumption).
+        intros m' v [-> ->]. normal.
+        (* if (... == 0) return c; *)
+        eapply (exec_if_eq _ 0).
+        -- ev.
+        -- ev.
+        -- reflexivity.
+        -- pose proof (enc_small (lookup (vals x) (tget (alls x) c))). lia.
+        -- (* unassigned: return c, which is res *)
+           intros Hzero.
+           assert (Hu: lookup_undef (vals x) (tget (alls x) c) = true).
+           { rewrite <- enc_undef. now apply Z.eqb_eq. }
+           rewrite Hu in Hskip. cbn [negb andb] in Hskip.
+           return_int.
+           split.
            ++ reflexivity.
-           ++ pose proof (enc_small (lookup (vals x) (tget (alls x) c))). lia.
-           ++ (* unassigned: return c, which is res *)
-              intros Hzero.
-              assert (Hu: lookup_undef (vals x) (tget (alls x) c) = true).
-              { rewrite <- enc_undef. now apply Z.eqb_eq. }
-              rewrite Hu in Hskip. cbn [negb andb] in Hskip.
-              return_int.
-              split.
+           ++ now rewrite Hskip.
+        -- (* assigned: c++; and the loop goes on *)
+           intros Hnonzero.
+           assert (Hu: lookup_undef (vals x) (tget (alls x) c) = false).
+           { rewrite <- enc_undef. now apply Z.eqb_neq. }
+           rewrite Hu in Hskip. cbn [negb andb] in Hskip.
+           run. ints. apply loopk_next with (S c).
+           ++ unfold ltof. lia.
+           ++ constructor.
+              ** tmp.
+              ** tmp.
+              ** tmp.
               ** reflexivity.
-              ** now rewrite Hskip.
-           ++ (* assigned: c++; and the loop goes on *)
-              intros Hnonzero.
-              assert (Hu: lookup_undef (vals x) (tget (alls x) c) = false).
-              { rewrite <- enc_undef. now apply Z.eqb_neq. }
-              rewrite Hu in Hskip. cbn [negb andb] in Hskip.
-              run. ints. apply loopk_next with (S c).
-              ** unfold ltof. lia.
-              ** constructor.
-                 --- tmp.
-                 --- tmp.
-                 --- tmp.
-                 --- reflexivity.
-                 --- lia.
-                 --- assumption.
+              ** lia.
+              ** assumption.
       * (* c >= n: break; return c, which is res *)
         intros Hge. apply exec_break. abrupt. apply loopk_break. normal.
         return_int.

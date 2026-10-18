@@ -416,6 +416,162 @@ Section Loop.
           -- apply HRep3.
         * assumption.
   Qed.
+  (* The loop of heap_up, its body, and the statements of the body from int p = ... on,
+     once the tests of fuel and i passed. *)
+  Definition up_while: statement := first_stmt (drop_stmts 2 (fn_body f_heap_up)).
+  Definition up_body: statement := loop_body up_while.
+  Definition up_parent: statement := drop_stmts 2 up_body.
+
+  (* What follows the loop: the end of heap_up, with its postcondition. *)
+  Abbreviation UpPost := (SeqK ge heap_up_end (Returns f_heap_up
+    (fun (m': mem) (_: val) => HeurPost sh N lss x m (heap_up (hr x) i0) m'))).
+
+  (* A break of the loop at position i with the heuristic h where up_loop stops goes to
+     the end of heap_up (heap_up_end_correct). *)
+  Lemma up_break: forall (h: Heur) (i fuel fuel': nat) (le: temp_env) (m1: mem),
+    RepL m1 sh N lss (x <| hr := h |>) -> (i < N)%nat -> (a < N)%nat -> res = (h, i) ->
+    Mem.unchanged_on (HeurFrame sh) m m1 -> UpTemps le i fuel ->
+    LoopK Peano.lt UpInv UpPost fuel' le m1 Out_break.
+  Proof.
+    intros h i fuel fuel' le m1 HRep1 Hi Ha Hres Hun1 Htemps.
+    apply loopk_break. normal.
+    apply (heap_up_end_correct h i fuel); assumption.
+  Qed.
+
+  (* The body from the parent on, at position i > 0 with fuel left: the parent b at
+     p = parent i stops the loop when it is as active as a, and otherwise moves down:
+
+       {{ UpInv (fuel + 1): heuristic h, position i /\ 0 < i }}
+         int p = (i - 1) / 2;                                        (eval_parent)
+         int b = s->heap[p];
+         if (s->act[b] >= s->act[a]) break;                             (up_break)
+       {{ UpInv (fuel + 1) /\ act b < act a }}
+         s->heap[i] = b; s->hpos[b] = i; i = p; fuel--;            (up_move_correct)
+       {{ UpInv fuel: heuristic place h i b, position p }}                          *)
+  Lemma up_parent_correct: forall (h: Heur) (i fuel: nat) (le: temp_env) (m1: mem),
+    RepL m1 sh N lss (x <| hr := h |>) -> (0 < i < N)%nat -> (S fuel <= N)%nat ->
+    (a < N)%nat -> up_loop h a i (S fuel) = res ->
+    Mem.unchanged_on (HeurFrame sh) m m1 -> UpTemps le i (S fuel) ->
+    Exec ge le m1 up_parent (LoopK Peano.lt UpInv UpPost (S fuel)).
+  Proof.
+    intros h i fuel le m1 HRep1 Hi Hfle Ha Hres Hun1 Htemps.
+    pose proof Htemps as [Hs Ha' Hi' Hfuel].
+    pose proof (r_n HRep1) as HN.
+    pose proof (r_nodup HRep1) as Hnd.
+    pose proof (r_heur HRep1) as Hok1. cbn [set_hr hr] in Hok1.
+    (* up_loop takes the step below the top *)
+    cbn [up_loop] in Hres.
+    replace (i <=? 0)%nat with false in Hres by (symmetry; apply Nat.leb_gt; lia).
+    assert (Hp: (parent i <= i - 1)%nat).
+    { apply Nat.Div0.div_le_upper_bound. lia. }
+    assert (Hb: (tget (heap h) (parent i) < N)%nat).
+    { apply (ho_heap Hok1). lia. }
+    pose proof (ho_act Hok1 _ Hb) as Hactb.
+    pose proof (ho_act Hok1 _ Ha) as Hacta.
+    unfold act_lim in Hactb, Hacta.
+    change (2 ^ 30)%Z with small_bound in Hactb, Hacta.
+    pose proof (r_heap HRep1) as Fheap.
+    pose proof (a_heap HRep1) as Aheap.
+    pose proof (r_act HRep1) as Fact.
+    pose proof (a_act HRep1) as Aact.
+    cbn [set_hr hr] in Aheap, Aact.
+    unfold up_parent, up_body, up_while, f_heap_up.
+    cbn [fn_body drop_stmts first_stmt loop_body Swhile].
+    (* int p = (i - 1) / 2; *)
+    apply exec_seq. apply exec_set with (vnat (parent i)).
+    - apply eval_parent.
+      + tmp.
+      + lia.
+      + lia.
+    - normal.
+      (* int b = s->heap[p]; if (s->act[b] >= s->act[a]) break; *)
+      run. branch.
+      + (* the parent is as active: break; and the end *)
+        intros Hle. apply Z.leb_le in Hle. rewrite Hle in Hres.
+        apply exec_break. abrupt.
+        apply (up_break h i (S fuel)).
+        * assumption.
+        * lia.
+        * assumption.
+        * symmetry. assumption.
+        * assumption.
+        * constructor; tmp.
+      + (* the parent is less active: it moves down to i *)
+        intros Hgt. apply Z.leb_gt in Hgt. rewrite Hgt in Hres.
+        apply exec_skip. normal.
+        apply (up_move_correct h i fuel).
+        * assumption.
+        * lia.
+        * assumption.
+        * assumption.
+        * assumption.
+        * assumption.
+        * constructor; tmp.
+        * tmp.
+        * tmp.
+  Qed.
+
+  (* One pass of the loop at fuel: it breaks without fuel or at the top (up_break), and
+     otherwise goes on from the parent (up_parent_correct):
+
+       {{ UpInv fuel: heuristic h, position i }}
+         if (fuel > 0) ; else break;
+         if (i <= 0) break;
+         ...                                                     (up_parent_correct)
+       {{ UpInv (fuel - 1), or a break with res = (h, i) }}                         *)
+  Lemma up_body_correct: forall (fuel: nat) (le: temp_env) (m1: mem),
+    (a < N)%nat -> UpInv fuel le m1 ->
+    Exec ge le m1 up_body (LoopK Peano.lt UpInv UpPost fuel).
+  Proof.
+    intros fuel le m1 Ha HI.
+    destruct HI as [Hfle (h & i & Htemps & Hilt & Hres & HRep1) Hun1].
+    pose proof Htemps as [Hs Ha' Hi Hfuel].
+    pose proof (r_n HRep1) as HN.
+    unfold up_body, up_while, f_heap_up.
+    cbn [fn_body drop_stmts first_stmt loop_body Swhile].
+    apply exec_seq.
+    (* if (fuel > 0) ... else break; *)
+    branch.
+    - intros Hfuel_left. destruct fuel as [|fuel].
+      + (* no fuel left: impossible *)
+        lia.
+      + (* fuel left: if (i <= 0) break; *)
+        apply exec_skip. normal. run. branch.
+        * (* at the top: break; and the end *)
+          intros Htop. cbn [up_loop] in Hres.
+          replace (i <=? 0)%nat with true in Hres
+            by (symmetry; apply Nat.leb_le; lia).
+          apply exec_break. abrupt.
+          apply (up_break h i (S fuel)).
+          -- assumption.
+          -- assumption.
+          -- assumption.
+          -- symmetry. assumption.
+          -- assumption.
+          -- assumption.
+        * (* below the top: the parent *)
+          intros Hipos. apply exec_skip. normal.
+          apply (up_parent_correct h i fuel).
+          -- assumption.
+          -- lia.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+          -- assumption.
+    - intros Hno_fuel. destruct fuel as [|fuel].
+      + (* no fuel left: break; and the end *)
+        apply exec_break. abrupt.
+        apply (up_break h i 0).
+        * assumption.
+        * assumption.
+        * assumption.
+        * symmetry. assumption.
+        * assumption.
+        * assumption.
+      + (* fuel left: impossible *)
+        lia.
+  Qed.
 End Loop.
 Arguments UpTemps : clear implicits.
 Arguments UpInv : clear implicits.
@@ -471,97 +627,10 @@ Proof.
     apply exec_loop with (R := Peano.lt) (I := UpInv m sh N lss x i0)
       (a := hsize (hr x)).
     + apply lt_wf.
-    + intros fuel le1 m1 HI.
-      destruct HI as [Hfle (h & i & [Hs Ha' Hi Hfuel] & Hilt & Hres & HRep1) Hun1].
-      pose proof (r_heur HRep1) as Hok1. cbn [set_hr hr] in Hok1.
-      apply exec_seq.
-      (* if (fuel > 0) ... else break; *)
-      branch.
-      * intros Hfuel_left. destruct fuel as [|fuel].
-        -- (* no fuel left: impossible *)
-           lia.
-        -- (* fuel left *)
-           apply exec_skip. normal. run. cbn [up_loop] in Hres.
-           (* if (i <= 0) break; *)
-           branch.
-           ++ (* at the top: break; and the end *)
-              intros Htop.
-              replace (i <=? 0)%nat with true in Hres
-                by (symmetry; apply Nat.leb_le; lia).
-              apply exec_break. abrupt.
-              apply loopk_break. normal.
-              apply (heap_up_end_correct m sh N lss x i0 h i (S fuel) _ m1).
-              ** assumption.
-              ** assumption.
-              ** assumption.
-              ** symmetry. assumption.
-              ** assumption.
-              ** constructor; tmp.
-           ++ (* below the top: the parent at p *)
-              intros Hipos.
-              replace (i <=? 0)%nat with false in Hres
-                by (symmetry; apply Nat.leb_gt; lia).
-              apply exec_skip. normal.
-              assert (Hp: (parent i <= i - 1)%nat).
-              { apply Nat.Div0.div_le_upper_bound. lia. }
-              assert (Hb: (tget (heap h) (parent i) < N)%nat).
-              { apply (ho_heap Hok1). lia. }
-              pose proof (ho_act Hok1 _ Hb) as Hactb.
-              pose proof (ho_act Hok1 _ Ha) as Hacta.
-              unfold act_lim in Hactb, Hacta.
-              change (2 ^ 30)%Z with small_bound in Hactb, Hacta.
-              pose proof (r_heap HRep1) as Fheap.
-              pose proof (a_heap HRep1) as Aheap.
-              pose proof (r_act HRep1) as Fact.
-              pose proof (a_act HRep1) as Aact.
-              cbn [set_hr hr] in Aheap, Aact.
-              (* int p = (i - 1) / 2; *)
-              apply exec_seq. apply exec_set with (vnat (parent i)).
-              ** apply eval_parent.
-                 --- tmp.
-                 --- lia.
-                 --- lia.
-              ** normal.
-                 (* int b = s->heap[p]; if (s->act[b] >= s->act[a]) break; *)
-                 run.
-                 branch.
-                 --- (* the parent is as active: break; and the end *)
-                     intros Hle. apply Z.leb_le in Hle. rewrite Hle in Hres.
-                     apply exec_break. abrupt.
-                     apply loopk_break. normal.
-                     apply (heap_up_end_correct m sh N lss x i0 h i (S fuel) _ m1).
-                     +++ assumption.
-                     +++ assumption.
-                     +++ assumption.
-                     +++ symmetry. assumption.
-                     +++ assumption.
-                     +++ constructor; tmp.
-                 --- (* the parent is less active: it moves down to i *)
-                     intros Hgt. apply Z.leb_gt in Hgt. rewrite Hgt in Hres.
-                     apply exec_skip. normal.
-                     apply (up_move_correct m sh N lss x i0 h i fuel _ m1).
-                     +++ assumption.
-                     +++ lia.
-                     +++ assumption.
-                     +++ assumption.
-                     +++ assumption.
-                     +++ assumption.
-                     +++ constructor; tmp.
-                     +++ tmp.
-                     +++ tmp.
-      * intros Hno_fuel. destruct fuel as [|fuel].
-        -- (* no fuel left: break; and the end *)
-           apply exec_break. abrupt. apply loopk_break. normal.
-           cbn [up_loop] in Hres.
-           apply (heap_up_end_correct m sh N lss x i0 h i 0 _ m1).
-           ++ assumption.
-           ++ assumption.
-           ++ assumption.
-           ++ symmetry. assumption.
-           ++ assumption.
-           ++ constructor; tmp.
-        -- (* fuel left: impossible *)
-           lia.
+    + (* the body *)
+      intros fuel le1 m1 HI. apply (up_body_correct m sh N lss x i0).
+      * assumption.
+      * assumption.
     + (* The invariant holds at the start: heuristic hr x, position i0. *)
       constructor.
       * assumption.

@@ -956,9 +956,155 @@ Section AnalysisSpec.
   Definition aclause (idx: nat) (mk: Table bool) (lt: list Lit): list Lit :=
     lt ++ cur_lits (tr x) mk lo (idx - lo).
 
+  (* What adding the literals ys other than t to the analysis in the state of mk and lt
+     gives in x' with the result r (the conclusion of add_lits_spec): the marks stay as
+     they should, the analysed clause only grows, and when no bound was passed
+     (r = Some p) the invariant holds with the count p and the analysed clause contains
+     ys. *)
+  Definition AddOk (idx: nat) (mk: Table bool) (lt: list Lit) (t: option Lit)
+    (ys: list Lit) (x': Ctx) (r: option nat): Prop :=
+    AMarks idx (mrk x') (lower x') /\
+    incl (aclause idx mk lt) (aclause idx (mrk x') (lower x')) /\
+    (forall (p: nat), r = Some p -> AInv idx (mrk x') (lower x') p /\
+       forall (y: Lit), In y ys -> is_lit t y = false ->
+         In y (aclause idx (mrk x') (lower x'))).
+
+  (* Stopping at a bound, with the marks and the lower literals as they are. *)
+  Lemma add_ok_stop: forall (idx: nat) (mk: Table bool) (lt: list Lit) (pathc: nat)
+    (h: Heur) (t: option Lit) (ys: list Lit),
+    AInv idx mk lt pathc ->
+    AddOk idx mk lt t ys (x <| mrk := mk |> <| lower := lt |> <| hr := h |>) None.
+  Proof.
+    intros idx mk lt pathc h t ys Hinv. unfold AddOk. splits.
+    - apply Hinv.
+    - easy.
+    - intros p Hp. discriminate.
+  Qed.
+
+  (* The step of the induction: if handling y gives the marks mk1 and the lower literals
+     lt1, the analysed clause only grows and contains y (unless y is t), then what adding
+     ys from there gives is what adding y :: ys gives. *)
+  Lemma add_ok_cons: forall (idx: nat) (mk mk1: Table bool) (lt lt1: list Lit)
+    (t: option Lit) (y: Lit) (ys: list Lit) (x': Ctx) (r: option nat),
+    incl (aclause idx mk lt) (aclause idx mk1 lt1) ->
+    (is_lit t y = false -> In y (aclause idx mk1 lt1)) ->
+    AddOk idx mk1 lt1 t ys x' r -> AddOk idx mk lt t (y :: ys) x' r.
+  Proof.
+    intros idx mk mk1 lt lt1 t y ys x' r Hgrow Hy (Hmarks & Hmono & Hsome).
+    unfold AddOk. splits.
+    - assumption.
+    - intros z Hz. apply Hmono. now apply Hgrow.
+    - intros p Hp. destruct (Hsome p Hp) as [Hinv Hin]. split.
+      + assumption.
+      + intros z [<- | Hz] Hz_t.
+        * apply Hmono. now apply Hy.
+        * now apply Hin.
+  Qed.
+
+  (* A marked literal is in the analysed clause. *)
+  Lemma marked_in_aclause: forall (idx: nat) (mk: Table bool) (lt: list Lit) (y: Lit),
+    AMarks idx mk lt -> tget mk (lit_key y) = true -> In y (aclause idx mk lt).
+  Proof.
+    intros idx mk lt y Hmarks Hy. apply in_or_app.
+    destruct (am_marked Hmarks y Hy) as [Hlt | (q & Hq & Hy_q)].
+    - now left.
+    - right. apply cur_lits_in. exists q. split.
+      + lia.
+      + now split.
+  Qed.
+
+  (* Marking an unmarked literal y of the current level below idx counts it: the
+     invariant holds with one more, and the analysed clause grows by y. *)
+  Lemma ainv_mark_cur: forall (idx: nat) (mk: Table bool) (lt: list Lit) (pathc: nat)
+    (y: Lit),
+    AInv idx mk lt pathc -> OnLevel idx y -> tget mk (lit_key y) = false ->
+    AInv idx (tset mk (lit_key y) true) lt (S pathc) /\
+    incl (aclause idx mk lt) (aclause idx (tset mk (lit_key y) true) lt) /\
+    In y (aclause idx (tset mk (lit_key y) true) lt).
+  Proof.
+    intros idx mk lt pathc y [Hrange [Hmarked Hlower] Hcount] (q0 & Hq0 & Hy_q0) Hy_mk.
+    (* y is the negation of the trail literal at q0 only *)
+    assert (Huniq: forall (q: nat), lo <= q < lo + (idx - lo) ->
+                     ¬tget (tr x) q = y -> q = q0).
+    { intros q Hq Heq. apply distinct_pos.
+      - lia.
+      - lia.
+      - rewrite <- (extract_neg (tget (tr x) q)).
+        rewrite <- (extract_neg (tget (tr x) q0)), Heq, <- Hy_q0. reflexivity. }
+    assert (Hq0_range: lo <= q0 < lo + (idx - lo)) by lia.
+    destruct (cur_lits_mark (tr x) mk lo (idx - lo) q0 y Hq0_range Hy_q0 Huniq Hy_mk)
+      as [Hlen Hin].
+    splits.
+    - split.
+      + assumption.
+      + split.
+        * intros z Hz. rewrite tget_tset in Hz.
+          destruct (Nat.eq_dec (lit_key y) (lit_key z)) as [Heq | Hne].
+          -- apply lit_key_inj in Heq as <-. right. exists q0. split.
+             ++ lia.
+             ++ assumption.
+          -- now apply Hmarked.
+        * intros z Hz. destruct (Hlower z Hz) as (Hz_mk & Hz_false & Hz_lv). split.
+          -- rewrite tget_tset. now destruct (Nat.eq_dec (lit_key y) (lit_key z)).
+          -- now split.
+      + now rewrite Hlen, Hcount.
+    - intros z Hz. unfold aclause in Hz |- *. apply in_app_iff in Hz as [Hz | Hz].
+      + apply in_or_app. now left.
+      + apply in_or_app. right. apply Hin. now right.
+    - unfold aclause. apply in_or_app. right. apply Hin. now left.
+  Qed.
+
+  (* Marking a false literal y of a lower level adds it to the lower literals: the
+     invariant holds with y added to lt, and the analysed clause grows by y. *)
+  Lemma ainv_mark_lower: forall (idx: nat) (mk: Table bool) (lt: list Lit)
+    (pathc: nat) (y: Lit),
+    AInv idx mk lt pathc -> l_eval m y = Some false -> level x y <> d ->
+    AInv idx (tset mk (lit_key y) true) (lt ++ [y]) pathc /\
+    incl (aclause idx mk lt) (aclause idx (tset mk (lit_key y) true) (lt ++ [y])) /\
+    In y (aclause idx (tset mk (lit_key y) true) (lt ++ [y])).
+  Proof.
+    intros idx mk lt pathc y [Hrange [Hmarked Hlower] Hcount] Hy_false Hlv.
+    (* y is not the negation of a literal of the current level: the count stays *)
+    assert (Hnot_cur: forall (q: nat), lo <= q < lo + (idx - lo) ->
+              tget (tset mk (lit_key y) true) (lit_key (¬tget (tr x) q)) =
+              tget mk (lit_key (¬tget (tr x) q))).
+    { intros q Hq. rewrite tget_tset_other.
+      - reflexivity.
+      - intros Heq. apply lit_key_inj in Heq. apply Hlv.
+        rewrite Heq, extract_neg. apply seg_level. lia. }
+    pose proof (cur_lits_ext (tr x) mk (tset mk (lit_key y) true) lo (idx - lo)
+                  Hnot_cur) as Hsame.
+    splits.
+    - split.
+      + assumption.
+      + split.
+        * intros z Hz. rewrite tget_tset in Hz.
+          destruct (Nat.eq_dec (lit_key y) (lit_key z)) as [Heq | Hne].
+          -- apply lit_key_inj in Heq as <-. left. apply in_or_app. right. now left.
+          -- destruct (Hmarked z Hz) as [Hlt | Hpos].
+             ++ left. apply in_or_app. now left.
+             ++ now right.
+        * intros z Hz. apply in_app_iff in Hz as [Hz | [<- | []]].
+          -- destruct (Hlower z Hz) as (Hz_mk & Hz_false & Hz_lv). split.
+             ++ rewrite tget_tset. now destruct (Nat.eq_dec (lit_key y) (lit_key z)).
+             ++ now split.
+          -- split.
+             ++ apply tget_tset_same.
+             ++ now split.
+      + now rewrite Hsame.
+    - intros z Hz. unfold aclause in Hz |- *. rewrite Hsame.
+      apply in_app_iff in Hz as [Hz | Hz].
+      + apply in_or_app. left. apply in_or_app. now left.
+      + apply in_or_app. now right.
+    - unfold aclause. apply in_or_app. left. apply in_or_app. right. now left.
+  Qed.
+
   (* Adding the addable literals ys other than t: the marks stay as they should, the
      analysed clause only grows, and when no bound was passed it contains ys too, with
-     the count right. *)
+     the count right. By induction on ys: a literal that is t or marked is in the
+     analysed clause already; one of the current level is marked and counted
+     (ainv_mark_cur), one of a lower level marked and kept in lt (ainv_mark_lower),
+     unless that would pass the bound nvars x; add_ok_cons then joins it to the rest. *)
   Lemma add_lits_spec: forall (ys: list Lit) (t: option Lit) (idx: nat)
     (mk: Table bool) (lt: list Lit) (h: Heur) (pathc: nat) (x': Ctx) (r: option nat),
     AInv idx mk lt pathc ->
@@ -973,6 +1119,7 @@ Section AnalysisSpec.
     intros ys t.
     induction ys as [|y ys IH]; intros idx mk lt h pathc x' r Hinv Hys Hadd;
       cbn [add_lits set_mrk set_lower set_hr mrk lower lvl nvars] in Hadd.
+    (* No literal left: the count stays *)
     - injection Hadd as <- <-. splits.
       + apply Hinv.
       + easy.
@@ -982,122 +1129,35 @@ Section AnalysisSpec.
     - assert (Hys': forall (z: Lit), In z ys -> is_lit t z = false -> Addable idx z).
       { intros z Hz. apply Hys. now right. }
       destruct (is_lit t y || tget mk (lit_key y)) eqn:Hskip.
-      (* y is t, or marked already *)
-      + destruct (IH idx mk lt h pathc x' r Hinv Hys' Hadd)
-          as (Hmarks & Hmono & Hsome).
-        splits.
-        * assumption.
-        * assumption.
-        * intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin]. split.
+      (* y is t, or marked already: it is in the analysed clause *)
+      + apply (add_ok_cons idx mk mk lt lt).
+        * easy.
+        * intros Hy_t. rewrite Hy_t in Hskip. cbn [orb] in Hskip.
+          apply marked_in_aclause.
+          -- apply Hinv.
           -- assumption.
-          -- intros z [<- | Hz] Hz_t.
-             ++ apply Hmono. rewrite Hz_t in Hskip. cbn [orb] in Hskip.
-                destruct (am_marked (ai_marks Hinv) y Hskip)
-                  as [Hlt | (q & Hq & Hy)].
-                ** apply in_or_app. now left.
-                ** apply in_or_app. right. apply cur_lits_in. exists q. split.
-                   --- lia.
-                   --- split; assumption.
-             ++ now apply Hin.
+        * apply (IH idx mk lt h pathc x' r Hinv Hys' Hadd).
       + apply orb_false_iff in Hskip as [Hy_t Hy_mk].
         destruct (Hys y (or_introl eq_refl) Hy_t) as [Hy_false Hy_pos].
-        destruct Hinv as [Hrange [Hmarked Hlower] Hcount].
         destruct (Nat.eqb (level x y) d) eqn:Hlv.
-        (* y is of the current level: mark it and count it *)
-        * apply Nat.eqb_eq in Hlv. destruct (Hy_pos Hlv) as (q0 & Hq0 & Hy_q0).
-          destruct (nvars x <=? pathc).
-          -- injection Hadd as <- <-. splits.
-             ++ now split.
-             ++ easy.
-             ++ intros p Hp. discriminate.
-          --              assert (Huniq: forall (q: nat), lo <= q < lo + (idx - lo) ->
-                              ¬tget (tr x) q = y -> q = q0).
-             { intros q Hq Heq. apply distinct_pos.
-               - lia.
-               - lia.
-               - rewrite <- (extract_neg (tget (tr x) q)).
-                 rewrite <- (extract_neg (tget (tr x) q0)), Heq, <- Hy_q0. reflexivity. }
-             assert (Hq0_range: lo <= q0 < lo + (idx - lo)) by lia.
-             destruct (cur_lits_mark (tr x) mk lo (idx - lo) q0 y Hq0_range Hy_q0 Huniq
-                         Hy_mk) as [Hlen Hin].
-             assert (Hinv1: AInv idx (tset mk (lit_key y) true) lt (S pathc)).
-             { split.
-               - assumption.
-               - split.
-                 + intros z Hz. rewrite tget_tset in Hz.
-                   destruct (Nat.eq_dec (lit_key y) (lit_key z)) as [Heq | Hne].
-                   * apply lit_key_inj in Heq as <-. right. exists q0. split.
-                     -- lia.
-                     -- assumption.
-                   * now apply Hmarked.
-                 + intros z Hz.
-                   destruct (Hlower z Hz) as (Hz_mk & Hz_false & Hz_lv). split.
-                   * rewrite tget_tset.
-                     now destruct (Nat.eq_dec (lit_key y) (lit_key z)).
-                   * now split.
-               - now rewrite Hlen, Hcount. }
-             destruct (IH idx _ lt _ (S pathc) x' r Hinv1 Hys' Hadd)
-               as (Hmarks & Hmono & Hsome).
-             splits.
+        (* y is of the current level: count it, unless the count would pass nvars x *)
+        * apply Nat.eqb_eq in Hlv. destruct (nvars x <=? pathc).
+          -- injection Hadd as <- <-. now apply (add_ok_stop idx mk lt pathc).
+          -- destruct (ainv_mark_cur idx mk lt pathc y Hinv (Hy_pos Hlv) Hy_mk)
+               as (Hinv1 & Hgrow & Hy_in).
+             apply (add_ok_cons idx mk (tset mk (lit_key y) true) lt lt).
              ++ assumption.
-             ++ intros z Hz. apply Hmono. unfold aclause in Hz |- *.
-                apply in_app_iff in Hz as [Hz | Hz].
-                ** apply in_or_app. now left.
-                ** apply in_or_app. right. apply Hin. now right.
-             ++ intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin']. split.
-                ** assumption.
-                ** intros z [<- | Hz] Hz_t.
-                   --- apply Hmono. apply in_or_app. right. apply Hin. now left.
-                   --- now apply Hin'.
-    (* y is of a lower level: mark it and keep it *)
+             ++ intros _. assumption.
+             ++ apply (IH idx _ lt _ (S pathc) x' r Hinv1 Hys' Hadd).
+        (* y is of a lower level: keep it, unless lt would get longer than nvars x *)
         * apply Nat.eqb_neq in Hlv. destruct (nvars x <=? length lt).
-          -- injection Hadd as <- <-. splits.
-             ++ now split.
-             ++ easy.
-             ++ intros p Hp. discriminate.
-          -- assert (Hnot_cur: forall (q: nat), lo <= q < lo + (idx - lo) ->
-                       tget (tset mk (lit_key y) true) (lit_key (¬tget (tr x) q)) =
-                       tget mk (lit_key (¬tget (tr x) q))).
-             { intros q Hq. rewrite tget_tset_other.
-               - reflexivity.
-               - intros Heq. apply lit_key_inj in Heq. apply Hlv.
-                 rewrite Heq, extract_neg. apply seg_level. lia. }
-             pose proof (cur_lits_ext (tr x) mk (tset mk (lit_key y) true) lo (idx - lo)
-                           Hnot_cur) as Hsame.
-             assert (Hinv1: AInv idx (tset mk (lit_key y) true) (lt ++ [y]) pathc).
-             { split.
-               - assumption.
-               - split.
-                 + intros z Hz. rewrite tget_tset in Hz.
-                   destruct (Nat.eq_dec (lit_key y) (lit_key z)) as [Heq | Hne].
-                   * apply lit_key_inj in Heq as <-. left. apply in_or_app. right.
-                     now left.
-                   * destruct (Hmarked z Hz) as [Hlt | Hpos].
-                     -- left. apply in_or_app. now left.
-                     -- now right.
-                 + intros z Hz. apply in_app_iff in Hz as [Hz | [<- | []]].
-                   * destruct (Hlower z Hz) as (Hz_mk & Hz_false & Hz_lv). split.
-                     -- rewrite tget_tset.
-                        now destruct (Nat.eq_dec (lit_key y) (lit_key z)).
-                     -- now split.
-                   * split.
-                     -- apply tget_tset_same.
-                     -- now split.
-               - now rewrite Hsame. }
-             destruct (IH idx _ (lt ++ [y]) _ pathc x' r Hinv1 Hys' Hadd)
-               as (Hmarks & Hmono & Hsome).
-             splits.
+          -- injection Hadd as <- <-. now apply (add_ok_stop idx mk lt pathc).
+          -- destruct (ainv_mark_lower idx mk lt pathc y Hinv Hy_false Hlv)
+               as (Hinv1 & Hgrow & Hy_in).
+             apply (add_ok_cons idx mk (tset mk (lit_key y) true) lt (lt ++ [y])).
              ++ assumption.
-             ++ intros z Hz. apply Hmono. unfold aclause in Hz |- *. rewrite Hsame.
-                apply in_app_iff in Hz as [Hz | Hz].
-                ** apply in_or_app. left. apply in_or_app. now left.
-                ** apply in_or_app. now right.
-             ++ intros p Hp. destruct (Hsome p Hp) as [Hinv' Hin']. split.
-                ** assumption.
-                ** intros z [<- | Hz] Hz_t.
-                   --- apply Hmono. apply in_or_app. left. apply in_or_app. right.
-                       now left.
-                   --- now apply Hin'.
+             ++ intros _. assumption.
+             ++ apply (IH idx _ (lt ++ [y]) _ pathc x' r Hinv1 Hys' Hadd).
   Qed.
 
   (* Without a literal to assert, clearing the marks of the current level below idx
@@ -1143,9 +1203,182 @@ Section AnalysisSpec.
       + intros u Hu. discriminate.
   Qed.
 
+  (* The marks stay right with the bound lowered from idx to idx1, when the positions
+     idx1 .. idx - 1 are not marked. *)
+  Lemma amarks_shrink: forall (idx idx1: nat) (mk: Table bool) (lt: list Lit),
+    AMarks idx mk lt ->
+    (forall (q: nat), idx1 <= q < idx -> tget mk (lit_key (¬tget (tr x) q)) = false) ->
+    AMarks idx1 mk lt.
+  Proof.
+    intros idx idx1 mk lt Hmarks Hnone. split.
+    - intros y Hy. destruct (am_marked Hmarks y Hy) as [Hlt | (q & Hq & ->)].
+      + now left.
+      + right. exists q. split.
+        * destruct (Nat.lt_ge_cases q idx1) as [Hlt | Hge].
+          -- lia.
+          -- rewrite Hnone in Hy.
+             ++ discriminate.
+             ++ lia.
+        * reflexivity.
+    - apply Hmarks.
+  Qed.
+
+  (* When idx1 - 1 is the newest marked position below idx: the marks are right below
+     idx1, and the marked literals of the current level below idx are the negation of
+     the literal at idx1 - 1 and those below it. *)
+  Lemma newest_marked: forall (idx idx1: nat) (mk: Table bool) (lt: list Lit),
+    AMarks idx mk lt -> lo <= idx1 <= idx ->
+    (forall (q: nat), idx1 <= q < idx -> tget mk (lit_key (¬tget (tr x) q)) = false) ->
+    lo < idx1 -> tget mk (lit_key (¬tget (tr x) (idx1 - 1))) = true ->
+    AMarks idx1 mk lt /\
+    cur_lits (tr x) mk lo (idx - lo) =
+      (¬tget (tr x) (idx1 - 1)) :: cur_lits (tr x) mk lo (idx1 - 1 - lo).
+  Proof.
+    intros idx idx1 mk lt Hmarks Hrange1 Hnone Hlo Htop. split.
+    - now apply (amarks_shrink idx).
+    - replace (idx - lo) with (S (idx1 - 1 - lo) + (idx - idx1)) by lia.
+      rewrite cur_lits_top.
+      + cbn [cur_lits]. replace (lo + (idx1 - 1 - lo)) with (idx1 - 1) by lia.
+        now rewrite Htop.
+      + intros q Hq. apply Hnone. lia.
+  Qed.
+
+  (* When ¬t, of position q on the current level, is the only marked literal of that
+     level below S q, and the clause of lt and ¬t is entailed, ¬t is the literal to
+     assert. *)
+  Lemma aresult_assert: forall (q: nat) (mk: Table bool) (lt: list Lit),
+    lo <= q < tlen x -> AMarks (S q) mk lt -> cur_lits (tr x) mk lo (q - lo) = [] ->
+    Entailed f (lt ++ [¬tget (tr x) q]) -> AResult (Some (¬tget (tr x) q)) mk lt.
+  Proof.
+    intros q mk lt Hq Hmarks Hempty Hent. unfold AResult. splits.
+    - intros y Hy. destruct (am_marked Hmarks y Hy) as [Hlt | (q' & Hq' & ->)].
+      + now left.
+      + right. destruct (Nat.eq_dec q' q) as [-> | Hne].
+        * reflexivity.
+        (* another one would be a marked literal below q *)
+        * exfalso.
+          assert (Hin: In (¬tget (tr x) q') (cur_lits (tr x) mk lo (q - lo))).
+          { apply cur_lits_in. exists q'. split.
+            - lia.
+            - now split. }
+          rewrite Hempty in Hin. destruct Hin.
+    - intros y Hy. destruct (am_lower Hmarks y Hy) as (_ & Hfalse & Hlv). now split.
+    - intros u Hu. injection Hu as <-. split.
+      + assumption.
+      + exists q. split.
+        * lia.
+        * reflexivity.
+  Qed.
+
+  (* Unmarking ¬t, of position q on the current level, leaves the marked literals below
+     q. *)
+  Lemma cur_lits_unmark_top: forall (q: nat) (mk: Table bool), q < tlen x ->
+    cur_lits (tr x) (tset mk (lit_key (¬tget (tr x) q)) false) lo (q - lo) =
+      cur_lits (tr x) mk lo (q - lo).
+  Proof.
+    intros q mk Hq. apply cur_lits_ext. intros q' Hq'. rewrite tget_tset_other.
+    - reflexivity.
+    - intros Heq. apply lit_key_inj in Heq. apply (f_equal Neg.neg) in Heq.
+      rewrite !Neg.involutive in Heq. assert (Hsame: q' = q).
+      + apply distinct_pos.
+        * lia.
+        * assumption.
+        * now rewrite Heq.
+      + lia.
+  Qed.
+
+  (* Unmarking ¬t, of position q on the current level, lowers the bound of the marks
+     from S q to q. *)
+  Lemma amarks_unmark_top: forall (q: nat) (mk: Table bool) (lt: list Lit),
+    lo <= q < tlen x -> AMarks (S q) mk lt ->
+    AMarks q (tset mk (lit_key (¬tget (tr x) q)) false) lt.
+  Proof.
+    intros q mk lt Hq Hmarks. split.
+    - intros y Hy. rewrite tget_tset in Hy.
+      destruct (Nat.eq_dec (lit_key (¬tget (tr x) q)) (lit_key y)) as [Heq | Hne].
+      + discriminate.
+      + destruct (am_marked Hmarks y Hy) as [Hlt | (q' & Hq' & ->)].
+        * now left.
+        * right. exists q'. split.
+          -- destruct (Nat.eq_dec q' q) as [-> | Hne'].
+             ++ exfalso. now apply Hne.
+             ++ lia.
+          -- reflexivity.
+    (* the lower literals are not of the current level, so not ¬t *)
+    - intros y Hy. destruct (am_lower Hmarks y Hy) as (Hy_mk & Hfalse & Hlv). split.
+      + rewrite tget_tset_other.
+        * assumption.
+        * intros Heq. apply lit_key_inj in Heq. apply Hlv.
+          rewrite <- Heq, extract_neg. apply seg_level. lia.
+      + now split.
+  Qed.
+
+  (* Resolving away ¬t, of position q on the current level: unmarking it gives the
+     invariant below q, with a count one less. *)
+  Lemma ainv_unmark_top: forall (q: nat) (mk: Table bool) (lt: list Lit) (pathc: nat),
+    lo <= q < tlen x -> AMarks (S q) mk lt ->
+    pathc = S (length (cur_lits (tr x) mk lo (q - lo))) ->
+    AInv q (tset mk (lit_key (¬tget (tr x) q)) false) lt (pathc - 1).
+  Proof.
+    intros q mk lt pathc Hq Hmarks Hcount. split.
+    - lia.
+    - now apply amarks_unmark_top.
+    - rewrite cur_lits_unmark_top by lia. lia.
+  Qed.
+
+  (* The literals of the reason ys of the literal t at position q, other than t, are
+     addable below q: their negations are on the trail before t. *)
+  Lemma reason_addable: forall (q: nat) (ys: list Lit), lo < q < tlen x ->
+    reason_lits x (tget (rsn x) (extract (tget (tr x) q))) = Some ys ->
+    forall (y: Lit), In y ys -> is_lit (Some (tget (tr x) q)) y = false -> Addable q y.
+  Proof.
+    intros q ys Hq Hreason y Hy Hy_t. cbn [is_lit] in Hy_t. apply Lit.eqb_neq in Hy_t.
+    destruct (reason_spec q ys Hq Hreason) as (_ & _ & Hys_pos).
+    destruct (Hys_pos y Hy Hy_t) as (q' & Hq' & Hq'y). split.
+    - rewrite <- (Neg.involutive y), <- Hq'y. apply (trail_neg_false m f x).
+      + apply Hcore.
+      + lia.
+    (* of level d, ¬y is at or after the decision at lo *)
+    - intros Hlv. exists q'. split.
+      + split.
+        * destruct (Nat.lt_ge_cases q' lo) as [Hlt | Hge].
+          -- exfalso. pose proof (below_level q' Hlt) as Hlow.
+             rewrite Hq'y, extract_neg, Hlv in Hlow. lia.
+          -- assumption.
+        * assumption.
+      + now rewrite Hq'y, Neg.involutive.
+  Qed.
+
+  (* Resolution on the analysed clause: if ¬t, at position q, is its newest literal of
+     the current level, and ys is an entailed clause with t, then the analysed clause
+     below q is entailed once it has the literals of ys other than t. *)
+  Lemma aclause_resolve: forall (idx q: nat) (mk mk': Table bool) (lt lt' ys: list Lit),
+    Entailed f (aclause idx mk lt) -> Entailed f ys ->
+    cur_lits (tr x) mk lo (idx - lo) =
+      (¬tget (tr x) q) :: cur_lits (tr x) mk lo (q - lo) ->
+    incl (aclause q mk lt) (aclause q mk' lt') ->
+    (forall (y: Lit), In y ys -> y <> tget (tr x) q -> In y (aclause q mk' lt')) ->
+    Entailed f (aclause q mk' lt').
+  Proof.
+    intros idx q mk mk' lt lt' ys Hent Hys Hnewest Hmono Hys_in.
+    apply (entailed_resolve f (aclause idx mk lt) ys _ (tget (tr x) q)).
+    - assumption.
+    - assumption.
+    - intros y Hy Hne. apply Hmono. unfold aclause in Hy |- *. rewrite Hnewest in Hy.
+      apply in_app_iff in Hy as [Hy | [Hy | Hy]].
+      + apply in_or_app. now left.
+      + exfalso. apply Hne. now symmetry.
+      + apply in_or_app. now right.
+    - assumption.
+  Qed.
+
   (* The walk of the analysis, from a state of the invariant whose analysed clause is
-     entailed. Every step resolves away the newest marked literal of the current
-     level. *)
+     entailed. By induction on the fuel: each step finds the newest marked literal ¬t of
+     the current level, at position q (newest_marked). If it is the only one, it is
+     asserted (aresult_assert); otherwise ¬t is unmarked (ainv_unmark_top) and the
+     literals of the reason of t are added (add_lits_spec), which keeps the analysed
+     clause entailed (aclause_resolve), and the walk goes on below q. Out of fuel,
+     without a marked literal, a reason or room, it gives up (aresult_fail). *)
   Lemma analyze_loop_spec: forall (fuel idx: nat) (mk: Table bool) (lt: list Lit)
     (h: Heur) (pathc: nat) (x': Ctx) (ou: option Lit),
     AInv idx mk lt pathc -> Entailed f (aclause idx mk lt) -> idx - lo <= fuel ->
@@ -1157,175 +1390,78 @@ Section AnalysisSpec.
     induction fuel as [|fuel IH]; intros idx mk lt h pathc x' ou Hinv Hent Hfuel Hloop;
       cbn [analyze_loop] in Hloop; rewrite ?reason_lits_analysed in Hloop;
       cbn [set_mrk set_lower set_hr mrk lower tr rsn] in Hloop.
+    (* Out of fuel: give up *)
     - injection Hloop as <- <-. apply (aresult_fail idx); apply Hinv.
     - pose proof Hinv as [Hrange Hmarks Hcount].
       destruct (Nat.eqb pathc 0) eqn:Hzero.
+      (* No marked literal of the current level is counted: give up *)
       + injection Hloop as <- <-. now apply (aresult_fail idx).
       + assert (Hidx: idx = lo + (idx - lo)) by lia.
         destruct (prev_marked_spec (tr x) mk lo (idx - lo) idx Hidx)
           as (Hrange1 & Hnone & Htop).
         set (idx1 := prev_marked (tr x) mk lo idx (idx - lo)) in *.
-        (* The count only looks below idx1. *)
-        assert (Hcur1: cur_lits (tr x) mk lo (idx - lo) =
-                       cur_lits (tr x) mk lo (idx1 - lo)).
-        { replace (idx - lo) with ((idx1 - lo) + (idx - idx1)) by lia.
-          apply cur_lits_top.
-          intros q Hq. apply Hnone. lia. }
         destruct (idx1 <=? lo) eqn:Hlo.
         (* No marked literal is left: give up *)
-        * injection Hloop as <- <-. apply Nat.leb_le in Hlo.
-          assert (Hmarks1: AMarks idx1 mk lt).
-          { split.
-            - intros y Hy.
-              destruct (am_marked Hmarks y Hy) as [Hlt | (q & Hq & ->)].
-              + now left.
-              + rewrite Hnone in Hy.
-                * discriminate.
-                * lia.
-            - apply Hmarks. }
-          now apply (aresult_fail idx1).
-        * apply Nat.leb_gt in Hlo. set (t := tget (tr x) (idx1 - 1)) in *.
-          specialize (Htop Hlo).
-          (* The marked literals below idx1 are ¬t and those below its position. *)
-          assert (Hsplit: cur_lits (tr x) mk lo (idx1 - lo) =
-                          [¬t] ++ cur_lits (tr x) mk lo (idx1 - 1 - lo)).
-          { replace (idx1 - lo) with (S (idx1 - 1 - lo)) by lia. cbn [cur_lits].
-            replace (lo + (idx1 - 1 - lo)) with (idx1 - 1) by lia. fold t.
-            now rewrite Htop. }
+        * injection Hloop as <- <-. apply (aresult_fail idx1).
+          -- now apply (amarks_shrink idx).
+          -- lia.
+        (* ¬t, at position q = idx1 - 1, is the newest marked literal *)
+        * apply Nat.leb_gt in Hlo. specialize (Htop Hlo).
+          destruct (newest_marked idx idx1 mk lt Hmarks Hrange1 Hnone Hlo Htop)
+            as [Hmarks1 Hnewest].
+          set (q := idx1 - 1) in *.
+          assert (Hq: lo <= q < tlen x) by lia.
+          replace idx1 with (S q) in Hmarks1 by lia.
+          rewrite Hnewest in Hcount. simpl in Hcount.
           destruct (Nat.eqb pathc 1) eqn:Hone.
-          (* ¬t is the last literal of the current level: assert it *)
+          (* ¬t is the only one: assert it *)
           -- injection Hloop as <- <-. apply Nat.eqb_eq in Hone.
-             rewrite Hcur1, Hsplit in Hcount. simpl in Hcount.
-             assert (Hempty: cur_lits (tr x) mk lo (idx1 - 1 - lo) = []).
-             { destruct (cur_lits (tr x) mk lo (idx1 - 1 - lo)).
-               - reflexivity.
-               - simpl in Hcount. lia. }
-             split.
-             ++ intros y Hy.
-                destruct (am_marked Hmarks y Hy) as [Hlt | (q & Hq & ->)].
-                ** now left.
-                ** right. destruct (Nat.eq_dec q (idx1 - 1)) as [-> | Hne].
-                   --- reflexivity.
-                   --- exfalso. destruct (Nat.lt_ge_cases q idx1) as [Hlt | Hge].
-                       +++ assert (Hin: In (¬tget (tr x) q)
-                                          (cur_lits (tr x) mk lo (idx1 - 1 - lo))).
-                           { apply cur_lits_in. exists q. split.
-                             - lia.
-                             - now split. }
-                           now rewrite Hempty in Hin.
-                       +++ rewrite Hnone in Hy.
-                           *** discriminate.
-                           *** lia.
-             ++ split.
-                ** intros y Hy.
-                   destruct (am_lower Hmarks y Hy) as (_ & Hfalse & Hlv).
-                   now split.
-                ** intros u Hu. injection Hu as <-. split.
-                   --- apply (entailed_incl f (aclause idx mk lt)).
-                       +++ assumption.
-                       +++ intros y Hy. unfold aclause in Hy.
-                           rewrite Hcur1, Hsplit, Hempty in Hy.
-                           assumption.
-                   --- exists (idx1 - 1). split.
-                       +++ lia.
-                       +++ reflexivity.
+             assert (Hempty: cur_lits (tr x) mk lo (q - lo) = []).
+             { apply length_zero_iff_nil. lia. }
+             apply aresult_assert.
+             ++ assumption.
+             ++ assumption.
+             ++ assumption.
+             ++ unfold aclause in Hent. rewrite Hnewest, Hempty in Hent. assumption.
           (* Resolve with the reason of t *)
-          -- apply Nat.eqb_neq in Hzero, Hone. set (q := idx1 - 1) in *.
-             rewrite Hcur1, Hsplit in Hcount. simpl in Hcount.
-             (* t is not the decision: that would leave one marked literal *)
+          -- apply Nat.eqb_neq in Hone.
+             (* t is not the decision, which would be the only marked literal *)
              assert (Hq_lo: lo < q).
              { destruct (Nat.eq_dec q lo) as [Heq | Hne].
                - exfalso. replace (q - lo) with 0 in Hcount by lia. simpl in Hcount. lia.
                - lia. }
-             set (mk1 := tset mk (lit_key (¬t)) false) in Hloop.
-             (* The literals of the current level below q are not ¬t. *)
-             assert (Hbelow: forall (q': nat), lo <= q' < lo + (q - lo) ->
-                       tget mk1 (lit_key (¬tget (tr x) q')) =
-                       tget mk (lit_key (¬tget (tr x) q'))).
-             { intros q' Hq'. unfold mk1. rewrite tget_tset_other.
-               - reflexivity.
-               - intros Heq. apply lit_key_inj in Heq. apply (f_equal Neg.neg) in Heq.
-                 rewrite !Neg.involutive in Heq. assert (q' = q).
-                 + apply distinct_pos.
-                   * lia.
-                   * lia.
-                   * unfold t in Heq. now rewrite Heq.
-                 + lia. }
-             pose proof (cur_lits_ext (tr x) mk mk1 lo (q - lo) Hbelow) as Hcur_q.
-             assert (Hinv1: AInv q mk1 lt (pathc - 1)).
-             { split.
-               - lia.
-               - split.
-                 + intros y Hy. unfold mk1 in Hy. rewrite tget_tset in Hy.
-                   destruct (Nat.eq_dec (lit_key (¬t)) (lit_key y)) as [Heq | Hne].
-                   * discriminate.
-                   * destruct (am_marked Hmarks y Hy) as [Hlt | (q' & Hq' & ->)].
-                     -- now left.
-                     -- right. exists q'. split.
-                        ++ destruct (Nat.eq_dec q' q) as [-> | Hne'].
-                           ** exfalso. now apply Hne.
-                           ** destruct (Nat.lt_ge_cases q' idx1) as [Hlt | Hge].
-                              --- lia.
-                              --- rewrite Hnone in Hy.
-                                  +++ discriminate.
-                                  +++ lia.
-                        ++ reflexivity.
-                 + intros y Hy.
-                   destruct (am_lower Hmarks y Hy) as (Hy_mk & Hfalse & Hlv).
-                   split.
-                   * unfold mk1. rewrite tget_tset_other.
-                     -- assumption.
-                     -- intros Heq. apply lit_key_inj in Heq. apply Hlv.
-                        rewrite <- Heq, extract_neg.
-                        apply seg_level. lia.
-                   * now split.
-               - rewrite Hcur_q. lia. }
-             destruct (reason_lits x (tget (rsn x) (extract t))) as [ys|] eqn:Hreason.
-             ++ assert (Hq_range: lo < q < tlen x) by lia.
-                destruct (reason_spec q ys Hq_range Hreason)
-                  as (Hys_ent & Ht_in & Hys_pos).
-                destruct (add_lits _ d (Some t) ys (pathc - 1)) as [x2 r] eqn:Hadd.
-                assert (Hpre: forall (y: Lit), In y ys -> is_lit (Some t) y = false ->
-                          Addable q y).
-                { intros y Hy Hy_t. cbn [is_lit] in Hy_t. apply Lit.eqb_neq in Hy_t.
-                  destruct (Hys_pos y Hy Hy_t) as (q' & Hq' & Hq'y). split.
-                  - rewrite <- (Neg.involutive y), <- Hq'y. apply (trail_neg_false m f x).
-                    + apply Hcore.
-                    + lia.
-                  - intros Hlv. exists q'. split.
-                    + split.
-                      * destruct (Nat.lt_ge_cases q' lo) as [Hlt | Hge].
-                        -- exfalso. pose proof (below_level q' Hlt) as Hlow.
-                           rewrite Hq'y, extract_neg, Hlv in Hlow. lia.
-                        -- assumption.
-                      * assumption.
-                    + now rewrite Hq'y, Neg.involutive. }
-                destruct (add_lits_spec ys (Some t) q mk1 lt h (pathc - 1) x2 r Hinv1 Hpre
-                            Hadd)
+             assert (Hq_range: lo < q < tlen x) by lia.
+             pose proof (ainv_unmark_top q mk lt pathc Hq Hmarks1 Hcount) as Hinv1.
+             destruct (reason_lits x (tget (rsn x) (extract (tget (tr x) q))))
+               as [ys|] eqn:Hreason.
+             ++ destruct (reason_spec q ys Hq_range Hreason) as (Hys_ent & _ & _).
+                destruct (add_lits _ d (Some (tget (tr x) q)) ys (pathc - 1))
+                  as [x2 r] eqn:Hadd.
+                destruct (add_lits_spec ys (Some (tget (tr x) q)) q
+                            (tset mk (lit_key (¬tget (tr x) q)) false) lt h (pathc - 1)
+                            x2 r Hinv1 (reason_addable q ys Hq_range Hreason) Hadd)
                   as (Hmarks2 & Hmono & Hsome).
+                apply add_lits_analysed in Hadd as [Hx2 _]. rewrite Hx2 in Hloop.
                 destruct r as [p|].
+                (* The literals are added: go on below q with the resolvent *)
                 ** destruct (Hsome p eq_refl) as [Hinv2 Hys_in].
-                   apply add_lits_analysed in Hadd as [Hx2 _]. rewrite Hx2 in Hloop.
                    apply (IH q (mrk x2) (lower x2) (hr x2) p x' ou Hinv2).
-                   --- apply (entailed_resolve f (aclause idx mk lt) ys
-                               (aclause q (mrk x2) (lower x2)) t).
+                   --- apply (aclause_resolve idx q mk (mrk x2) lt (lower x2) ys).
                        +++ assumption.
                        +++ assumption.
-                       +++ intros y Hy Hne. apply Hmono. unfold aclause in Hy |- *.
-                           rewrite Hcur1, Hsplit in Hy. rewrite Hcur_q.
-                           apply in_app_iff in Hy as [Hy | [Hy | Hy]].
-                           *** apply in_or_app. now left.
-                           *** exfalso. apply Hne. now symmetry.
-                           *** apply in_or_app. now right.
+                       +++ assumption.
+                       +++ intros y Hy. apply Hmono. unfold aclause in Hy |- *.
+                           now rewrite cur_lits_unmark_top by lia.
                        +++ intros y Hy Hne. apply Hys_in.
                            *** assumption.
                            *** cbn [is_lit]. now apply Lit.eqb_neq.
                    --- lia.
                    --- assumption.
-                ** apply add_lits_analysed in Hadd as [Hx2 _]. rewrite Hx2 in Hloop.
-                   injection Hloop as <- <-. apply (aresult_fail q).
+                (* No room: give up *)
+                ** injection Hloop as <- <-. apply (aresult_fail q).
                    --- assumption.
                    --- lia.
+             (* t has no reason clause: give up *)
              ++ injection Hloop as <- <-. apply (aresult_fail q).
                 ** apply Hinv1.
                 ** lia.

@@ -80,6 +80,10 @@ Proof.
   rewrite seq_S, map_app. cbn [map]. now replace (a + (q - a))%nat with q by lia.
 Qed.
 
+(* An empty span. *)
+Lemma span_nil: forall (sh: Shape) (a: nat), span sh a a = [].
+Proof. intros sh a. unfold span. now rewrite Nat.sub_diag. Qed.
+
 (* A span starting with its first position. *)
 Lemma span_cons: forall (sh: Shape) (q e: nat), (q < e)%nat ->
   span sh q e = lits sh q :: span sh (S q) e.
@@ -124,6 +128,37 @@ Arguments Sizes : clear implicits.
 Definition AtomsBelow (N: nat) (ls: list Lit): Prop :=
   forall (l: Lit), In l ls -> (extract l < N)%nat.
 
+(* A literal with atom below N added to literals with atoms below N. *)
+Lemma atoms_below_snoc: forall (N: nat) (ls: list Lit) (l: Lit),
+  AtomsBelow N ls -> (extract l < N)%nat -> AtomsBelow N (ls ++ [l]).
+Proof.
+  intros N ls l Hls Hl l' Hl'. apply in_app_or in Hl' as [Hl' | [<- | []]].
+  - apply Hls. assumption.
+  - assumption.
+Qed.
+
+(* A new literal added to distinct literals. *)
+Lemma nodup_snoc: forall (ls: list Lit) (l: Lit),
+  NoDup ls -> ~ In l ls -> NoDup (ls ++ [l]).
+Proof.
+  intros ls l Hnd Hl. apply NoDup_app.
+  - assumption.
+  - constructor.
+    + easy.
+    + constructor.
+  - intros l' Hl' [<- | []]. contradiction.
+Qed.
+
+(* A property of the clauses below i and of clause i holds below i + 1. *)
+Lemma below_succ: forall (P: nat -> Prop) (i: nat),
+  (forall (i': nat), (i' < i)%nat -> P i') -> P i ->
+  forall (i': nat), (i' < S i)%nat -> P i'.
+Proof.
+  intros P i Hbelow Hi i' Hi'. destruct (Nat.eq_dec i' i) as [-> | Hne].
+  - assumption.
+  - apply Hbelow. lia.
+Qed.
+
 (* The fields and arrays of the clauses in the memory m1, and the field of the marks. *)
 Record ClauseFlds {sh: Shape} {N: nat} {lss: list (list Lit)} {m1: mem}: Prop := {
   cf_nv: IntAt m1 sh o_nv N;
@@ -166,14 +201,16 @@ Proof.
 Qed.
 
 (* The parts of check_clauses proved in lemmas of their own: the loop over the clauses,
-   the statements for one clause in it, the marking and the unmarking loop in those, and
-   the body of the marking loop after its test. *)
+   the statements for one clause in it, the marking and the unmarking loop in those, the
+   body of the marking loop after its test, and the statements for a clause from the
+   unmarking on. *)
 Definition clauses_loop: statement :=
   first_stmt (drop_stmts 2 (fn_body f_check_clauses)).
 Definition clause_part: statement := drop_stmts 1 (loop_body clauses_loop).
 Definition mark_loop: statement := first_stmt (drop_stmts 3 clause_part).
 Definition mark_body: statement := drop_stmts 1 (loop_body mark_loop).
 Definition unmark_loop: statement := first_stmt (drop_stmts 5 clause_part).
+Definition unmark_part: statement := drop_stmts 4 clause_part.
 
 (* The variant of the marking and unmarking loops of clause i. *)
 Definition clause_variant (sh: Shape) (i: nat): nat -> nat -> Prop :=
@@ -267,77 +304,63 @@ Section Loops.
     assert (Haddq: Int.add (Int.repr (Z.of_nat q)) (Int.repr 1)
                    = Int.repr (Z.of_nat (S q))).
     { rewrite add_repr by lia. f_equal. lia. }
+    (* Keys are not negative. *)
+    assert (Hkq0: 0 <= key (lits sh q)) by (unfold key; lia).
     (* int y = s->clits[q]; *)
     run.
     (* if (y < 0) return 0; never, as keys are not negative *)
-    eapply (exec_if_lt _ 0).
+    take_else (key (lits sh q)) 0 by lia.
+    intros _. run.
+    (* if (y >= n) return 0; *)
+    eapply exec_if_ge.
     - ev.
     - ev.
     - reflexivity.
     - unfold key in *. lia.
-    - intros Hneg. unfold key in Hneg. lia.
-    - intros Hnonneg. run.
-      (* if (y >= n) return 0; *)
-      eapply exec_if_ge.
+    - (* the atom is not below N: return 0; *)
+      intros Hge. eapply exec_return.
+      + ev.
+      + ret. now right.
+    - (* the atom is below N: if (s->mrk[y] != 0) return 0; *)
+      intros Hlt.
+      assert (Hy: (extract (lits sh q) < N)%nat)
+        by (unfold key in Hlt; destruct (lits sh q); simpl in *; lia).
+      assert (Hky: (lit_key (lits sh q) < 2 * N)%nat) by (now apply lit_key_lt).
+      run. rewrite (Hm2 _ Hky).
+      eapply (exec_if_ne _ 0).
       + ev.
       + ev.
       + reflexivity.
-      + unfold key in *. lia.
-      + (* the atom is not below N: return 0; *)
-        intros Hge. eapply exec_return.
+      + destruct (existsb _ _); lia.
+      + (* y is marked: a duplicate, return 0; *)
+        intros Hmarked. eapply exec_return.
         * ev.
         * ret. now right.
-      + (* the atom is below N: if (s->mrk[y] != 0) return 0; *)
-        intros Hlt.
-        assert (Hy: (extract (lits sh q) < N)%nat)
-          by (unfold key in Hlt; destruct (lits sh q); simpl in *; lia).
-        assert (Hky: (lit_key (lits sh q) < 2 * N)%nat) by (now apply lit_key_lt).
-        run. rewrite (Hm2 _ Hky).
-        eapply (exec_if_ne _ 0).
-        * ev.
-        * ev.
-        * reflexivity.
-        * destruct (existsb _ _); lia.
-        * (* y is marked: a duplicate, return 0; *)
-          intros Hmarked. eapply exec_return.
-          -- ev.
-          -- ret. now right.
-        * (* s->mrk[y] = 1; q++; *)
-          intros Hunmarked.
-          assert (Hex: existsb (fun (l: Lit) =>
-                                  Nat.eqb (lit_key l) (lit_key (lits sh q)))
-                         (span sh (starts sh i) q) = false).
-          { destruct (existsb _ _).
-            - discriminate.
-            - reflexivity. }
-          run.
-          store Am2 Hky as m3 Hst.
-          run. ints.
-          apply loopk_next with (S q).
-          -- unfold clause_variant, ltof. lia.
-          -- constructor.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ tmp.
-             ++ lia.
-             ++ rewrite span_snoc by lia. intros l Hl.
-                apply in_app_or in Hl as [Hl | [<- | []]].
-                ** apply Hat2. assumption.
-                ** assumption.
-             ++ rewrite span_snoc by lia. apply NoDup_app.
-                ** assumption.
-                ** constructor.
-                   --- easy.
-                   --- constructor.
-                ** intros l Hl [<- | []]. apply existsb_key in Hl.
-                   congruence.
-             ++ apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM2 Hst).
-             ++ eexists. split.
-                ** apply (arr_store Am2 Hky Hst).
-                ** rewrite span_snoc by lia. apply marks_add. assumption.
+      + (* y is new: s->mrk[y] = 1; q++; and the loop goes on *)
+        intros Hunmarked.
+        assert (Hnew: ~ In (lits sh q) (span sh (starts sh i) q)).
+        { intros Hin. apply existsb_key in Hin. rewrite Hin in Hunmarked. lia. }
+        run. store Am2 Hky as m3 Hst.
+        run. ints. apply loopk_next with (S q).
+        * unfold clause_variant, ltof. lia.
+        * constructor.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- tmp.
+          -- lia.
+          -- rewrite span_snoc by lia. apply atoms_below_snoc.
+             ++ assumption.
+             ++ assumption.
+          -- rewrite span_snoc by lia. apply nodup_snoc.
+             ++ assumption.
+             ++ assumption.
+          -- apply (clause_mem_store m m2 m3 sh N lss _ _ Hnd HM2 Hst).
+          -- eexists. split.
+             ++ apply (arr_store Am2 Hky Hst).
+             ++ rewrite span_snoc by lia. apply marks_add. assumption.
   Qed.
 
   (* The marking loop of clause i, from b = starts sh i to e = starts sh (i + 1):
@@ -450,6 +473,157 @@ Section Loops.
         * assumption.
     - assumption.
   Qed.
+  (* The variant of the loop over the clauses. *)
+  Abbreviation clauses_variant := (ltof nat (fun (i: nat) => length lss - i)%nat).
+
+  (* Setting a temporary other than s, n and i keeps the invariant of the loop over the
+     clauses. *)
+  Lemma clauses_inv_set: forall (i: nat) (le: temp_env) (m1: mem) (j: ident) (v: val),
+    j <> _s -> j <> _n -> j <> _i -> ClausesInv i le m1 ->
+    ClausesInv i (PTree.set j v le) m1.
+  Proof.
+    intros i le m1 j v Hs Hn Hi [Hs1 Hn1 Hi1 Hile Hat Hnd' HM1 Hmarks]. constructor.
+    - rewrite PTree.gso by congruence. assumption.
+    - rewrite PTree.gso by congruence. assumption.
+    - rewrite PTree.gso by congruence. assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+    - assumption.
+  Qed.
+
+  (* The statements for clause i from the unmarking on, once all of it is marked (and so
+     has atoms below N and no literal twice):
+
+       {{ MarkInv i e }}
+         q = b;
+       {{ UnmarkInv i b }}
+         while (q < e) { ... }                                    (unmark_loop_correct)
+       {{ UnmarkInv i e: nothing is marked }}
+         i++;
+       {{ ClausesInv (i + 1) }}                                           (below_succ) *)
+  Lemma unmark_part_correct: forall (i: nat) (le: temp_env) (m2: mem)
+    (K: temp_env -> mem -> outcome -> Prop),
+    (i < length lss)%nat ->
+    (forall (i': nat), (i' < i)%nat -> AtomsBelow N (nth i' lss [])) ->
+    (forall (i': nat), (i' < i)%nat -> NoDup (nth i' lss [])) ->
+    MarkInv i (starts sh (S i)) le m2 ->
+    Exec ge le m2 unmark_part (LoopK clauses_variant ClausesInv K i).
+  Proof.
+    intros i le m2 K Hi Hat Hnd' HA.
+    destruct HA as [Hs2 Hn2 Hi2 Hb2 He2 _ _ Hat2 Hnd2 HM2 (tm2 & Am2 & Hm2)].
+    destruct (ly_clause Hly i Hi) as [Hrange Hclause].
+    pose proof Hsz as [_ _ _ Hlss].
+    rewrite <- Hclause in Hat2, Hnd2, Hm2.
+    assert (Hadd: Int.add (Int.repr (Z.of_nat i)) (Int.repr 1)
+                  = Int.repr (Z.of_nat (S i))).
+    { rewrite add_repr by lia. f_equal. lia. }
+    unfold unmark_part, clause_part, clauses_loop, f_check_clauses.
+    cbn [fn_body drop_stmts first_stmt loop_body].
+    (* q = b; *)
+    run.
+    apply exec_weaken
+      with (Q := fun (le: temp_env) (m3: mem) (out: outcome) =>
+                   out = Out_normal /\ UnmarkInv i (starts sh (S i)) le m3).
+    - apply unmark_loop_correct.
+      + assumption.
+      + assumption.
+      + assumption.
+      + (* The unmarking invariant holds at q = b. *)
+        constructor.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * lia.
+        * assumption.
+        * exists tm2. split.
+          -- assumption.
+          -- rewrite <- Hclause. assumption.
+    - (* nothing is marked: i++; and the invariant holds for i + 1 *)
+      intros le3 m3 out (-> & HC).
+      destruct HC as [Hs3 Hn3 Hi3 _ _ _ HM3 (tm3 & Am3 & Hm3)].
+      normal. run. ints. apply loopk_next with (S i).
+      + unfold ltof. lia.
+      + constructor.
+        * tmp.
+        * tmp.
+        * tmp.
+        * lia.
+        * apply below_succ.
+          -- assumption.
+          -- assumption.
+        * apply below_succ.
+          -- assumption.
+          -- assumption.
+        * assumption.
+        * exists tm3. split.
+          -- assumption.
+          -- rewrite span_nil in Hm3. assumption.
+  Qed.
+
+  (* The statements for clause i < ncl: the marking loop rejects the clause or marks all
+     of it, and then the unmarking follows. The continuation K of the loop over the
+     clauses accepts a return of 0:
+
+       {{ ClausesInv i /\ i < ncl }}
+         int b = s->cstart[i];
+         int e = s->cstart[i + 1];
+         int q = b;
+       {{ MarkInv i b }}
+         while (q < e) { ... }                                      (mark_loop_correct)
+       {{ MarkInv i e, or result = 0 (rejected) }}
+         q = b; ...; i++;                                         (unmark_part_correct)
+       {{ ClausesInv (i + 1) }}                                                       *)
+  Lemma clause_part_correct: forall (i: nat) (le: temp_env) (m1: mem)
+    (K: temp_env -> mem -> outcome -> Prop),
+    (forall (le': temp_env) (m': mem), K le' m' (ret_int 0)) ->
+    (i < length lss)%nat -> ClausesInv i le m1 ->
+    Exec ge le m1 clause_part (LoopK clauses_variant ClausesInv K i).
+  Proof.
+    intros i le m1 K HK Hi HI.
+    destruct HI as [Hs Hn Hi1 Hile Hat Hnd' HM1 (tm1 & Am1 & Hm1)].
+    pose proof HM1 as [[Fnv1 Fncl1 Fcs1 Fcl1 Fm1 As1 Al1] Hun1].
+    destruct (ly_clause Hly i Hi) as [Hrange _].
+    pose proof Hsz as [HN Hncl Hkeys Hlss].
+    assert (Hadd: Int.add (Int.repr (Z.of_nat i)) (Int.repr 1)
+                  = Int.repr (Z.of_nat (S i))).
+    { rewrite add_repr by lia. f_equal. lia. }
+    unfold clause_part, clauses_loop, f_check_clauses.
+    cbn [fn_body drop_stmts first_stmt loop_body].
+    (* int b = s->cstart[i]; int e = s->cstart[i + 1]; int q = b; *)
+    run.
+    (* The marking loop: all of clause i marked, or a return of 0. *)
+    apply exec_weaken with (Q := MarkPost i).
+    - apply mark_loop_correct.
+      + assumption.
+      + (* The marking invariant holds at q = b, with nothing marked. *)
+        constructor.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * tmp.
+        * lia.
+        * rewrite span_nil. intros l [].
+        * rewrite span_nil. constructor.
+        * assumption.
+        * exists tm1. split.
+          -- assumption.
+          -- rewrite span_nil. assumption.
+    - intros le2 m2 out [[-> HA] | ->].
+      + (* all of clause i is marked: the unmarking *)
+        normal. apply unmark_part_correct.
+        * assumption.
+        * assumption.
+        * assumption.
+        * assumption.
+      + (* return 0 from the marking loop *)
+        ret. apply HK.
+  Qed.
 End Loops.
 
 (* check_clauses marks the literals of each clause in turn, rejecting a literal out of
@@ -461,13 +635,13 @@ End Loops.
      {{ ClausesInv 0 }}
        while (i < s->ncl) {
      {{ ClausesInv i /\ i < ncl }}
-         int b = s->cstart[i];
+         int b = s->cstart[i];                                    (clause_part_correct)
          int e = s->cstart[i + 1];
          int q = b;
      {{ MarkInv i b }}
          while (q < e) {
      {{ MarkInv i q /\ q < e }}
-           int y = s->clits[q];
+           int y = s->clits[q];                                     (mark_body_correct)
            if (y < 0) return 0;
            if (y >= n) return 0;
            if (s->mrk[y] != 0) return 0;
@@ -478,7 +652,7 @@ End Loops.
      {{ MarkInv i (q + 1) }}
          }
      {{ MarkInv i e }}
-         q = b;
+         q = b;                                                   (unmark_part_correct)
      {{ UnmarkInv i b }}
          while (q < e) {
            s->mrk[s->clits[q]] = 0;
@@ -522,89 +696,25 @@ Proof.
     apply exec_loop with (R := ltof nat (fun (i: nat) => length lss - i)%nat)
       (I := ClausesInv m sh N lss) (a := 0%nat).
     + apply well_founded_ltof.
-    + intros i le1 m1 HI. destruct HI as [Hs Hn Hi Hile Hat Hnd' HM1 (tm1 & Am1 & Hm1)].
+    + intros i le1 m1 HI.
+      pose proof HI as [Hs Hn Hi Hile Hat Hnd' HM1 (tm1 & Am1 & Hm1)].
       pose proof HM1 as [[Fnv1 Fncl1 Fcs1 Fcl1 Fm1 As1 Al1] Hun1].
       clear Fnv Fncl Fcstart Fclits Fmrk Astarts Alits Amrk.
       (* if (i < s->ncl) ... else break; *)
       run. branch.
-      * (* i < ncl: int b = s->cstart[i]; int e = s->cstart[i + 1]; int q = b; *)
-        intros Hi_ncl. assert (Hlt: (i < length lss)%nat) by lia.
-        destruct (ly_clause Hly i Hlt) as [Hrange Hclause].
-        assert (Hadd: Int.add (Int.repr (Z.of_nat i)) (Int.repr 1)
-                      = Int.repr (Z.of_nat (S i))).
-        { rewrite add_repr by lia. f_equal. lia. }
-        run.
-        (* The marking loop: all of clause i marked, or a return of 0. *)
-        apply exec_weaken with (Q := MarkPost m sh N lss i).
-        -- apply (mark_loop_correct m sh N lss Hnd Hsz Hly i).
+      * (* i < ncl: the statements for clause i *)
+        intros Hi_ncl. apply exec_skip. normal.
+        apply (clause_part_correct m sh N lss Hnd Hsz Hly).
+        -- (* a return of 0 is a result of check_clauses *)
+           intros le' m'. ret. exists (vint 0). split.
+           ++ apply result_int.
+           ++ now left.
+        -- lia.
+        -- apply clauses_inv_set.
+           ++ discriminate.
+           ++ discriminate.
+           ++ discriminate.
            ++ assumption.
-           ++ (* The marking invariant holds at q = b, with nothing marked. *)
-              constructor.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** tmp.
-              ** lia.
-              ** unfold span. rewrite Nat.sub_diag. intros l [].
-              ** unfold span. rewrite Nat.sub_diag. constructor.
-              ** assumption.
-              ** exists tm1. split.
-                 --- assumption.
-                 --- unfold span. rewrite Nat.sub_diag. assumption.
-        -- intros le2 m2 out [[-> HA] | ->].
-           ++ (* all of clause i is marked: q = b; and the unmarking loop *)
-              destruct HA as [Hs2 Hn2 Hi2 Hb2 He2 _ _ Hat2 Hnd2 HM2 (tm2 & Am2 & Hm2)].
-              rewrite <- Hclause in Hat2, Hnd2, Hm2.
-              clear Fnv1 Fncl1 Fcs1 Fcl1 Fm1 As1 Al1 Am1. normal. run.
-              apply exec_weaken
-                with (Q := fun (le: temp_env) (m3: mem) (out: outcome) =>
-                             out = Out_normal /\
-                             UnmarkInv m sh N lss i (starts sh (S i)) le m3).
-              ** apply (unmark_loop_correct m sh N lss Hnd Hsz Hly i).
-                 --- assumption.
-                 --- assumption.
-                 --- assumption.
-                 --- (* The unmarking invariant holds at q = b. *)
-                     constructor.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ lia.
-                     +++ assumption.
-                     +++ exists tm2. split.
-                         *** assumption.
-                         *** rewrite <- Hclause. assumption.
-              ** (* nothing is marked: i++; and the invariant holds for i + 1 *)
-                 intros le3 m3 out (-> & HC).
-                 destruct HC as [Hs3 Hn3 Hi3 _ _ _ HM3 (tm3 & Am3 & Hm3)].
-                 normal. run. ints. apply loopk_next with (S i).
-                 --- unfold ltof. lia.
-                 --- constructor.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ tmp.
-                     +++ lia.
-                     +++ intros i' Hi' l Hl.
-                         destruct (Nat.eq_dec i' i) as [-> | Hne].
-                         *** apply Hat2. assumption.
-                         *** apply (Hat i').
-                             ---- lia.
-                             ---- assumption.
-                     +++ intros i' Hi'. destruct (Nat.eq_dec i' i) as [-> | Hne].
-                         *** assumption.
-                         *** apply Hnd'. lia.
-                     +++ assumption.
-                     +++ exists tm3. split.
-                         *** assumption.
-                         *** unfold span in Hm3. rewrite Nat.sub_diag in Hm3. assumption.
-           ++ (* return 0 from the marking loop *)
-              ret. exists (vint 0). split.
-              ** apply result_int.
-              ** now left.
       * (* i >= ncl: break; return 1; every clause is checked *)
         intros Hncl_le. apply exec_break. abrupt. apply loopk_break. normal.
         return_int.

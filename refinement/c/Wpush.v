@@ -110,7 +110,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold f_wpush. cbn [fn_body fn_return].
-    pose proof HRep as HRep'. destruct HRep'. unpack.
+    pose proof HRep as HRep'. destruct HRep' as [[] [] []]. unpack.
     pose proof (r_wlen_le (lit_key l) Hk) as Hlen.
     pose proof (r_room (lit_key l) Hk) as Hroom.
     set (n := length (watching (wls x) l)) in *.

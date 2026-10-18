@@ -16,6 +16,7 @@ From compcert Require Import Clight.
 From compcert Require Import ClightBigstep.
 
 From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Tactics.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Watches.
@@ -142,8 +143,8 @@ Lemma heap_pop_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
   (x: Ctx),
   {{ m | RepL m sh N lss x /\ (0 < hsize (hr x))%nat }}
     f_heap_pop(sptr sh)
-  {{ m', v | HeurPost sh N lss x m (fst (heap_pop (hr x))) m' /\
-             v = vnat (snd (heap_pop (hr x))) }}.
+  {{ m', v | Gives sh N lss (HeurFrame sh) (x <| hr := fst (heap_pop (hr x)) |>)
+               (vnat (snd (heap_pop (hr x)))) m m' v }}.
 Proof.
   intros sh N lss x m [HRep Hpos]. pose proof (r_n HRep) as HN.
   pose proof (r_heur HRep) as Hok.
@@ -210,9 +211,10 @@ Proof.
     + (* return a; *)
       intros le4 m4 out (-> & Ha4 & HRep4 & Hun4). apply seqk_normal.
       return_int.
-      split.
-      * split; assumption.
+      splits.
       * rewrite heap_pop_snd. reflexivity.
+      * assumption.
+      * assumption.
 Qed.
 
 Lemma heap_pop_fun: FunAt _heap_pop f_heap_pop.

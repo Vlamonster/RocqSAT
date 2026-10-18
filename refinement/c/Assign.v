@@ -230,7 +230,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold f_assign. cbn [fn_body fn_return].
-    pose proof HRep as HRep0. destruct HRep0.
+    pose proof HRep as HRep0. destruct HRep0 as [[] [] []].
     (* int a = l >> 1; int v = 1 - 2 * (l & 1); int t = s->tlen; *)
     run.
     (* if (t >= s->nv) return 0; *)

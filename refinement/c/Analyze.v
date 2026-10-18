@@ -132,9 +132,7 @@ Definition AnalyzePost (sh: Shape) (N: nat) (lss: list (list Lit)) (res: Ctx * o
   (m m': mem) (v: val): Prop :=
   match res with
   | (x', ou) =>
-    v = vint (enc_lit ou) /\ RepL m' sh N lss x' /\
-    OptBelow N ou /\
-    Mem.unchanged_on (AddFrame sh) m m'
+    OptBelow N ou /\ Gives sh N lss (AddFrame sh) x' (vint (enc_lit ou)) m m' v
   end.
 
 (* The loop of analyze at count pc on the current context y tracks the model: with a
@@ -215,13 +213,11 @@ Proof.
   - intros m2 v [HRep2 Hun2]. normal.
     (* return -1; *)
     return_int.
-    split.
+    hnf. splits.
+    + intros u Hu. discriminate.
     + reflexivity.
-    + split.
-      * apply HRep2.
-      * split.
-        -- intros u Hu. discriminate.
-        -- frame.
+    + apply HRep2.
+    + frame.
 Qed.
 
 (* A count that is used up or failed ends the analysis. *)
@@ -434,13 +430,11 @@ Proof.
               ** ret. exists (vint (key (¬t))). split.
                  --- cbn [cast_int_int]. rewrite Hxor. apply result_int.
                  --- rewrite Hres, (analyze_loop_found d lo) by lia.
-                     fold idx1 t. split.
+                     fold idx1 t. hnf. splits.
+                     +++ intros u Hu. injection Hu as <-. assumption.
                      +++ reflexivity.
-                     +++ split.
-                         *** assumption.
-                         *** split.
-                             ---- intros u Hu. injection Hu as <-. assumption.
-                             ---- assumption.
+                     +++ assumption.
+                     +++ assumption.
            ++ lia.
         -- (* more of level d: unmark ¬t and resolve with its reason *)
            intros Hmore. destruct p0 as [|p'].

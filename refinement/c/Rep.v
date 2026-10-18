@@ -307,12 +307,15 @@ Abbreviation solver_blocks sh :=
 Abbreviation StackIn t s :=
   (forall (q: nat), (q < length s)%nat -> t q = Z.of_nat (nth q (rev s) 0)%nat).
 
-(* The memory m holds, for N atoms and the length of the clauses lss, the context x, with
-   the positions of its decisions and the lower literals of an analysis in progress (none
-   between steps: Rep); all but the watch lists, which Rep adds. The r_ fields are the
-   fields of struct solver, the a_ fields the arrays they point to, and the rest are
-   facts about the context. *)
-Record RepL {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop := {
+(* How the memory m holds the context x, for N atoms and the clauses lss, in three
+   parts: the layout, which never changes; the fields and arrays that hold the tables of
+   x; and the bounds that keep the C code within its arrays and its ints. Between steps,
+   Rep adds the watch lists and that no analysis is in progress. *)
+
+(* The layout: the blocks of the solver are distinct, the fields of struct solver point
+   to them, and the parts that never change (the number of atoms, the clauses' starts,
+   the room of the watch lists) are in memory and fit their bounds. *)
+Record Layout {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)}: Prop := {
   r_nodup: NoDup (solver_blocks sh);
   r_nv: IntAt m sh o_nv N;
   r_ncl: IntAt m sh o_ncl (length lss);
@@ -325,25 +328,52 @@ Record RepL {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop 
   r_wlen: PtrAt m sh o_wlen (b_wlen sh);
   r_wcap: PtrAt m sh o_wcap (b_wcap sh);
   r_tr: PtrAt m sh o_tr (b_tr sh);
-  r_tlen: IntAt m sh o_tlen (tlen x);
-  r_qhead: IntAt m sh o_qhead (qhead x);
   r_shorts: PtrAt m sh o_shorts (b_shorts sh);
-  r_nshorts: IntAt m sh o_nshorts (length (shorts x));
   r_alls: PtrAt m sh o_alls (b_alls sh);
-  r_nlits: IntAt m sh o_nlits (nlits x);
-  r_cur: IntAt m sh o_cur (cur x);
   r_saved: PtrAt m sh o_saved (b_saved sh);
   r_lims: PtrAt m sh o_lims (b_lims sh);
-  r_dl: IntAt m sh o_dl (length (lims x));
   r_phs: PtrAt m sh o_phs (b_phs sh);
   a_starts: Arr m (b_cstart sh) (S (length lss))
     (fun (i: nat) => Z.of_nat (starts sh i));
+  a_woff: Arr m (b_woff sh) (2 * N) (fun (k: nat) => Z.of_nat (offs sh k));
+  a_wcap: Arr m (b_wcap sh) (2 * N) (fun (k: nat) => Z.of_nat (caps sh k));
+  r_starts: forall (i: nat), (i < length lss)%nat ->
+    (starts sh i <= starts sh (S i) <= nclits sh)%nat;
+  r_n: Z.of_nat N < atom_bound;
+  r_nclits_small: Z.of_nat (nclits sh) < small_bound;
+  r_lss_small: Z.of_nat (length lss) < small_bound;
+  r_pool_small: Z.of_nat (npool sh) < small_bound;
+  r_room: forall (k: nat), (k < 2 * N)%nat -> (offs sh k + caps sh k <= npool sh)%nat;
+  r_apart: forall (k k': nat), (k < k' < 2 * N)%nat ->
+    (offs sh k + caps sh k <= offs sh k')%nat;
+  r_mrk: PtrAt m sh o_mrk (b_mrk sh);
+  r_rsn: PtrAt m sh o_rsn (b_rsn sh);
+  r_lvl: PtrAt m sh o_lvl (b_lvl sh);
+  r_lt: PtrAt m sh o_lt (b_lt sh);
+  r_rlits: PtrAt m sh o_rlits (b_rlits sh);
+  r_rbeg: PtrAt m sh o_rbeg (b_rbeg sh);
+  r_rlen: PtrAt m sh o_rlen (b_rlen sh);
+  r_rpos: PtrAt m sh o_rpos (b_rpos sh);
+  r_act: PtrAt m sh o_act (b_act sh);
+  r_heap: PtrAt m sh o_heap (b_heap sh);
+  r_hpos: PtrAt m sh o_hpos (b_hpos sh);
+  r_dlit: PtrAt m sh o_dlit (b_dlit sh)
+}.
+Arguments Layout : clear implicits.
+
+(* The tables of x in memory: each int field of struct solver holds the value of x, and
+   each array the encoding of its table. *)
+Record Holds {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop := {
+  r_tlen: IntAt m sh o_tlen (tlen x);
+  r_qhead: IntAt m sh o_qhead (qhead x);
+  r_nshorts: IntAt m sh o_nshorts (length (shorts x));
+  r_nlits: IntAt m sh o_nlits (nlits x);
+  r_cur: IntAt m sh o_cur (cur x);
+  r_dl: IntAt m sh o_dl (length (lims x));
   a_lits: exists (t: nat -> Z), Arr m (b_clits sh) (nclits sh) t /\
     ClausesIn sh N (length lss) t (cmap x);
   a_vals: Arr m (b_vals sh) (2 * N) (key_value (vals x));
-  a_woff: Arr m (b_woff sh) (2 * N) (fun (k: nat) => Z.of_nat (offs sh k));
   a_wlen: Arr m (b_wlen sh) (2 * N) (fun (k: nat) => Z.of_nat (length (tget (wls x) k)));
-  a_wcap: Arr m (b_wcap sh) (2 * N) (fun (k: nat) => Z.of_nat (caps sh k));
   a_tr: Arr m (b_tr sh) N (fun (j: nat) => key (tget (tr x) j));
   a_shorts: exists (t: nat -> Z),
     Arr m (b_shorts sh) (length lss) t /\ StackIn t (shorts x);
@@ -352,17 +382,38 @@ Record RepL {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop 
   a_saved: exists (t: nat -> Z), Arr m (b_saved sh) N t /\ StackIn t (saved x);
   a_lims: exists (t: nat -> Z), Arr m (b_lims sh) N t /\ StackIn t (lims x);
   a_phs: Arr m (b_phs sh) N (fun (a: nat) => enc_value (tget (phs x) a));
+  r_ltlen: IntAt m sh o_ltlen (length (lower x));
+  r_rcap: IntAt m sh o_rcap (rcap x);
+  r_rtop: IntAt m sh o_rtop (reasons_size (rcl x) (nr x));
+  r_nr: IntAt m sh o_nr (nr x);
+  a_mrk: Arr m (b_mrk sh) (2 * N) (fun (k: nat) => enc_mark (tget (mrk x) k));
+  a_rsn: Arr m (b_rsn sh) N (fun (a: nat) => enc_reason (tget (rsn x) a));
+  a_lvl: Arr m (b_lvl sh) N (fun (a: nat) => Z.of_nat (tget (lvl x) a));
+  a_lt: exists (t: nat -> Z), Arr m (b_lt sh) N t /\
+    forall (k: nat), (k < length (lower x))%nat ->
+      t k = key (nth k (lower x) (Pos 0%nat));
+  a_rlits: exists (t: nat -> Z), Arr m (b_rlits sh) (rcap x) t /\
+    ReasonsIn t (rcl x) (nr x);
+  a_rbeg: exists (t: nat -> Z), Arr m (b_rbeg sh) N t /\
+    forall (j: nat), (j < nr x)%nat -> t j = Z.of_nat (reasons_size (rcl x) j);
+  a_rlen: exists (t: nat -> Z), Arr m (b_rlen sh) N t /\
+    forall (j: nat), (j < nr x)%nat -> t j = Z.of_nat (length (tget (rcl x) j));
+  a_rpos: exists (t: nat -> Z), Arr m (b_rpos sh) N t /\
+    forall (j: nat), (j < nr x)%nat -> t j = Z.of_nat (tget (rps x) j);
+  r_inc: Fld m (b_s sh) o_inc Mint32 (vint (inc (hr x)));
+  r_hsize: IntAt m sh o_hsize (hsize (hr x));
+  a_act: Arr m (b_act sh) N (fun (a: nat) => tget (act (hr x)) a);
+  a_heap: Arr m (b_heap sh) N (fun (i: nat) => Z.of_nat (tget (heap (hr x)) i));
+  a_hpos: Arr m (b_hpos sh) N (fun (a: nat) => enc_pos (tget (hpos (hr x)) a));
+  a_dlit: Arr m (b_dlit sh) N (fun (a: nat) => enc_lit (tget (dlit (hr x)) a))
+}.
+Arguments Holds : clear implicits.
+
+(* The bounds of x, which do not mention memory: indices stay within the arrays and values
+   within the ints of the C code. *)
+Record Bounded {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop := {
   r_cmap: forall (i: nat), (length lss <= i)%nat -> tget (cmap x) i = None;
-  r_starts: forall (i: nat), (i < length lss)%nat ->
-    (starts sh i <= starts sh (S i) <= nclits sh)%nat;
   r_nvars: nvars x = N;
-  r_n: Z.of_nat N < atom_bound;
-  r_nclits_small: Z.of_nat (nclits sh) < small_bound;
-  r_lss_small: Z.of_nat (length lss) < small_bound;
-  r_pool_small: Z.of_nat (npool sh) < small_bound;
-  r_room: forall (k: nat), (k < 2 * N)%nat -> (offs sh k + caps sh k <= npool sh)%nat;
-  r_apart: forall (k k': nat), (k < k' < 2 * N)%nat ->
-    (offs sh k + caps sh k <= offs sh k')%nat;
   r_wlen_le: forall (k: nat), (k < 2 * N)%nat ->
     (length (tget (wls x) k) <= caps sh k)%nat;
   r_wls_cls: forall (k i: nat) (b: Lit), (k < 2 * N)%nat -> In (i, b) (tget (wls x) k) ->
@@ -381,32 +432,6 @@ Record RepL {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop 
   r_saved_le: forall (c: nat), In c (saved x) -> (c <= nlits x)%nat;
   r_saved_len: length (saved x) = length (lims x);
   r_dl_le: (length (lims x) <= N)%nat;
-  r_mrk: PtrAt m sh o_mrk (b_mrk sh);
-  r_rsn: PtrAt m sh o_rsn (b_rsn sh);
-  r_lvl: PtrAt m sh o_lvl (b_lvl sh);
-  r_lt: PtrAt m sh o_lt (b_lt sh);
-  r_ltlen: IntAt m sh o_ltlen (length (lower x));
-  r_rlits: PtrAt m sh o_rlits (b_rlits sh);
-  r_rcap: IntAt m sh o_rcap (rcap x);
-  r_rtop: IntAt m sh o_rtop (reasons_size (rcl x) (nr x));
-  r_rbeg: PtrAt m sh o_rbeg (b_rbeg sh);
-  r_rlen: PtrAt m sh o_rlen (b_rlen sh);
-  r_rpos: PtrAt m sh o_rpos (b_rpos sh);
-  r_nr: IntAt m sh o_nr (nr x);
-  a_mrk: Arr m (b_mrk sh) (2 * N) (fun (k: nat) => enc_mark (tget (mrk x) k));
-  a_rsn: Arr m (b_rsn sh) N (fun (a: nat) => enc_reason (tget (rsn x) a));
-  a_lvl: Arr m (b_lvl sh) N (fun (a: nat) => Z.of_nat (tget (lvl x) a));
-  a_lt: exists (t: nat -> Z), Arr m (b_lt sh) N t /\
-    forall (k: nat), (k < length (lower x))%nat ->
-      t k = key (nth k (lower x) (Pos 0%nat));
-  a_rlits: exists (t: nat -> Z), Arr m (b_rlits sh) (rcap x) t /\
-    ReasonsIn t (rcl x) (nr x);
-  a_rbeg: exists (t: nat -> Z), Arr m (b_rbeg sh) N t /\
-    forall (j: nat), (j < nr x)%nat -> t j = Z.of_nat (reasons_size (rcl x) j);
-  a_rlen: exists (t: nat -> Z), Arr m (b_rlen sh) N t /\
-    forall (j: nat), (j < nr x)%nat -> t j = Z.of_nat (length (tget (rcl x) j));
-  a_rpos: exists (t: nat -> Z), Arr m (b_rpos sh) N t /\
-    forall (j: nat), (j < nr x)%nat -> t j = Z.of_nat (tget (rps x) j);
   r_dl_eq: dl x = length (lims x);
   r_rsn_below: forall (a: nat), (a < N)%nat -> ReasonBelow (length lss) N
     (tget (rsn x) a);
@@ -419,17 +444,16 @@ Record RepL {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop 
   r_rcl_atoms: forall (j: nat) (y: Lit), (j < nr x)%nat -> In y (tget (rcl x) j) ->
     (extract y < N)%nat;
   r_rps_le: forall (j: nat), (j < nr x)%nat -> (tget (rps x) j <= N)%nat;
-  r_act: PtrAt m sh o_act (b_act sh);
-  r_inc: Fld m (b_s sh) o_inc Mint32 (vint (inc (hr x)));
-  r_heap: PtrAt m sh o_heap (b_heap sh);
-  r_hpos: PtrAt m sh o_hpos (b_hpos sh);
-  r_hsize: IntAt m sh o_hsize (hsize (hr x));
-  r_dlit: PtrAt m sh o_dlit (b_dlit sh);
-  a_act: Arr m (b_act sh) N (fun (a: nat) => tget (act (hr x)) a);
-  a_heap: Arr m (b_heap sh) N (fun (i: nat) => Z.of_nat (tget (heap (hr x)) i));
-  a_hpos: Arr m (b_hpos sh) N (fun (a: nat) => enc_pos (tget (hpos (hr x)) a));
-  a_dlit: Arr m (b_dlit sh) N (fun (a: nat) => enc_lit (tget (dlit (hr x)) a));
   r_heur: HeurOk N (hr x)
+}.
+Arguments Bounded : clear implicits.
+
+(* The memory m holds the context x: its layout, its tables and its bounds. Each part is
+   also a coercion, so the facts of a part apply to RepL directly: r_tlen_le HRep. *)
+Record RepL {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)} {x: Ctx}: Prop := {
+  r_layout :> Layout m sh N lss;
+  r_holds :> Holds m sh N lss x;
+  r_bounds :> Bounded sh N lss x
 }.
 (* RepL takes its arguments explicitly; its projections infer them from the record:
    r_n HRep. *)
@@ -442,6 +466,16 @@ Definition iblocks (sh: Shape): list block := solver_blocks sh.
 Definition Rep (m: mem) (sh: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx): Prop :=
   RepL m sh N lss x /\ lower x = [] /\
   exists (t: nat -> Z), PoolArr m sh t /\ PoolFree sh N t (wls x).
+
+(* The three shapes of what a C function promises, from the memory m of the call to the
+   memory m' at its return, with result v: *)
+(* it stores nothing and returns r; *)
+Abbreviation Reads m m' v r := (m' = m /\ v = r).
+(* it changes the represented context to x', and nothing outside the frame B; *)
+Abbreviation Changes sh N lss B x' m m' :=
+  (RepL m' sh N lss x' /\ Mem.unchanged_on B m m').
+(* it returns r, and changes the represented context to x' within the frame B. *)
+Abbreviation Gives sh N lss B x' r m m' v := (v = r /\ Changes sh N lss B x' m m').
 
 (* x with the cursor c, the saved cursors st, the decision level d and the decision
    positions ls. *)
@@ -498,9 +532,9 @@ Section Stores.
     assert (Ha2: (2 * a + 1 < 2 * N)%nat) by lia.
     pose proof (arr_store (a_vals HRep) Ha1 Hst1) as Avals1.
     pose proof (arr_store Avals1 Ha2 Hst2) as Avals.
-    destruct HRep. carry Hst1 Hnd. carry Hst2 Hnd.
+    destruct HRep as [[] [] []]. carry Hst1 Hnd. carry Hst2 Hnd.
     (* Every field but the values is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the values: both literals of atom a now have the values of o *)
       cbn [set_vals vals]. eapply arr_ext.
       + apply Avals.
@@ -523,9 +557,9 @@ Section Stores.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (r_tr_atoms HRep) as Hatoms.
     pose proof (arr_store (a_tr HRep) HjN Hst) as Atr.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field but the trail is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the trail: position j now holds l *)
       cbn [set_tr tr]. arr_tset.
     - (* the trail up to its end is unchanged, as j is not below it *)
@@ -545,10 +579,10 @@ Section Stores.
     intros m m' n HRep Hn Hq Hatoms Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (fld_store (r_tlen HRep) Hst) as Ftlen.
-    cbn [Val.load_result] in Ftlen. destruct HRep. carry Hst Hnd.
+    cbn [Val.load_result] in Ftlen. destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but the length, its bounds and the atoms of the trail,
        which the hypotheses give. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
   Qed.
 
   (* Moving the head of the queue to n, within the trail: s->qhead = n. *)
@@ -560,10 +594,10 @@ Section Stores.
     intros m m' n HRep Hn Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (fld_store (r_qhead HRep) Hst) as Fqh.
-    cbn [Val.load_result] in Fqh. destruct HRep. carry Hst Hnd.
+    cbn [Val.load_result] in Fqh. destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but the head of the queue, which the hypothesis
        bounds. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
   Qed.
 
   (* Cutting the trail to its first j literals, with an empty queue:
@@ -580,11 +614,11 @@ Section Stores.
     pose proof (r_tr_atoms HRep) as Hatoms.
     pose proof (r_qhead HRep) as Fqh.
     pose proof (fld_store (r_tlen HRep) Hst1) as Ftlen1.
-    destruct HRep. carry Hst1 Hnd.
+    destruct HRep as [[] [] []]. carry Hst1 Hnd.
     pose proof (fld_store Fqh Hst2) as Fqh2.
     carry Hst2 Hnd. cbn [Val.load_result] in Ftlen1, Fqh2.
     (* Every field is as before, but the length and the head of the queue, now j. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the length is within the old one *)
       cbn [set_qhead set_tlen tlen]. lia.
     - (* the queue is empty *)
@@ -602,9 +636,9 @@ Section Stores.
     intros m m' c HRep Hc Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (fld_store (r_cur HRep) Hst) as Fcur.
-    cbn [Val.load_result] in Fcur. destruct HRep. carry Hst Hnd.
+    cbn [Val.load_result] in Fcur. destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but the cursor, which the hypothesis bounds. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
   Qed.
 
   (* Opening a decision level at the cursor: the cursor is saved, and the position of the
@@ -627,7 +661,7 @@ Section Stores.
     pose proof (a_saved HRep) as (tsv & Asaved & Htsv).
     pose proof (a_lims HRep) as (tl & Alims & Htl).
     pose proof (r_dl HRep) as Fdl.
-    destruct HRep. unpack.
+    destruct HRep as [[] [] []]. unpack.
     pose proof (arr_store Asaved Hroom Hst2) as Asaved2.
     carry Hst2 Hnd.
     pose proof (arr_store Alims Hroom Hst3) as Alims3.
@@ -637,10 +671,7 @@ Section Stores.
     (* Every field is as before, but the saved cursors and the decision positions, which
        get the cursor and tlen x as their last entries; the hypothesis bounds the new
        number of decisions. *)
-    constructor; try assumption.
-    - repack.
-    - repack.
-    - repack.
+    constructor; constructor; try assumption; try repack.
     - (* the saved cursors: the cursor is the new last entry *)
       eexists. split.
       + apply Asaved2.
@@ -665,11 +696,6 @@ Section Stores.
       + now apply Hsle.
     - (* one saved cursor per decision *)
       cbn [open_level saved lims length]. lia.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
-    - repack.
     - (* one decision more *)
       cbn [open_level dl lims length]. f_equal. assumption.
   Qed.
@@ -681,9 +707,9 @@ Section Stores.
   Proof.
     intros m m' ofs v HRep Hst.
     pose proof (r_nodup HRep) as Hnd.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
   Qed.
 
   (* Setting the watch list of l to ws, which the pool holds, by its length:
@@ -703,9 +729,9 @@ Section Stores.
     pose proof (r_wls_cls HRep) as Hwcls.
     pose proof (r_wls_blk HRep) as Hwblk.
     pose proof (arr_store (a_wlen HRep) Hk Hst) as Awlen.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but the watch lists and their bounds. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the lengths: the list of l is ws *)
       eapply arr_ext.
       + apply Awlen.
@@ -792,9 +818,9 @@ Section Stores.
     { rewrite (Hcl i Hi) in Hls. injection Hls as <-.
       now rewrite length_map, length_seq. }
     pose proof (arr_store (k := (starts sh i + d)) At ltac:(lia) Hst) as At'.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but the literals of clause i. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - exists (fun (q: nat) => if Nat.eqb (starts sh i + d) q then key y else t q). split.
       + assumption.
       + split.
@@ -838,7 +864,7 @@ Section Stores.
     { intros j. rewrite tget_tset. destruct (Nat.eq_dec i j) as [<- | Hne].
       - now rewrite Hls.
       - reflexivity. }
-    destruct HRep. constructor; try assumption.
+    destruct HRep as [[] [] []]. constructor; constructor; try assumption; try repack.
     - destruct a_lits0 as (t & At & Hatoms & Hcl). exists t. split.
       + assumption.
       + split.
@@ -857,7 +883,7 @@ Section Stores.
       tget (tset (tset (cmap x) i (Some ls1)) i (Some ls2)) j =
       tget (tset (cmap x) i (Some ls2)) j).
     { intros j. rewrite !tget_tset. now destruct (Nat.eq_dec i j). }
-    destruct HRep. constructor; try assumption.
+    destruct HRep as [[] [] []]. constructor; constructor; try assumption; try repack.
     - destruct a_lits0 as (t & At & Hatoms & Hcl). exists t. split.
       + assumption.
       + split.
@@ -878,13 +904,9 @@ Section Stores.
     intros m m' ss tsh HRep Ash Htsh Hle Hcls Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (fld_store (r_nshorts HRep) Hst) as Fns.
-    cbn [Val.load_result] in Fns. destruct HRep. carry Hst Hnd.
+    cbn [Val.load_result] in Fns. destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before, but the short clauses, which the hypotheses describe. *)
-    constructor; try assumption.
-    - (* the array of short clauses *)
-      exists tsh. split.
-      + assumption.
-      + intros q Hq. apply Htsh. assumption.
+    constructor; constructor; try assumption; try repack.
   Qed.
 
   (* A store to the array of short clauses while the context has none. *)
@@ -897,9 +919,9 @@ Section Stores.
     intros m m' ts k z HRep Hsh Ats Hk Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (arr_store Ats Hk Hst) as Ats'.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field is as before; there are still no short clauses. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - exists (fun (j: nat) => if Nat.eqb k j then z else ts j). split.
       + assumption.
       + intros q Hq. rewrite Hsh in Hq. cbn [length] in Hq. lia.
@@ -914,9 +936,9 @@ Section Stores.
     intros m m' a o HRep Ha Hst.
     pose proof (r_nodup HRep) as Hnd.
     pose proof (arr_store (a_phs HRep) Ha Hst) as Aphs.
-    destruct HRep. carry Hst Hnd.
+    destruct HRep as [[] [] []]. carry Hst Hnd.
     (* Every field but the phases is as before. *)
-    constructor; try assumption.
+    constructor; constructor; try assumption; try repack.
     - (* the phases: atom a now has the phase o *)
       cbn [set_phs phs]. arr_tset.
   Qed.
