@@ -1,13 +1,34 @@
 (* check_shorts checks the clauses with fewer than two literals (check_shorts), or
    gives up. *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
-  Ctypes Cop Clight ClightBigstep.
-From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep LitValue Assign Visit.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Table.
+From RocqSAT.refinement Require Import Lookup.
+From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Propagate.
+From RocqSAT.refinement Require Import Analysis.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
+From RocqSAT.refinement.c Require Import LitValue.
+From RocqSAT.refinement.c Require Import Assign.
+From RocqSAT.refinement.c Require Import Visit.
 
 (* The parts of check_shorts proved in lemmas of their own: its loop, the body of the
    loop after its test, and in the body the test if (v == 0) that assigns the first

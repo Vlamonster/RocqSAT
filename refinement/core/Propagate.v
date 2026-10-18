@@ -1,9 +1,9 @@
 From Stdlib Require Import Bool.
 From Stdlib Require Import Arith.
-From Stdlib Require Import List.
 From Stdlib Require Import Lia.
-From Stdlib Require Import Relations.
+From Stdlib Require Import List.
 From Stdlib Require Import Permutation.
+From Stdlib Require Import Relations.
 Import ListNotations.
 
 From RocqSAT Require Import Lit.
@@ -12,10 +12,10 @@ From RocqSAT Require Import CNF.
 From RocqSAT Require Import Assignment.
 From RocqSAT Require Import Evaluation.
 From RocqSAT Require Import State.
-From RocqSAT Require Import Trans.
-From RocqSAT.rules Require Import Unit.
 From RocqSAT Require Import WellFormed.
 From RocqSAT Require Import Measure.
+From RocqSAT Require Import Trans.
+From RocqSAT.rules Require Import Unit.
 From RocqSAT.refinement Require Import Lookup.
 From RocqSAT.refinement Require Import Search.
 From RocqSAT.refinement Require Import Watches.

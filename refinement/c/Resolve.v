@@ -2,15 +2,42 @@
    analyses the conflict and backjumps, asserting the literal the analysis gives with the
    analysed clause as its reason, or flips the last decision; or it gives up. *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
-  Ctypes Cop Clight ClightBigstep.
-From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Analysis Step
-  SolverStep.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepReasons RepHeur
-  Assign Cut Decay Analyze UnmarkLower PushReason.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Table.
+From RocqSAT.refinement Require Import Lookup.
+From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Heur.
+From RocqSAT.refinement Require Import Propagate.
+From RocqSAT.refinement Require Import Analysis.
+From RocqSAT.refinement Require Import Step.
+From RocqSAT.refinement Require Import SolverStep.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
+From RocqSAT.refinement.c Require Import RepReasons.
+From RocqSAT.refinement.c Require Import RepHeur.
+From RocqSAT.refinement.c Require Import Assign.
+From RocqSAT.refinement.c Require Import Decay.
+From RocqSAT.refinement.c Require Import Cut.
+From RocqSAT.refinement.c Require Import Analyze.
+From RocqSAT.refinement.c Require Import UnmarkLower.
+From RocqSAT.refinement.c Require Import PushReason.
 
 (* What C returns and leaves for an outcome of a step on the context: 0 to stop with P of
    the memory, 1 to fail, and 2 with the next context in memory. *)

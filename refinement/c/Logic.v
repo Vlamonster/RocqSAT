@@ -5,9 +5,20 @@
    rule is a lemma about the semantics itself, so the logic needs no soundness proof of
    its own. The rules are drawn as inference rules in the comments, as in Software
    Foundations (Hoare.v), with {{ P }} s {{ Q }} for Exec. *)
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs Ctypes Cop
-  Clight ClightBigstep Events.
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Events.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
 From compcert Require Ctypesdefs.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
 From RocqSAT.refinement.c Require Import Arrays.
 
 (* Comparisons of ints as C computes them, on their values. *)

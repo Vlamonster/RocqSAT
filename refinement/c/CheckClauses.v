@@ -1,13 +1,30 @@
 (* check_clauses checks that the literals of the clauses have atoms below N, and that no
    clause has a literal twice. *)
-From Stdlib Require Import List Bool.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
-  Ctypes Cop Clight ClightBigstep.
-From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep.
+From Stdlib Require Import Bool.
+From Stdlib Require Import List.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Table.
+From RocqSAT.refinement Require Import Lookup.
+From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
 
 (* The marks tm, by key below 2 N, are 1 exactly for the literals ls. *)
 Definition Marks (N: nat) (tm: nat -> Z) (ls: list Lit): Prop :=

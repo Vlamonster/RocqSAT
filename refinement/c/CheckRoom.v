@@ -1,11 +1,25 @@
 (* check_room checks that the watch lists laid out by the caller fit in the pool, one
    after the other. *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
-  Ctypes Cop Clight ClightBigstep.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
 
 (* The first n watch lists, at offsets tw with capacities tc, lie within 0 .. bound. *)
 Definition Fits (tw tc: nat -> Z) (n: nat) (bound: Z): Prop :=

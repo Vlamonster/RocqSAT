@@ -6,7 +6,11 @@
    The bounds are powers of two: indices and small ints are below 2^30 = small_bound, so
    that sums of two of them fit in a signed 32-bit int (2^31 = int_bound); pointer
    offsets are 64-bit (2^64 = 18446744073709551616). *)
-From compcert Require Import Coqlib Integers Values Memory AST.
+From compcert Require Import Coqlib.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
 
 (* The value of int z. *)
 Definition vint (z: Z): val := Vint (Int.repr z).

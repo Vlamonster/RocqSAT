@@ -1,10 +1,10 @@
 From Stdlib Require Import Bool.
 From Stdlib Require Import Arith.
-From Stdlib Require Import List.
 From Stdlib Require Import Lia.
-From Stdlib Require Import Relations.
+From Stdlib Require Import List.
 From Stdlib Require SetoidList.
 From Stdlib Require Import Permutation.
+From Stdlib Require Import Relations.
 Import ListNotations.
 
 From RocqSAT Require Import Lit.

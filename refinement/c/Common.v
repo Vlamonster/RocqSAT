@@ -1,12 +1,26 @@
 (* What the proofs of the C solvers share: literals as keys, values of atoms, and the
    tactics that run straight-line code over arrays and struct fields. *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs Ctypes Cop
-  Clight ClightBigstep.
-From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches.
-From RocqSAT.refinement.c Require Import Logic Arrays.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Table.
+From RocqSAT.refinement Require Import Lookup.
+From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
 
 (* A literal as C keeps it, its key: 2p for Pos p and 2p + 1 for Neg p. *)
 Definition key (l: Lit): Z := Z.of_nat (lit_key l).

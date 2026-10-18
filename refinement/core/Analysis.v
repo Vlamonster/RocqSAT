@@ -3,10 +3,10 @@
    decision level, until one literal of that level is left (the first unique implication
    point). The literals of the current level are only counted and marked; the others are
    collected in a list. The functions work on the context, as the C solver does. *)
-From Stdlib Require Import List.
-From Stdlib Require Import Arith.
 From Stdlib Require Import Bool.
+From Stdlib Require Import Arith.
 From Stdlib Require Import Lia.
+From Stdlib Require Import List.
 Import ListNotations.
 
 From RocqSAT Require Import Lit.

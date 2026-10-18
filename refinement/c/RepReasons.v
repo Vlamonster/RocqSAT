@@ -2,14 +2,35 @@
    the marks, reasons, levels, lower literals or reason clauses does to the represented
    context, and jumping back to an older level. *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs Ctypes Cop
-  Clight ClightBigstep.
-From RocqSAT Require Import Lit Assignment.
-From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Analysis Step
-  SolverStep.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Assignment.
+From RocqSAT.refinement Require Import Table.
+From RocqSAT.refinement Require Import Lookup.
+From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Heur.
+From RocqSAT.refinement Require Import Propagate.
+From RocqSAT.refinement Require Import Analysis.
+From RocqSAT.refinement Require Import Step.
+From RocqSAT.refinement Require Import SolverStep.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
 
 (* Every block but the arrays of the reason clauses. *)
 Abbreviation ReasonFrame sh :=

@@ -1,13 +1,37 @@
 (* heap_down moves the atom at a heap position down while a child has a higher activity
    (heap_down). *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
-  Ctypes Ctypesdefs Cop Clight ClightBigstep.
-From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Heur Propagate Step Ctx.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepHeur Rescale HeapUp.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Ctypesdefs.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Table.
+From RocqSAT.refinement Require Import Lookup.
+From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Heur.
+From RocqSAT.refinement Require Import Ctx.
+From RocqSAT.refinement Require Import Propagate.
+From RocqSAT.refinement Require Import Step.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
+From RocqSAT.refinement.c Require Import RepHeur.
+From RocqSAT.refinement.c Require Import Rescale.
+From RocqSAT.refinement.c Require Import HeapUp.
 
 (* The position k + 1 after the one in temporary id, as C computes it. *)
 Lemma eval_succ: forall (le: temp_env) (m: mem) (id: ident) (k: nat),

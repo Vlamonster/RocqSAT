@@ -7,14 +7,37 @@
    VisitMem (KeepRest.v) say what the temporaries and the memory hold at position k, and
    each part of the loop body has a lemma of its own. *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs Ctypes
-  Ctypesdefs Cop Clight ClightBigstep.
-From RocqSAT Require Import Lit.
-From RocqSAT.refinement Require Import Table Lookup Watches Propagate Analysis.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep LitValue Wpush Assign
-  FindWatch KeepRest.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Ctypesdefs.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT.refinement Require Import Table.
+From RocqSAT.refinement Require Import Lookup.
+From RocqSAT.refinement Require Import Watches.
+From RocqSAT.refinement Require Import Propagate.
+From RocqSAT.refinement Require Import Analysis.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
+From RocqSAT.refinement.c Require Import LitValue.
+From RocqSAT.refinement.c Require Import Wpush.
+From RocqSAT.refinement.c Require Import Assign.
+From RocqSAT.refinement.c Require Import FindWatch.
+From RocqSAT.refinement.c Require Import KeepRest.
 
 (* Whether a visit found a conflict, as C returns it: i + 1 for a conflict on clause i,
    0 for none. *)

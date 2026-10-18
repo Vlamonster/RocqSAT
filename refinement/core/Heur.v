@@ -12,6 +12,7 @@
 From Stdlib Require Import Arith.
 From Stdlib Require Import ZArith.
 From Stdlib Require Import Lia.
+
 From RocqSAT Require Import Lit.
 From RocqSAT.refinement Require Import Table.
 From RocqSAT.refinement Require Import Lookup.

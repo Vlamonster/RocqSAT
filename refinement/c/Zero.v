@@ -1,11 +1,26 @@
 (* zero sets the entries of an int array to zero; fill_none, which differs only in the
    value it stores, is proved with it (FillNone.v). *)
 From Stdlib Require Import List.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
-  Ctypes Ctypesdefs Cop Clight ClightBigstep.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Ctypesdefs.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
 
 (* The Clight of a function that stores the value of e into n ints from p on; zero and
    fill_none are this function for e = 0 and e = -1:

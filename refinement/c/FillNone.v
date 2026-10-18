@@ -1,9 +1,21 @@
 (* fill_none sets the entries of an int array to -1, which encodes none (enc_pos,
    enc_lit); it is fill_fun of Zero.v for the value -1. *)
-From compcert Require Import Coqlib Integers Values Memory AST Ctypes Ctypesdefs Cop
-  Clight.
+From compcert Require Import Coqlib.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Ctypesdefs.
+From compcert Require Import Clight.
+
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
 From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Zero.
+From RocqSAT.refinement.c Require Import Rep.
+From RocqSAT.refinement.c Require Import Zero.
 
 (* fill_none stores -1 into every entry of the array, and nothing else. *)
 Lemma fill_none_correct: forall (b: block) (n: nat) (t: nat -> Z),

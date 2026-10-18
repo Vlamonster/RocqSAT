@@ -1,5 +1,5 @@
-From Stdlib Require Import List.
 From Stdlib Require Import Lia.
+From Stdlib Require Import List.
 Import ListNotations.
 
 From RocqSAT Require Import Lit.

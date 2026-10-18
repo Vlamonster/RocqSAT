@@ -1,14 +1,41 @@
 (* The C solver, end to end: init and then solve answer whether the formula of
    the clauses is satisfiable, unless they reject the input or run out of room, and both
    terminate. *)
-From Stdlib Require Import List SetoidList.
-From compcert Require Import Coqlib Maps Integers Values Memory AST Globalenvs
-  Ctypes Cop Clight ClightBigstep.
-From RocqSAT Require Import Lit Clause CNF Assignment Model Satisfiability State Measure.
-From RocqSAT.refinement Require Import Search Propagate Step.
-From RocqSAT.refinement.c Require Import solver.
-From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Index Init Solve.
+From Stdlib Require Import List.
+From Stdlib Require Import SetoidList.
 Import ListNotations.
+
+From compcert Require Import Coqlib.
+From compcert Require Import Maps.
+From compcert Require Import Integers.
+From compcert Require Import AST.
+From compcert Require Import Values.
+From compcert Require Import Memory.
+From compcert Require Import Globalenvs.
+From compcert Require Import Ctypes.
+From compcert Require Import Cop.
+From compcert Require Import Clight.
+From compcert Require Import ClightBigstep.
+
+From RocqSAT Require Import Lit.
+From RocqSAT Require Import Clause.
+From RocqSAT Require Import CNF.
+From RocqSAT Require Import Assignment.
+From RocqSAT Require Import Model.
+From RocqSAT Require Import State.
+From RocqSAT Require Import Measure.
+From RocqSAT Require Import Satisfiability.
+From RocqSAT.refinement Require Import Search.
+From RocqSAT.refinement Require Import Propagate.
+From RocqSAT.refinement Require Import Step.
+From RocqSAT.refinement.c Require Import Arrays.
+From RocqSAT.refinement.c Require Import Logic.
+From RocqSAT.refinement.c Require Import Common.
+From RocqSAT.refinement.c Require Import solver.
+From RocqSAT.refinement.c Require Import Rep.
+From RocqSAT.refinement.c Require Import Solve.
+From RocqSAT.refinement.c Require Import Index.
+From RocqSAT.refinement.c Require Import Init.
 
 (* The lists lss are the clauses of f: each holds exactly the literals of a clause of f,
    and each clause of f has such a list. *)
