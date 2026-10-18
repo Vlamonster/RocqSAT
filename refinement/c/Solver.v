@@ -12,11 +12,12 @@ Import ListNotations.
 
 (* The lists lss are the clauses of f: each holds exactly the literals of a clause of f,
    and each clause of f has such a list. *)
-Record ClauseListsOf (f: CNF) (lss: list (list Lit)): Prop := {
+Record ClauseListsOf {f: CNF} {lss: list (list Lit)}: Prop := {
   cl_sound: forall (cs: list Lit), In cs lss -> ClauseOf f cs;
   cl_complete: forall (c: Clause), c ∈ f ->
     exists (cs: list Lit), In cs lss /\ forall (l: Lit), In l cs <-> l ∈ c;
 }.
+Arguments ClauseListsOf : clear implicits.
 
 (* The literals of clause lists that are the clauses of f are the literals of f. *)
 Lemma lits_of_clauses: forall (lss: list (list Lit)) (f: CNF) (l: Lit),
@@ -31,10 +32,10 @@ Proof.
     + now apply Hiff.
 Qed.
 
-(* With the atoms of f below N, the trail bound of the solver is at most N. *)
-Lemma max_atom_below: forall (f: CNF) (N: nat),
+(* With the atoms of f below N, so is the largest one. *)
+Lemma max_atom_lt: forall (f: CNF) (N: nat),
   (forall (l: Lit), l ∈ f -> (extract l < N)%nat) -> (1 <= N)%nat ->
-  (Datatypes.S (max_atom_f f) <= N)%nat.
+  (S (max_atom_f f) <= N)%nat.
 Proof.
   intros f N Hat HN. unfold max_atom_f.
   assert (Hle: (list_max (map extract (flat_map Clause.elements (CNF.elements f)))
@@ -53,23 +54,23 @@ Qed.
 
 (* The solver, as the driver runs it. From memory holding the clauses lss of f for N
    atoms, laid out as InitInput says, with room rc for the literals of the reason
-   clauses: init rejects the input, or solve answers 1 with a
-   model of f on the trail, 0 when f is unsatisfiable, or 2 when out of room. Both calls
-   terminate. In between, init sets up the initial context of SolverStep.v
-   (init_correct), from which solve runs the solver (solve_correct). *)
-Theorem solver_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
+   clauses: init rejects the input, or solve answers 1 with a model of f on the trail,
+   0 when f is unsatisfiable, or 2 when out of room. Both calls terminate. *)
+Theorem solver_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (rc: nat)
   (f: CNF) (tw tc: nat -> Z),
-  InitInput S N lss tw tc -> ClauseListsOf f lss ->
-  {{ m | IRep m S N lss rc tw tc }}
-    f_init(sptr S); f_solve(sptr S)
+  InitInput sh N lss tw tc -> ClauseListsOf f lss ->
+  {{ m | IRep m sh N lss rc tw tc }}
+    f_init(sptr sh); f_solve(sptr sh)
   {{ m', r | r = Rejected \/
-             (r = Returned 1 /\ exists (pm: PA), Model pm f /\ TrailIn m' S N pm) \/
+             (r = Returned 1 /\ exists (pm: PA), Model pm f /\ TrailIn m' sh N pm) \/
              (r = Returned 0 /\ Unsat f) \/
              r = Returned 2 }}.
 Proof.
-  intros S N lss rc f tw tc HIn Hlss m HI. pose proof Hlss as [Hsound Hcomplete].
+  (* init sets up the initial context of SolverStep.v (init_correct), from which solve
+     runs the solver (solve_correct). *)
+  intros sh N lss rc f tw tc HIn Hlss m HI. pose proof Hlss as [Hsound Hcomplete].
   eapply call_weaken.
-  - apply (init_correct S N lss rc tw tc HIn m HI).
+  - apply (init_correct sh N lss rc tw tc HIn m HI).
   - intros m' v [-> | [-> [HN1 (offs & caps & acc & HRep & Hnd & Hacc)]]].
     + (* init returned 0: rejected *)
       left. split.
@@ -77,7 +78,7 @@ Proof.
       * left. reflexivity.
     + (* init returned 1: solve runs from the initial context *)
       right. eapply call_weaken.
-      * apply (solve_correct (with_room S offs caps) N lss (initial_of lss acc N rc) f
+      * apply (solve_correct (with_room sh offs caps) N lss (initial_of lss acc N rc) f
                  m').
         split.
         -- assumption.
@@ -87,14 +88,15 @@ Proof.
               ** now apply Hsound.
            ++ assumption.
            ++ intros l. rewrite Hacc. now apply lits_of_clauses.
-           ++ apply max_atom_below.
+           ++ apply max_atom_lt.
               ** intros l Hl.
                  apply (lits_of_clauses lss f l Hlss) in Hl as [cs [Hcs Hl]].
                  apply In_nth with (d := []) in Hcs as [i [Hi <-]].
-                 apply (clause_atoms m' (with_room S offs caps) N lss
-                          (initial_of lss acc N rc) [] i (nth i lss []) l (proj1 HRep)).
+                 apply (clause_atoms m' (with_room sh offs caps) N lss
+                          (initial_of lss acc N rc) i (nth i lss []) l (proj1 HRep)).
                  --- (* clause i of the initial context is clause i of lss *)
-                     rewrite initial_of_idx. cbn [cmap]. rewrite idx_cm by lia.
+                     rewrite initial_of_idx. cbn [set_hr set_shorts ictx cmap].
+                     rewrite idx_cm by lia.
                      replace (i <? length lss)%nat with true
                        by (symmetry; now apply Nat.ltb_lt).
                      reflexivity.

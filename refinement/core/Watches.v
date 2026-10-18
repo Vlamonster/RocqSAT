@@ -14,6 +14,7 @@ match l with
 | Neg p => S (2 * p)
 end.
 
+(* Different literals have different keys. *)
 Lemma lit_key_inj: forall (l l': Lit), lit_key l = lit_key l' -> l = l'.
 Proof. intros [p|p] [p'|p'] Heq; simpl in Heq; f_equal; lia. Qed.
 
@@ -21,18 +22,21 @@ Proof. intros [p|p] [p'|p'] Heq; simpl in Heq; f_equal; lia. Qed.
 Definition Unmarked (mk: Table bool): Prop := forall (y: Lit), tget mk (lit_key y) = false.
 
 (* The literals of each clause of the formula by index, its first two literals being its
-   watches; and for each literal (by lit_key) the watchers of the clauses that watch it.
-   Both are tables, so their lookups take constant time. *)
+   watches. Clauses and watch lists are tables, so their lookups take constant time. *)
 Definition ClauseMap: Type := Table (option (list Lit)).
 
 (* A watcher: a clause and its blocker, a literal of the clause that is checked before the
    clause itself. *)
 Definition Watcher: Type := nat * Lit.
+
+(* For each literal, by lit_key, the watchers of the clauses that watch it. *)
 Definition WatchLists: Type := Table (list Watcher).
 
+(* The watchers of the clauses that watch l. *)
 Definition watching (wl: WatchLists) (l: Lit): list Watcher := tget wl (lit_key l).
 
-Lemma watching_add: forall (wl: WatchLists) (l l': Lit) (ns: list Watcher),
+(* Setting the watchers of l, by cases on the literal. *)
+Lemma watching_set: forall (wl: WatchLists) (l l': Lit) (ns: list Watcher),
   watching (tset wl (lit_key l) ns) l' = if Lit.eq_dec l l' then ns else watching wl l'.
 Proof.
   intros wl l l' ns. unfold watching. destruct (Lit.eq_dec l l') as [<-|Hneq].
@@ -40,7 +44,7 @@ Proof.
   - apply tget_tset_other. intros Heq. apply Hneq. now apply lit_key_inj.
 Qed.
 
-(* Whether l is not false. *)
+(* Whether l is not false in v. *)
 Definition not_false (v: Values) (l: Lit): bool :=
 match lookup v l with
 | Some false => false

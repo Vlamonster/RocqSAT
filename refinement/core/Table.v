@@ -20,15 +20,20 @@ Arguments tget : simpl never.
 Arguments tset : simpl never.
 Arguments tmake : simpl never.
 
+(* Setting key k and reading it gives the new value. *)
 Lemma tget_tset_same: forall {A: Type} (t: Table A) (k: nat) (a: A), tget (tset t k a) k = a.
 Proof. intros A t k a. unfold tget, tset. now rewrite Nat.eqb_refl. Qed.
 
-Lemma tget_tset_other: forall {A: Type} (t: Table A) (k k': nat) (a: A), k <> k' -> tget (tset t k a) k' = tget t k'.
+(* Setting key k leaves the other keys. *)
+Lemma tget_tset_other: forall {A: Type} (t: Table A) (k k': nat) (a: A),
+  k <> k' -> tget (tset t k a) k' = tget t k'.
 Proof. intros A t k k' a Hneq. unfold tget, tset. apply Nat.eqb_neq in Hneq. now rewrite Hneq. Qed.
 
+(* Every key of tmake d has value d. *)
 Lemma tget_tmake: forall {A: Type} (k: nat) (d: A), tget (tmake d) k = d.
 Proof. reflexivity. Qed.
 
+(* Reading a set table, by cases on the key. *)
 Lemma tget_tset: forall {A: Type} (t: Table A) (k k': nat) (a: A),
   tget (tset t k a) k' = if Nat.eq_dec k k' then a else tget t k'.
 Proof.

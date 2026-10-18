@@ -18,23 +18,24 @@ Definition InOrder (tw tc: nat -> Z) (n: nat): Prop :=
 (* The invariant of the loop of check_room at q, for the memory m of the call: the
    temporaries hold s, n = 2 N, off and q, the memory is still m, and the watch lists
    before q fit below off, which is within the pool, one after the other. *)
-Record RoomInv (m: mem) (S: Shape) (N: nat) (tw tc: nat -> Z) (off: Z) (q: nat)
-  (le: temp_env) (m1: mem): Prop := {
-  ri_s: le ! _s = Some (sptr S);
-  ri_n: le ! _n = Some (vint (Z.of_nat (2 * N)));
+Record RoomInv {m: mem} {sh: Shape} {N: nat} {tw tc: nat -> Z} {off: Z} {q: nat}
+  {le: temp_env} {m1: mem}: Prop := {
+  ri_s: le ! _s = Some (sptr sh);
+  ri_n: le ! _n = Some (vnat (2 * N));
   ri_off: le ! _off = Some (vint off);
-  ri_q: le ! _q = Some (vint (Z.of_nat q));
+  ri_q: le ! _q = Some (vnat q);
   ri_mem: m1 = m;
   ri_le: (q <= 2 * N)%nat;
-  ri_off_range: 0 <= off <= Z.of_nat (npool S);
+  ri_off_range: 0 <= off <= Z.of_nat (npool sh);
   ri_fits: Fits tw tc q off;
   ri_order: InOrder tw tc q;
 }.
+Arguments RoomInv : clear implicits.
 
 (* A watch list from off >= 0 on extends lists that fit below off, in order. *)
 Lemma room_next: forall (tw tc: nat -> Z) (q: nat) (off: Z),
   0 <= off -> Fits tw tc q off -> InOrder tw tc q -> off <= tw q -> 0 <= tc q ->
-  Fits tw tc (Datatypes.S q) (tw q + tc q) /\ InOrder tw tc (Datatypes.S q).
+  Fits tw tc (S q) (tw q + tc q) /\ InOrder tw tc (S q).
 Proof.
   intros tw tc q off Hoff Hfits Horder Hlo Hc. split.
   - intros k Hk. destruct (Nat.eq_dec k q) as [-> | Hne].
@@ -53,40 +54,40 @@ Qed.
        int n = 2 * s->nv;
        int off = 0;
        int q = 0;
-     {{ RoomInv m S N tw tc 0 0 }}
+     {{ RoomInv m sh N tw tc 0 0 }}
        while (q < n) {
-     {{ RoomInv m S N tw tc off q /\ q < n }}
+     {{ RoomInv m sh N tw tc off q /\ q < n }}
          int o = s->woff[q];
          int c = s->wcap[q];
          if (o < off) return 0;
          if (c < 0) return 0;
          if (c > s->npool - o) return 0;
      {{ result = 0 (rejected) }}
-     {{ RoomInv m S N tw tc off q /\ off <= o /\ 0 <= c /\ o + c <= npool }}
+     {{ RoomInv m sh N tw tc off q /\ off <= o /\ 0 <= c /\ o + c <= npool }}
          off = o + c;
          q++;
-     {{ RoomInv m S N tw tc (o + c) (q + 1) }}            (room_next)
+     {{ RoomInv m sh N tw tc (o + c) (q + 1) }}            (room_next)
        }
-     {{ RoomInv m S N tw tc off q /\ q >= n }}
+     {{ RoomInv m sh N tw tc off q /\ q >= n }}
        return 1;
      {{ result = 1 /\ Fits tw tc (2 N) npool /\ InOrder tw tc (2 N) }}
 
    The loop ends: 2 N - q decreases. *)
-Lemma check_room_correct: forall (S: Shape) (N: nat) (tw tc: nat -> Z),
-  {{ m | Fld m (b_s S) 0 Mint32 (vint (Z.of_nat N)) /\
-         Fld m (b_s S) 40 Mint32 (vint (Z.of_nat (npool S))) /\
-         Fld m (b_s S) 48 Mptr (Vptr (b_woff S) Ptrofs.zero) /\
-         Fld m (b_s S) 64 Mptr (Vptr (b_wcap S) Ptrofs.zero) /\
-         Arr m (b_woff S) (2 * N) tw /\ Arr m (b_wcap S) (2 * N) tc /\
+Lemma check_room_correct: forall (sh: Shape) (N: nat) (tw tc: nat -> Z),
+  {{ m | IntAt m sh o_nv N /\
+         IntAt m sh o_npool (npool sh) /\
+         PtrAt m sh o_woff (b_woff sh) /\
+         PtrAt m sh o_wcap (b_wcap sh) /\
+         Arr m (b_woff sh) (2 * N) tw /\ Arr m (b_wcap sh) (2 * N) tc /\
          (forall (k: nat), (k < 2 * N)%nat -> Small (tw k) /\ Small (tc k)) /\
-         Z.of_nat N < 268435456 /\ Z.of_nat (npool S) < 1073741824 }}
-    f_check_room(sptr S)
+         Z.of_nat N < atom_bound /\ Z.of_nat (npool sh) < small_bound }}
+    f_check_room(sptr sh)
   {{ m', v | m' = m /\
              (v = vint 0 \/
-              (v = vint 1 /\ Fits tw tc (2 * N) (Z.of_nat (npool S)) /\
+              (v = vint 1 /\ Fits tw tc (2 * N) (Z.of_nat (npool sh)) /\
                InOrder tw tc (2 * N))) }}.
 Proof.
-  intros S N tw tc m (Fnv & Fnp & Fwo & Fwc & Awo & Awc & Hsmall & HN & Hnp).
+  intros sh N tw tc m (Fnv & Fnp & Fwo & Fwc & Awo & Awc & Hsmall & HN & Hnp).
   eapply call_simple.
   - reflexivity.
   - reflexivity.
@@ -98,118 +99,103 @@ Proof.
     run. ints. unfold Swhile.
     apply exec_loop with (R := ltof nat (fun (q: nat) => 2 * N - q)%nat)
       (I := fun (q: nat) (le: temp_env) (m1: mem) =>
-              exists (off: Z), RoomInv m S N tw tc off q le m1)
+              exists (off: Z), RoomInv m sh N tw tc off q le m1)
       (a := 0%nat).
     + apply well_founded_ltof.
     + intros q le1 m1 [off HI]. destruct HI as [Hs Hn Hoff Hq -> Hqn Hoffr Hfits Horder].
       apply exec_seq.
       (* if (q < n) ... else break; *)
-      eapply (exec_if_cmp _ _ _ Clt).
+      eapply exec_if_lt.
       * ev.
       * ev.
       * reflexivity.
-      * reflexivity.
-      * unfold Small. lia.
-      * unfold Small. lia.
-      * destruct (Nat.lt_ge_cases q (2 * N)) as [Hlt | Hge].
-        -- (* q < n: int o = s->woff[q]; int c = s->wcap[q]; *)
-           replace (zcmp Clt (Z.of_nat q) (Z.of_nat (2 * N))) with true
-             by (symmetry; cbn [zcmp]; apply Z.ltb_lt; lia).
-           destruct (Hsmall q Hlt) as [Hsw Hsc].
-           assert (Hadd: Int.add (Int.repr (Z.of_nat q)) (Int.repr 1)
-                         = Int.repr (Z.of_nat (Datatypes.S q))).
-           { rewrite add_repr by lia. f_equal. lia. }
-           cbv beta iota. run.
-           (* if (o < off) return 0; *)
-           eapply (exec_if_cmp _ _ _ Clt _ _ (tw q) off).
+      * lia.
+      * (* q < n: int o = s->woff[q]; int c = s->wcap[q]; *)
+        intros Hlt. assert (Hq_lt: (q < 2 * N)%nat) by lia.
+        destruct (Hsmall q Hq_lt) as [Hsw Hsc].
+        assert (Hadd: Int.add (Int.repr (Z.of_nat q)) (Int.repr 1)
+                      = Int.repr (Z.of_nat (S q))).
+        { rewrite add_repr by lia. f_equal. lia. }
+        run.
+        (* if (o < off) return 0; *)
+        eapply exec_if_lt.
+        -- ev.
+        -- ev.
+        -- reflexivity.
+        -- lia.
+        -- intros _. eapply exec_return.
            ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ reflexivity.
-           ++ assumption.
-           ++ unfold Small. lia.
-           ++ cbn [zcmp]. destruct (Z.ltb_spec (tw q) off) as [Hlo | Hlo].
-              { cbv beta iota. eapply exec_return.
-                - ev.
-                - ret. exists (vint 0). split.
-                  + apply result_int.
-                  + split.
-                    * reflexivity.
-                    * now left. }
-              (* if (c < 0) return 0; *)
-              cbv beta iota. run.
-              eapply (exec_if_cmp _ _ _ Clt _ _ (tc q) 0).
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** reflexivity.
-              ** assumption.
-              ** unfold Small. lia.
-              ** cbn [zcmp]. destruct (Z.ltb_spec (tc q) 0) as [Hlc | Hlc].
-                 { cbv beta iota. eapply exec_return.
-                   - ev.
-                   - ret. exists (vint 0). split.
-                     + apply result_int.
-                     + split.
-                       * reflexivity.
-                       * now left. }
-                 (* if (c > s->npool - o) return 0; *)
-                 cbv beta iota. run.
-                 eapply (exec_if_cmp _ _ _ Cgt _ _ (tc q) (Z.of_nat (npool S) - tw q)).
-                 --- ev.
-                 --- eapply eval_Ebinop.
-                     +++ ev.
-                     +++ ev.
-                     +++ cbn -[Int.sub Int.repr]. unfold vint. rewrite <- sub_repr.
-                         reflexivity.
-                 --- reflexivity.
-                 --- reflexivity.
-                 --- assumption.
-                 --- unfold Small in *. lia.
-                 --- cbn [zcmp]. destruct (Z.ltb_spec (Z.of_nat (npool S) - tw q) (tc q))
-                       as [Hlr | Hlr].
-                     { cbv beta iota. eapply exec_return.
-                       - ev.
-                       - ret. exists (vint 0). split.
-                         + apply result_int.
-                         + split.
-                           * reflexivity.
-                           * now left. }
-                     (* off = o + c; q++; and the list at q extends the invariant *)
-                     assert (Hoc: Int.add (Int.repr (tw q)) (Int.repr (tc q))
-                                  = Int.repr (tw q + tc q)).
-                     { rewrite add_repr by (unfold Small in *; lia). reflexivity. }
-                     assert (Hoff0: 0 <= off) by lia.
-                     destruct (room_next tw tc q off Hoff0 Hfits Horder Hlo Hlc)
-                       as [Hfits' Horder'].
-                     cbv beta iota. run. ints. apply loopk_next with (Datatypes.S q).
-                     +++ unfold ltof. lia.
-                     +++ exists (tw q + tc q). constructor.
-                         *** tmp.
-                         *** tmp.
-                         *** tmp.
-                         *** tmp.
-                         *** reflexivity.
-                         *** lia.
-                         *** lia.
-                         *** assumption.
-                         *** assumption.
-        -- (* q >= n: break; return 1; every list fits, in order *)
-           replace (zcmp Clt (Z.of_nat q) (Z.of_nat (2 * N))) with false
-             by (symmetry; cbn [zcmp]; apply Z.ltb_ge; lia).
-           cbv beta iota. apply exec_break. abrupt. apply loopk_break. normal.
-           eapply exec_return.
-           ++ ev.
-           ++ exists (vint 1). split.
+           ++ ret. exists (vint 0). split.
               ** apply result_int.
               ** split.
                  --- reflexivity.
-                 --- right. split.
+                 --- now left.
+        -- (* if (c < 0) return 0; *)
+           intros Hlo. run.
+           eapply exec_if_lt.
+           ++ ev.
+           ++ ev.
+           ++ reflexivity.
+           ++ lia.
+           ++ intros _. eapply exec_return.
+              ** ev.
+              ** ret. exists (vint 0). split.
+                 --- apply result_int.
+                 --- split.
                      +++ reflexivity.
+                     +++ now left.
+           ++ (* if (c > s->npool - o) return 0; *)
+              intros Hlc. run.
+              eapply exec_if_gt.
+              ** ev.
+              ** eapply eval_Ebinop.
+                 --- ev.
+                 --- ev.
+                 --- cbn -[Int.sub Int.repr]. unfold vint. rewrite <- sub_repr.
+                     reflexivity.
+              ** reflexivity.
+              ** lia.
+              ** intros _. eapply exec_return.
+                 --- ev.
+                 --- ret. exists (vint 0). split.
+                     +++ apply result_int.
                      +++ split.
-                         *** intros k Hk. assert (Hkq: (k < q)%nat) by lia.
-                             specialize (Hfits k Hkq). lia.
-                         *** intros k k' Hk. apply Horder. lia.
+                         *** reflexivity.
+                         *** now left.
+              ** (* off = o + c; q++; and the list at q extends the invariant *)
+                 intros Hlr.
+                 assert (Hoc: Int.add (Int.repr (tw q)) (Int.repr (tc q))
+                              = Int.repr (tw q + tc q)).
+                 { rewrite add_repr by (lia). reflexivity. }
+                 assert (Hoff0: 0 <= off) by lia.
+                 destruct (room_next tw tc q off Hoff0 Hfits Horder Hlo Hlc)
+                   as [Hfits' Horder'].
+                 run. ints. apply loopk_next with (S q).
+                 --- unfold ltof. lia.
+                 --- exists (tw q + tc q). constructor.
+                     +++ tmp.
+                     +++ tmp.
+                     +++ tmp.
+                     +++ tmp.
+                     +++ reflexivity.
+                     +++ lia.
+                     +++ lia.
+                     +++ assumption.
+                     +++ assumption.
+      * (* q >= n: break; return 1; every list fits, in order *)
+        intros Hge. apply exec_break. abrupt. apply loopk_break. normal.
+        eapply exec_return.
+        -- ev.
+        -- exists (vint 1). split.
+           ++ apply result_int.
+           ++ split.
+              ** reflexivity.
+              ** right. split.
+                 --- reflexivity.
+                 --- split.
+                     +++ intros k Hk. assert (Hkq: (k < q)%nat) by lia.
+                         specialize (Hfits k Hkq). lia.
+                     +++ intros k k' Hk. apply Horder. lia.
     + (* The invariant holds at q = 0, with off = 0. *)
       exists 0. constructor.
       * tmp.
@@ -223,7 +209,5 @@ Proof.
       * intros k k' Hk. lia.
 Qed.
 
-Lemma check_room_fun: exists (b: block),
-  Genv.find_symbol ge _check_room = Some b /\
-  Genv.find_funct_ptr ge b = Some (Internal f_check_room).
+Lemma check_room_fun: FunAt _check_room f_check_room.
 Proof. apply find_fun. reflexivity. Qed.

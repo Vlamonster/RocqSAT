@@ -9,85 +9,29 @@ From RocqSAT Require Import Strategy.
 From RocqSAT.systems Require Basic DPLL_BJ.
 From RocqSAT Require Import Model.
 From RocqSAT.refinement Require Import Table Lookup Watches Search Heur Propagate
-  Analysis Step CStep SolverStep.
+  Analysis Step SolverStep.
 From RocqSAT.refinement.c Require Import solver.
 From RocqSAT.refinement.c Require Import Logic Arrays Common Rep Resolve Step.
 Import ListNotations.
 
-(* Flipping the last decision keeps the formula. *)
-Lemma flip_formula: forall (m' m pm': PA) (f f': CNF) (x x': Ctx) (l: Lit)
-  (mk: Table bool) (h: Heur),
-  flip m' m f x l mk h = Some (state pm' f', x') -> f' = f.
-Proof.
-  intros m' m pm' f f' x x' l mk h. unfold flip.
-  destruct (saved x); intros H.
-  - discriminate.
-  - injection H. congruence.
-Qed.
-
-(* Resolving a conflict keeps the formula: it backjumps or flips the last decision. *)
-Lemma resolve_formula: forall (pm pm': PA) (f f': CNF) (x x': Ctx) (i: nat),
-  resolve pm f x i = Some (state pm' f', x') -> f' = f.
-Proof.
-  intros pm pm' f f' x x' i. unfold resolve.
-  destruct (split_last_decision pm) as [[m l]|].
-  - destruct (analyze x (decay (hr x) (nvars x)) i (dl x) (PA.length m))
-      as [[[ou mk] lt] h].
-    destruct (clear_marks (lvl x) mk lt ou) as [mk2 mx].
-    destruct ou as [u|].
-    + destruct (mx <? dl x)%nat.
-      * destruct (split_levels (dl x - Datatypes.S mx) pm) as [[[mt d] n]|].
-        -- destruct (skipn (dl x - Datatypes.S mx) (saved x)) as [|c0 st].
-           ++ apply flip_formula.
-           ++ (* the backjump asserts u *)
-              destruct (push_reason (jump_heur x (unassign_segment (vals x) d n)
-                          (PA.length mt) c0 st mx mk2 h) u lt) as [x1 r].
-              intros H. injection H. congruence.
-        -- apply flip_formula.
-      * apply flip_formula.
-    + apply flip_formula.
-  - intros H. discriminate.
-Qed.
-
-(* A step keeps the formula. *)
-Lemma step_formula: forall (pm pm': PA) (f f': CNF) (x x': Ctx),
-  step (state pm f, x) = Some (state pm' f', x') -> f' = f.
-Proof.
-  intros pm pm' f f' x x'. cbn [step].
-  destruct (check_shorts (shorts x) pm x) as [[m1 x1] [i|]].
-  - apply resolve_formula.
-  - destruct (propagate (Datatypes.S (nvars x1)) m1 (clear_shorts x1)) as [[m2 x2] [i|]].
-    + apply resolve_formula.
-    + destruct (pick (vals x2) (hr x2) (nvars x2)) as [h [l0|]].
-      * (* a decision on the literal picked *)
-        intros H. injection H. congruence.
-      * (* a decision by the cursor, or a stop *)
-        destruct (_ <? _)%nat.
-        -- intros H. injection H. congruence.
-        -- destruct (Nat.eqb _ (tlen x)); intros H.
-           ++ discriminate.
-           ++ injection H. congruence.
-Qed.
-
 (* The invariant of the loop of solve at the state s of the derivation it follows, for
    the formula f: the temporary s holds the solver, s is reached from the initial state
-   of f, and the memory represents a context xc consistent with s = state pm f, with the
-   decision positions lims. *)
-Record SolveInv (S: Shape) (N: nat) (lss: list (list Lit)) (f: CNF) (s: State)
-  (le: temp_env) (m1: mem): Prop := {
-  vi_s: le ! _s = Some (sptr S);
-  vi_reached: state ⟨⟩ f ==>*[DPLL_BJ] s;
-  vi_ctx: exists (pm: PA) (xc: Ctx) (lims: list nat),
-    s = state pm f /\ StepInv (state pm f) xc /\ LimsOf lims pm /\
-    Rep m1 S N lss xc lims;
+   of f, and the memory represents a context xc with s = state (trail xc) f. *)
+Record SolveInv {sh: Shape} {N: nat} {lss: list (list Lit)} {f: CNF} {s: State}
+  {le: temp_env} {m1: mem}: Prop := {
+  sv_s: le ! _s = Some (sptr sh);
+  sv_reached: state ⟨⟩ f ==>*[DPLL_BJ] s;
+  sv_ctx: exists (xc: Ctx),
+    s = state (trail xc) f /\ StepInv s xc /\ Rep m1 sh N lss xc;
 }.
+Arguments SolveInv : clear implicits.
 
 (* solve runs step until it stops, fails or gives up, following a derivation of DPLL_BJ
-   by step_strategy:
+   by cstep_spec:
 
-     {{ Rep m S N lss x [] /\ StepInv (state ⟨⟩ f) x }}
+     {{ Rep m sh N lss x /\ StepInv (state ⟨⟩ f) x }}
        while (1) {
-     {{ SolveInv (state pm f) }}
+     {{ SolveInv (state (trail xc) f) }}
          int r = step(s);
      {{ r = -1 (out of room), or r is the outcome of cstep: 0 to stop, 1 for fail, 2
         for the next context }}
@@ -97,169 +41,154 @@ Record SolveInv (S: Shape) (N: nat) (lss: list (list Lit)) (f: CNF) (s: State)
      {{ result = 0: fail is reachable, so f is unsatisfiable }}
          if (r < 0) return 2;
      {{ result = 2: out of room }}
-     {{ SolveInv (state pm' f), after a strict derivation }}
+     {{ SolveInv (state (trail xc') f), after a strict derivation }}
        }
 
    The loop ends: every pass takes a strict derivation step, which is well-founded
    (strict_derivation_well_founded). *)
-Theorem solve_correct: forall (S: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
+Theorem solve_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit)) (x: Ctx)
   (f: CNF),
-  {{ m | Rep m S N lss x [] /\ StepInv (state ⟨⟩ f) x }}
-    f_solve(sptr S)
-  {{ m', v | (v = vint 1 /\ exists (pm: PA), Model pm f /\ TrailIn m' S N pm) \/
+  {{ m | Rep m sh N lss x /\ StepInv (state ⟨⟩ f) x }}
+    f_solve(sptr sh)
+  {{ m', v | (v = vint 1 /\ exists (pm: PA), Model pm f /\ TrailIn m' sh N pm) \/
              (v = vint 0 /\ Unsat f) \/
              v = vint 2 }}.
 Proof.
-  intros S N lss x f m [HRep Hinv].
-  pose proof step_strategy as Hstrat.
+  intros sh N lss x f m [HRep Hinv].
   eapply call_simple.
   - reflexivity.
   - reflexivity.
   - unfold f_solve. cbn [fn_body fn_return].
     apply exec_loop with (R := Basics.flip (clos_trans _ (WellFormedTrans DPLL_BJ)))
-      (I := SolveInv S N lss f) (a := state ⟨⟩ f).
+      (I := SolveInv sh N lss f) (a := state ⟨⟩ f).
     + apply strict_derivation_well_founded.
     + intros s le1 m1 HI.
-      destruct HI as [Hs Hder (pm & xc & lims & -> & Hinv1 & Hlims & HRep1)].
+      destruct HI as [Hs Hder (xc & -> & Hinv1 & HRep1)].
       (* int r = step(s); *)
-      run. call step_fun. eapply call_weaken.
-      { apply (step_correct S N lss xc lims pm f). split.
-        - assumption.
-        - split.
-          + assumption.
-          + assumption. }
-      intros m2 v Hout. normal. run.
-      pose proof (cstep_spec pm f xc lims Hinv1 Hlims) as Hagree.
-      destruct Hout as [-> | Hout].
-      * (* r = -1: out of room *)
-        eapply (exec_if_cmp _ _ _ Ceq _ _ (-1) 0).
-        -- ev.
-        -- ev.
-        -- reflexivity.
-        -- reflexivity.
-        -- unfold Small. lia.
-        -- unfold Small. lia.
-        -- change (zcmp Ceq (-1) 0) with false. cbv beta iota. run.
-           eapply (exec_if_cmp _ _ _ Ceq _ _ (-1) 1).
+      run. eapply (exec_call_triple step_fun (step_correct sh N lss xc f)).
+      * reflexivity.
+      * evs.
+      * split.
+        -- assumption.
+        -- assumption.
+      * intros m2 v Hout. normal. run.
+        pose proof (cstep_spec (trail xc) f xc Hinv1) as Hok.
+        destruct Hout as [-> | Hout].
+        -- (* r = -1: out of room *)
+           eapply (exec_if_eq (-1) 0).
            ++ ev.
            ++ ev.
            ++ reflexivity.
-           ++ reflexivity.
-           ++ unfold Small. lia.
-           ++ unfold Small. lia.
-           ++ change (zcmp Ceq (-1) 1) with false. cbv beta iota. run.
-              eapply (exec_if_cmp _ _ _ Clt _ _ (-1) 0).
+           ++ lia.
+           ++ intros Heq. lia.
+           ++ intros _. run. eapply (exec_if_eq (-1) 1).
               ** ev.
               ** ev.
               ** reflexivity.
-              ** reflexivity.
-              ** unfold Small. lia.
-              ** unfold Small. lia.
-              ** (* return 2; *)
-                 change (zcmp Clt (-1) 0) with true. cbv beta iota. eapply exec_return.
+              ** lia.
+              ** intros Heq. lia.
+              ** intros _. run. eapply (exec_if_lt (-1) 0).
                  --- ev.
-                 --- ret. exists (vint 2). split.
-                     +++ apply result_int.
-                     +++ right. now right.
-      * destruct (cstep xc lims) as [| |x' lims'] eqn:Hcs;
-          cbn [COutcome Agrees] in Hout, Hagree.
-        -- (* r = 0: step stops, so the trail is a model; return 1; *)
-           destruct Hout as [-> Htrail].
-           eapply (exec_if_cmp _ _ _ Ceq _ _ 0 0).
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ reflexivity.
-           ++ unfold Small. lia.
-           ++ unfold Small. lia.
-           ++ change (zcmp Ceq 0 0) with true. cbv beta iota. eapply exec_return.
-              ** ev.
-              ** ret. exists (vint 1). split.
-                 --- apply result_int.
-                 --- left. split.
-                     +++ reflexivity.
-                     +++ exists pm. split.
-                         *** apply Basic.final_model. destruct Hstrat as (_ & Hnone & _).
-                             now apply (Hnone _ xc).
-                         *** assumption.
-        -- (* r = 1: step reaches fail, so f is unsatisfiable; return 0; *)
-           subst v. destruct Hagree as [x' Hb].
-           eapply (exec_if_cmp _ _ _ Ceq _ _ 1 0).
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ reflexivity.
-           ++ unfold Small. lia.
-           ++ unfold Small. lia.
-           ++ change (zcmp Ceq 1 0) with false. cbv beta iota. run.
-              eapply (exec_if_cmp _ _ _ Ceq _ _ 1 1).
-              ** ev.
-              ** ev.
-              ** reflexivity.
-              ** reflexivity.
-              ** unfold Small. lia.
-              ** unfold Small. lia.
-              ** change (zcmp Ceq 1 1) with true. cbv beta iota. eapply exec_return.
                  --- ev.
-                 --- ret. exists (vint 0). split.
+                 --- reflexivity.
+                 --- lia.
+                 --- (* return 2; *)
+                     intros _. eapply exec_return.
+                     +++ ev.
+                     +++ ret. exists (vint 2). split.
+                         *** apply result_int.
+                         *** right. now right.
+                 --- intros Hge. lia.
+        -- destruct (cstep xc) as [| |x'] eqn:Hcs;
+             cbn [COutcome StepOk] in Hout, Hok.
+           ++ (* r = 0: step stops, so the trail is a model; return 1; *)
+              destruct Hout as [-> Htrail].
+              eapply (exec_if_eq 0 0).
+              ** ev.
+              ** ev.
+              ** reflexivity.
+              ** lia.
+              ** intros _. eapply exec_return.
+                 --- ev.
+                 --- ret. exists (vint 1). split.
                      +++ apply result_int.
-                     +++ right. left. split.
+                     +++ left. split.
                          *** reflexivity.
-                         *** apply DPLL_BJ.final_unsat_refl. split.
-                             ---- apply (strategy_trans DPLL_BJ _ _ f (state pm f) fail
-                                           xc x' Hstrat Hinv1 Hb Hder).
-                             ---- intros [s' Htrans]. inversion Htrans.
-        -- (* r = 2: the next context, after a strict derivation; the loop goes on *)
-           destruct Hout as [-> HRep2]. destruct Hagree as (pm' & Hb & Hlims').
-           eapply (exec_if_cmp _ _ _ Ceq _ _ 2 0).
-           ++ ev.
-           ++ ev.
-           ++ reflexivity.
-           ++ reflexivity.
-           ++ unfold Small. lia.
-           ++ unfold Small. lia.
-           ++ change (zcmp Ceq 2 0) with false. cbv beta iota. run.
-              eapply (exec_if_cmp _ _ _ Ceq _ _ 2 1).
+                         *** exists (trail xc). split.
+                             ---- now apply Basic.final_model.
+                             ---- assumption.
+              ** intros Hne. lia.
+           ++ (* r = 1: step reaches fail, so f is unsatisfiable; return 0; *)
+              subst v.
+              eapply (exec_if_eq 1 0).
               ** ev.
               ** ev.
               ** reflexivity.
-              ** reflexivity.
-              ** unfold Small. lia.
-              ** unfold Small. lia.
-              ** change (zcmp Ceq 2 1) with false. cbv beta iota. run.
-                 eapply (exec_if_cmp _ _ _ Clt _ _ 2 0).
+              ** lia.
+              ** intros Heq. lia.
+              ** intros _. run. eapply (exec_if_eq 1 1).
                  --- ev.
                  --- ev.
                  --- reflexivity.
-                 --- reflexivity.
-                 --- unfold Small. lia.
-                 --- unfold Small. lia.
-                 --- change (zcmp Clt 2 0) with false. cbv beta iota. apply exec_skip.
-                     destruct (strategy_trans DPLL_BJ _ _ f (state pm f) (state pm' f)
-                                 xc x' Hstrat Hinv1 Hb Hder) as [Hder' Hinv'].
-                     apply loopk_next with (state pm' f).
-                     +++ apply strict_derivation_well_formed_trans.
-                         *** destruct Hstrat as (_ & _ & Hstep).
-                             now apply (Hstep _ _ xc x').
-                         *** apply (derivation_well_formed DPLL_BJ ⟨⟩ pm f f Hder).
-                             apply initial_well_formed.
-                     +++ constructor.
-                         *** tmp.
-                         *** assumption.
-                         *** exists pm', x', lims'. split.
+                 --- lia.
+                 --- intros _. eapply exec_return.
+                     +++ ev.
+                     +++ ret. exists (vint 0). split.
+                         *** apply result_int.
+                         *** right. left. split.
                              ---- reflexivity.
-                             ---- split.
+                             ---- apply DPLL_BJ.final_unsat_refl. split.
+                                  ++++ apply rt_trans with (state (trail xc) f).
+                                       **** assumption.
+                                       **** now apply clos_t_clos_rt.
+                                  ++++ intros [s' Htrans]. inversion Htrans.
+                 --- intros Hne. lia.
+           ++ (* r = 2: the next context, after a strict derivation; the loop goes on *)
+              destruct Hout as [-> HRep2]. destruct Hok as [Hplus Hinv'].
+              eapply (exec_if_eq 2 0).
+              ** ev.
+              ** ev.
+              ** reflexivity.
+              ** lia.
+              ** intros Heq. lia.
+              ** intros _. run. eapply (exec_if_eq 2 1).
+                 --- ev.
+                 --- ev.
+                 --- reflexivity.
+                 --- lia.
+                 --- intros Heq. lia.
+                 --- intros _. run. eapply (exec_if_lt 2 0).
+                     +++ ev.
+                     +++ ev.
+                     +++ reflexivity.
+                     +++ lia.
+                     +++ intros Hlt. lia.
+                     +++ intros _. apply exec_skip.
+                         apply loopk_next with (state (trail x') f).
+                         *** apply strict_derivation_well_formed_trans.
+                             ---- assumption.
+                             ---- apply (derivation_well_formed DPLL_BJ ⟨⟩ _ f f Hder).
+                                  apply initial_well_formed.
+                         *** constructor.
+                             ---- tmp.
+                             ---- apply rt_trans with (state (trail xc) f).
                                   ++++ assumption.
-                                  ++++ split; assumption.
+                                  ++++ now apply clos_t_clos_rt.
+                             ---- exists x'. split.
+                                  ++++ reflexivity.
+                                  ++++ split.
+                                       **** assumption.
+                                       **** assumption.
     + (* The invariant holds at the initial state. *)
       constructor.
       * tmp.
       * apply rt_refl.
-      * exists ⟨⟩, x, []. split.
-        -- reflexivity.
+      * exists x. split.
+        -- (* the initial trail is the trail of x *)
+           rewrite <- (@step_core_trail ⟨⟩ f x).
+           ++ reflexivity.
+           ++ apply Hinv.
         -- split.
            ++ assumption.
-           ++ split.
-              ** reflexivity.
-              ** assumption.
+           ++ assumption.
 Qed.

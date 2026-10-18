@@ -25,15 +25,13 @@ that its literal is unassigned and falls back to the cursor, so only bounds on t
               |
             Heur                     the decision heuristic: activities and a heap of atoms (VSIDS)
               |
+             Ctx                     the context: the solver's tables and scalars, one setter per field
+              |
           Propagate                  unit propagation with two watched literals (MiniSat); reasons, levels
               |
           Analysis                   conflict analysis, the stack of reason clauses, jump levels
               |
-       +------+------+
-       |             |
-      Step         CStep             shared parts of a step, on the trail / on the context alone
-       |             |
-       +------+------+
+            Step                     the parts of a step; the trail the context holds
               |
           SolverStep                 the solver step, with backjumping
               |
@@ -45,7 +43,7 @@ that its literal is unassigned and falls back to the cursor, so only bounds on t
 | Theorem          | File                | Statement (informally)                                                  |
 |------------------|---------------------|-------------------------------------------------------------------------|
 | `step_strategy`  | `core/SolverStep.v` | The solver step is a valid strategy for `DPLL_BJ`.                      |
-| `cstep_spec`     | `core/SolverStep.v` | The solver step on the context alone agrees with `step`.                |
+| `cstep_spec`     | `core/SolverStep.v` | A step is a strict derivation from the trail of the context, or stops.  |
 | `analyze_spec`   | `core/Analysis.v`   | The analysis gives an entailed clause asserting a literal, or nothing.  |
 | `solver_correct` | `c/Solver.v`        | The C solver terminates with a model, with unsat, or out of room.       |
 
@@ -70,8 +68,10 @@ Files are listed in dependency order; all are in `core/`.
   `decay` (the bump grows by 1/19), `rescale` (divide all by 2^20), `heap_up`/`heap_down`/`heap_insert`/
   `heap_pop` (with fuel), `pick` (pop until an unassigned literal), `reinsert` (atoms unassigned by a jump),
   `init_heur`. `HeurOk`: the bounds the C code needs; nothing else about the heap is proved.
-- `Propagate.v`: unit propagation as in MiniSat, on a context `Ctx` of tables and scalars (with the
-  heuristic `hr`).
+- `Ctx.v`: the context `Ctx`, the tables and scalars that `struct solver` holds (the trail, its decision
+  positions `lims`, the lower literals `lower` of an analysis in progress, the heuristic `hr`, ...), and one
+  setter per field: `x <| cur := c |>` is `x` with the cursor set to `c`.
+- `Propagate.v`: unit propagation as in MiniSat, on the context.
   - The trail is a table (`TrailOf`); the watchers of the negations of the trail literals from `qhead` on are
     still to be visited (`Queued`).
   - The watches of a clause are its first two literals, and a watcher carries a blocker, a literal of its
@@ -88,36 +88,45 @@ Files are listed in dependency order; all are in `core/`.
   - `visit_spec`, `propagate_spec`, `check_shorts_spec` (the clauses with fewer than two literals).
 - `Analysis.v`: conflict analysis.
   - `Entailed`: a clause that follows from the formula.
-  - `analyze`: MiniSat's counting analysis. From the conflict clause, the literals of the last level are marked
-    and counted (`add_lits`, which bumps their atoms), those of lower levels collected in `lt`; walking the trail down (`prev_marked`),
-    the newest marked literal is resolved with its reason until one literal of the last level is left, the
-    one to assert (`analyze_loop`). Without a reason, or out of room, it gives nothing and unmarks
-    (`unmark_range`). `analyze_spec` (with the invariant `AInv`): the clause is entailed and asserts a literal.
-  - `unmark_lower` (the highest level among `lt`), `split_levels` (where to jump); the stack of reason clauses
-    (`reasons_size`, `add_reason`, `push_reason`, which gives no reason when it is full, `pop_reasons`).
+  - The analysis works on the context, one function per C function: `mark` (mark a literal and bump its
+    atom), `add_lits`, `analyze_loop`, `analyze`, `unmark_range`, `unmark_lower`, `push_reason`; each changes
+    only the marks, the lower literals and the heuristic (`Analysed`).
+  - `analyze`: MiniSat's counting analysis. From the conflict clause, the literals of the last level are
+    marked and counted (`add_lits`, which bumps their atoms), those of lower levels collected in `lower`;
+    walking the trail down (`prev_marked`), the newest marked literal is resolved with its reason until one
+    literal of the last level is left, the one to assert (`analyze_loop`). Without a reason, or out of room,
+    it gives nothing and unmarks (`unmark_range`). `analyze_spec` (with the invariant `AInv`): the clause is
+    entailed and asserts a literal.
+  - `unmark_lower` (the highest level among the lower literals); the stack
+    of reason clauses (`reasons_size`, `add_reason`, `push_reason`, which stores the asserted literal and the
+    lower literals, or gives no reason when it is full, `pop_reasons`).
 - `Step.v`: the parts of a step.
   - The cursor of decisions (`skip_from` into a table of literals, `CursorT`).
-  - `StepCore`, `StepInv` (adds well-formedness and `Entails`): the context agrees with the state between steps;
-    the reason clauses are entailed and below the end of the trail (`SlotsOk`).
+  - The positions of the decisions on the trail (`LimsOf`), and the trail the context holds (`trail`: the
+    trail table with those positions decided).
+  - `StepCore`, `StepInv` (adds well-formedness and `Entails`): the context agrees with the state between steps,
+    so the state is `trail x` (`step_core_trail`); the reason clauses are entailed and below the end of the
+    trail (`SlotsOk`), and no analysis is in progress (`lower x = []`).
     The literals to decide on of the heuristic are literals of `f` (`DlitIn`); `with_heur` changes only the
     heuristic (`step_core_heur`).
-  - `front_shorts`, `front_prop` (checking the short clauses and propagating), `decide_lit_spec` (deciding
-    any unassigned literal of `f`) and `decide_spec`, `jump` (jumping back, dropping the reason clauses from
-    there on), `jump_core` (with the asserted literal and its reason, `JumpReason`, for any heuristic),
-    `final_state`, `step_inv_after`.
+  - `check_shorts_step`, `propagate_step` (checking the short clauses and propagating), `decide_lit_spec`
+    (deciding any unassigned literal of `f`) and `decide_spec`, `cut` (cutting the trail at a position: unset the
+    values, drop the reason clauses, put the atoms back in the heap) and `back` (going back to a level, as
+    resolve does; `back_fields`: field by field), `jump_core` (going back after an analysis and asserting a
+    literal with its reason, `JumpReason`), `final_state`, `step_inv_after`.
   - `initial_of(_inv)`: the initial context for any clause lists with the literals of the clauses of `f`
     (`ClauseOf`).
-- `CStep.v`: the shared parts on the context alone, as C computes them: the trail is only read through its
-  table, with the decision positions `lims` on a stack (`LimsOf`); `visit_t`, `propagate_t`, `check_shorts_t`
-  (no trail), `unset_range` (on trail positions); `Agrees`: an outcome on the context agrees with a step.
-- `SolverStep.v`: the solver step, which the C solver computes.
-  - `step`: check the short clauses and propagate; on a conflict `resolve`: fail without decisions, and
-    otherwise analyse it, clear the marks (`clear_marks`) and, if the literal to assert is below the current
-    level, backjump there and assert it with the analysed clause as its reason; else flip the last decision
-    (`flip`); the bump decays before the analysis, and a jump puts the unassigned atoms back in the heap
-    (`jump_heur`). Otherwise decide on the literal `pick` gives, or else at the cursor. `step_spec`, `step_none`, giving `step_strategy` (backjumps are `Backjump`
-    steps of `DPLL_BJ`).
-  - `cstep`: the same on the context alone (`resolve_t`, `flip_t`); `cstep_spec`: it `Agrees` with `step`.
+  - `unset_range`: unsetting the values of trail positions, as C does.
+- `SolverStep.v`: the solver step `cstep` on the context, which the C solver computes; its outcome
+  (`CResult`) is a stop, fail, or the next context; `split_levels` says where to jump.
+  - `cstep`: check the short clauses and propagate; on a conflict `resolve`: fail without decisions, and
+    otherwise decay the bump, analyse it and unmark the lower literals and the literal to assert; if that
+    literal is below the current level, go back there (`back`) and assert it with the analysed clause as
+    its reason; else flip the last decision (`flip`). Otherwise decide on the literal `pick` gives, or else
+    at the cursor.
+  - `cstep_spec`: from the state `trail x` (`StepOk`), a step stops only at a final state, and otherwise is a
+    strict derivation to `fail` or to the trail of a consistent next context (backjumps are `Backjump` steps
+    of `DPLL_BJ`). `step_strategy`: `step`, which runs `cstep` on states, is a strategy for `DPLL_BJ`.
 
 The former step with a separate conflict analysis (`AnalysisStep.v`, `AnalysisCStep.v`, the old `Analysis.v`)
 is archived in `context/removed/`.
@@ -144,14 +153,19 @@ separate blocks for the tables, and that the clauses are exactly those of `f`.
   rules for sequences, assignments, stores, branches, calls, and loops with a variant in any well-founded
   relation (which gives termination). The continuations of sequences and loops are definitions (`SeqK`,
   `LoopK`), so that goals stay small. Calls are Hoare triples (`Triple`, written
-  `{{ m | P }} f(args) {{ m', v | Q }}` in `c/Rep.v`), and `drop_stmts`, `first_stmt`, `loop_body`,
-  `then_stmt` and `else_stmt` name the parts of a generated body, so that a loop or a branch is proved in a
-  lemma of its own. The comment above each lemma shows its part of the C code as a decorated program.
+  `{{ m | P }} f(args) {{ m', v | Q }}` in `c/Rep.v`). Two rules cover most statements: `exec_store_fld` and
+  `exec_store_arr` store an int to a field or array entry whose fact (`Fld`, `Arr`) the memory has, and
+  `exec_call_triple` (`_none` without a result) calls a function through its triple. A branch on a
+  comparison of small ints is `exec_if_lt` (and `_le`, `_gt`, `_ge`, `_eq`, `_ne`, `exec_if_nonzero`), each
+  branch with the outcome of the test as a hypothesis. `drop_stmts`,
+  `first_stmt`, `loop_body`, `then_stmt` and `else_stmt` name the parts of a generated body, so that a loop
+  or a branch is proved in a lemma of its own. The comment above each lemma shows its part of the C code as a
+  decorated program.
 - `c/Arrays.v`: tables in memory (`Arr`, `Fld`): every table has a block of its own, so a store to one keeps
   the others without separation logic; `Mem.unchanged_on` frames for calls.
-- `c/Common.v`: literals as keys, and the tactics that run straight-line code (`run`, `ev`, `ld`, `store`).
-- `c/Rep.v`: `RepL`/`RepB`/`Rep`, how the memory of `solver.c` holds a context of `Propagate.v`, the
-  positions of its decisions and, during an analysis, its lower literals `lt` (`RepB`: none, between steps):
+- `c/Common.v`: literals as keys, and the tactics that run straight-line code (`run`, `ev`, `ld`, `ofs`).
+- `c/Rep.v`: `RepL`, how the memory of `solver.c` holds a context (`Rep` between steps: no lower literals,
+  and the watch lists in the pool):
   the values per literal (`key_value`, so that `lit_value` is one load), the marks, reasons (`enc_reason`) and
   levels, the stack of reason clauses (`ReasonsIn`) and the heuristic (`HeurOk`); and the store lemmas
   (`rep_store_*`): what a store of the C code does to the represented context, those of the analysis in
@@ -167,7 +181,7 @@ separate blocks for the tables, and that the clauses are exactly those of `f`.
   - the step: `SkipFrom.v`, `Phase.v`, `Cut.v` (puts the atoms back in the heap and pops the reason
     clauses), `Resolve.v` (backjump or
     flip), `Step.v` (`step` computes `cstep`), `Solve.v` (`solve` terminates by
-    `strict_derivation_well_founded` and answers by `step_strategy`);
+    `strict_derivation_well_founded` and answers by `cstep_spec`);
   - the initial context: `Zero.v`, `CheckClauses.v`, `CheckLits.v`, `CheckRoom.v`, `Index.v`, `Init.v`
     (`init` sets up `initial_of`), and `Solver.v`.
 - Trust left: the Rocq kernel, the axioms of CompCert's semantics (excluded middle, functional extensionality,

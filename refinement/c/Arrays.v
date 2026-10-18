@@ -3,13 +3,23 @@
    block of its own, so a store to one leaves the others unchanged without any
    separation logic.
 
-   The bounds are powers of two: indices and small ints are below 2^30 = 1073741824, so
-   that sums of two of them fit in a signed 32-bit int (2^31 = 2147483648); pointer
+   The bounds are powers of two: indices and small ints are below 2^30 = small_bound, so
+   that sums of two of them fit in a signed 32-bit int (2^31 = int_bound); pointer
    offsets are 64-bit (2^64 = 18446744073709551616). *)
 From compcert Require Import Coqlib Integers Values Memory AST.
 
 (* The value of int z. *)
 Definition vint (z: Z): val := Vint (Int.repr z).
+
+(* The value of nat n, as an int. *)
+Abbreviation vnat n := (vint (Z.of_nat n)).
+
+(* Bounds of the C solver: ints are below 2^31; Small ints below 2^30, so that sums of
+   two do not overflow; keys of literals of atoms below 2^28 are below 2^29. *)
+Abbreviation int_bound := 2147483648.
+Abbreviation small_bound := 1073741824.
+Abbreviation key_bound := 536870912.
+Abbreviation atom_bound := 268435456.
 
 (* Block b holds the n ints t 0 .. t (n - 1). *)
 Definition Arr (m: mem) (b: block) (n: nat) (t: nat -> Z): Prop :=
@@ -76,16 +86,7 @@ Section Lemmas.
         * right. cbn [size_chunk]. lia.
   Qed.
 
-  (* An entry of an array can be stored to. *)
-  Lemma arr_storable: forall (m: mem) (b: block) (n k: nat) (t: nat -> Z) (z: Z),
-    Arr m b n t -> (k < n)%nat ->
-    exists (m': mem), Mem.store Mint32 m b (4 * Z.of_nat k) (vint z) = Some m'.
-  Proof.
-    intros m b n k t z Harr Hk. destruct (Harr k Hk) as [Hvalid _].
-    destruct (Mem.valid_access_store _ _ _ _ (vint z) Hvalid) as [m' Hstore].
-    exists m'. assumption.
-  Qed.
-
+  (* A field can be stored to. *)
   Lemma fld_storable: forall (m: mem) (b: block) (ofs: Z) (chunk: memory_chunk)
     (v w: val),
     Fld m b ofs chunk v -> exists (m': mem), Mem.store chunk m b ofs w = Some m'.
@@ -95,7 +96,7 @@ Section Lemmas.
     exists m'. assumption.
   Qed.
 
-  (* Storing a field. *)
+  (* After a store to a field, it holds the value stored. *)
   Lemma fld_store: forall (m m': mem) (b: block) (ofs: Z) (chunk: memory_chunk)
     (v w: val),
     Fld m b ofs chunk v -> Mem.store chunk m b ofs w = Some m' ->
@@ -107,24 +108,32 @@ Section Lemmas.
   Qed.
 End Lemmas.
 
+(* These lemmas are applied to their facts: blocks, offsets and tables are inferred. *)
+Arguments arr_store_other {m m' b b' n t ofs' chunk' v'}.
+Arguments fld_store_other {m m' b b' ofs ofs' chunk chunk' v v'}.
+Arguments arr_store {m m' b n k t z}.
+Arguments fld_store {m m' b ofs chunk v w}.
+
+(* The pointer offset of entry k of an int array, as C computes it from the int k. *)
+Abbreviation entry_ofs k :=
+  (Ptrofs.add Ptrofs.zero (Ptrofs.mul (Ptrofs.repr 4) (Ptrofs.of_ints (Int.repr k)))).
+
 Section Access.
-  (* The offset of entry k of an int array, as C computes it. *)
-  Lemma index_ofs: forall (k: Z), 0 <= k < 2147483648 ->
-    Ptrofs.unsigned
-      (Ptrofs.add Ptrofs.zero (Ptrofs.mul (Ptrofs.repr 4) (Ptrofs.of_ints (Int.repr k))))
-    = 4 * k.
+  (* The offset of entry k of an int array is 4 k. *)
+  Lemma index_ofs: forall (k: Z), 0 <= k < int_bound ->
+    Ptrofs.unsigned (entry_ofs k) = 4 * k.
   Proof.
     intros k Hk.
     assert (Hmax: Ptrofs.max_unsigned = 18446744073709551615) by reflexivity.
     assert (Hint: Int.max_signed = 2147483647) by reflexivity.
-    assert (Hmin: Int.min_signed = -2147483648) by reflexivity.
+    assert (Hmin: Int.min_signed = - int_bound) by reflexivity.
     unfold Ptrofs.of_ints. rewrite Int.signed_repr by lia. rewrite Ptrofs.add_zero_l.
     unfold Ptrofs.mul. rewrite (Ptrofs.unsigned_repr 4) by lia.
     rewrite (Ptrofs.unsigned_repr k) by lia. rewrite Ptrofs.unsigned_repr by lia.
     reflexivity.
   Qed.
 
-  (* Reading a field or an array entry. *)
+  (* Reading a field. *)
   Lemma fld_loadv: forall (m: mem) (b: block) (ofs: Z) (chunk: memory_chunk) (v: val)
     (p: ptrofs),
     Ptrofs.unsigned p = ofs -> Fld m b ofs chunk v ->
@@ -137,12 +146,10 @@ Section Access.
     - lia.
   Qed.
 
+  (* Reading an array entry. *)
   Lemma arr_loadv: forall (m: mem) (b: block) (n: nat) (t: nat -> Z) (k: nat),
-    Arr m b n t -> (k < n)%nat -> Z.of_nat k < 2147483648 ->
-    Mem.loadv Mint32 m
-      (Vptr b (Ptrofs.add Ptrofs.zero
-                 (Ptrofs.mul (Ptrofs.repr 4) (Ptrofs.of_ints (Int.repr (Z.of_nat k))))))
-    = Some (vint (t k)).
+    Arr m b n t -> (k < n)%nat -> Z.of_nat k < int_bound ->
+    Mem.loadv Mint32 m (Vptr b (entry_ofs (Z.of_nat k))) = Some (vint (t k)).
   Proof.
     intros m b n t k Harr Hk Hsmall.
     assert (Hmod: Ptrofs.modulus = 18446744073709551616) by reflexivity.
@@ -150,20 +157,11 @@ Section Access.
     - apply Harr. assumption.
     - cbn [size_chunk] in *. lia.
   Qed.
+
+  #[global] Arguments arr_loadv {m b n t k}.
 End Access.
 
-(* Comparisons of small ints. *)
-Lemma lt_repr: forall (a b: Z), -1073741824 <= a < 1073741824 ->
-  -1073741824 <= b < 1073741824 ->
-  Int.lt (Int.repr a) (Int.repr b) = (a <? b).
-Proof.
-  intros a b Ha Hb. assert (Hint: Int.max_signed = 2147483647) by reflexivity.
-  assert (Hmin: Int.min_signed = -2147483648) by reflexivity.
-  unfold Int.lt. rewrite !Int.signed_repr by lia.
-  destruct (zlt a b), (Z.ltb_spec a b); lia.
-Qed.
-
-(* Adding ints. *)
+(* C adds ints as their values, modulo 2^32. *)
 Lemma add_repr: forall (a b: Z), Int.add (Int.repr a) (Int.repr b) = Int.repr (a + b).
 Proof.
   intros a b. unfold Int.add. apply Int.eqm_samerepr. apply Int.eqm_add.
@@ -171,20 +169,14 @@ Proof.
   - apply Int.eqm_sym. apply Int.eqm_unsigned_repr.
 Qed.
 
-(* Adding small naturals, and adding 1, as C does for an index. *)
-Lemma add_nat: forall (a b: nat), Z.of_nat a < 1073741824 -> Z.of_nat b < 1073741824 ->
-  Int.add (Int.repr (Z.of_nat a)) (Int.repr (Z.of_nat b)) = Int.repr (Z.of_nat (a + b)).
-Proof.
-  intros a b Ha Hb. rewrite add_repr by lia. f_equal. lia.
-Qed.
-
-Lemma incr_nat: forall (a: nat), Z.of_nat a < 1073741824 ->
-  Int.add (Int.repr (Z.of_nat a)) (Int.repr 1) = Int.repr (Z.of_nat (Datatypes.S a)).
+(* Adding 1 to a small nat. *)
+Lemma incr_nat: forall (a: nat), Z.of_nat a < small_bound ->
+  Int.add (Int.repr (Z.of_nat a)) (Int.repr 1) = Int.repr (Z.of_nat (S a)).
 Proof.
   intros a Ha. rewrite add_repr by lia. f_equal. lia.
 Qed.
 
-(* Subtracting ints. *)
+(* C subtracts ints as their values, modulo 2^32. *)
 Lemma sub_repr: forall (a b: Z), Int.sub (Int.repr a) (Int.repr b) = Int.repr (a - b).
 Proof.
   intros a b. unfold Int.sub. apply Int.eqm_samerepr. apply Int.eqm_sub.
@@ -192,15 +184,7 @@ Proof.
   - apply Int.eqm_sym. apply Int.eqm_unsigned_repr.
 Qed.
 
-(* An array holds its first entries as a smaller array. *)
-Lemma arr_shrink: forall (m: mem) (b: block) (n n': nat) (t t': nat -> Z),
-  Arr m b n t -> (n' <= n)%nat -> (forall (k: nat), (k < n')%nat -> t' k = t k) ->
-  Arr m b n' t'.
-Proof.
-  intros m b n n' t t' Harr Hn Ht k Hk. rewrite Ht by assumption. apply Harr. lia.
-Qed.
-
-(* Multiplying ints. *)
+(* C multiplies ints as their values, modulo 2^32. *)
 Lemma mul_repr: forall (a b: Z), Int.mul (Int.repr a) (Int.repr b) = Int.repr (a * b).
 Proof.
   intros a b. unfold Int.mul. apply Int.eqm_samerepr. apply Int.eqm_mult.
@@ -260,3 +244,16 @@ Section Unchanged.
       + intros i _. apply HP.
   Qed.
 End Unchanged.
+
+(* A table that only a property describes keeps it across a store to another block. *)
+Lemma arr_ex_store_other: forall (m m': mem) (b b': block) (n: nat)
+  (P: (nat -> Z) -> Prop) (ofs': Z) (chunk': memory_chunk) (v': val),
+  (exists (t: nat -> Z), Arr m b n t /\ P t) ->
+  Mem.store chunk' m b' ofs' v' = Some m' -> b <> b' ->
+  exists (t: nat -> Z), Arr m' b n t /\ P t.
+Proof.
+  intros m m' b b' n P ofs' chunk' v' [t [Harr Ht]] Hstore Hne. exists t. split.
+  - now apply (arr_store_other Harr Hstore).
+  - assumption.
+Qed.
+Arguments arr_ex_store_other {m m' b b' n P ofs' chunk' v'}.

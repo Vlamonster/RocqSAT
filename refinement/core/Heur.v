@@ -187,6 +187,9 @@ Section Operations.
   add_atoms (empty_heur nl) alls n nl 0 nl.
 End Operations.
 
+(* The property P holds for every literal to decide on of h. *)
+Abbreviation DlitAll P h := (forall (a: nat) (l: Lit), tget (dlit h) a = Some l -> P l).
+
 Section Dlit.
   (* No operation but add_atoms changes the literals to decide on. *)
   Lemma up_loop_dlit: forall (h: Heur) (a i fuel: nat),
@@ -297,15 +300,15 @@ Section Dlit.
     - rewrite IH. apply heap_insert_dlit.
   Qed.
 
-  (* The literals to decide on that add_atoms adds are those of alls it looks at: a
-     property P of these holds for all of them. *)
-  Lemma add_atoms_dlit: forall (P: Lit -> Prop) (alls: Table Lit) (n nl k2 k: nat)
-    (h: Heur),
-    (forall (a: nat) (l: Lit), tget (dlit h) a = Some l -> P l) ->
-    (forall (j: nat), k <= j < k + k2 -> P (tget alls j)) ->
-    forall (a: nat) (l: Lit), tget (dlit (add_atoms h alls n nl k k2)) a = Some l -> P l.
+  (* add_atoms adds literals to decide on from alls at positions k .. k + k2 - 1: a
+     property of these and of the literals of h holds for all literals of the result. *)
+  Lemma add_atoms_dlit: forall (P: Lit -> Prop) (h: Heur) (alls: Table Lit)
+    (n nl k k2: nat),
+    DlitAll P h -> (forall (j: nat), k <= j < k + k2 -> P (tget alls j)) ->
+    DlitAll P (add_atoms h alls n nl k k2).
   Proof.
-    intros P alls n nl k2. induction k2 as [|k2 IH]; intros k h Hh Hall; cbn [add_atoms].
+    intros P h alls n nl k k2. revert h k.
+    induction k2 as [|k2 IH]; intros h k Hh Hall; cbn [add_atoms].
     - assumption.
     - destruct (tget (dlit h) (extract (tget alls k))) as [l'|].
       + apply IH.
@@ -319,12 +322,12 @@ Section Dlit.
         * intros j Hj. apply Hall. lia.
   Qed.
 
+  (* A property of the literals to decide on alls holds for those of init_heur. *)
   Lemma init_heur_dlit: forall (P: Lit -> Prop) (alls: Table Lit) (n nl: nat),
-    (forall (j: nat), j < nl -> P (tget alls j)) ->
-    forall (a: nat) (l: Lit), tget (dlit (init_heur alls n nl)) a = Some l -> P l.
+    (forall (j: nat), j < nl -> P (tget alls j)) -> DlitAll P (init_heur alls n nl).
   Proof.
     intros P alls n nl Hall a l Hl. unfold init_heur in Hl.
-    apply (add_atoms_dlit P alls n nl nl 0 (empty_heur nl)) with a.
+    apply (add_atoms_dlit P (empty_heur nl) alls n nl 0 nl) with a.
     - intros a' l' Hl'. cbn [empty_heur dlit] in Hl'. rewrite tget_tmake in Hl'.
       discriminate.
     - intros j Hj. apply Hall. lia.
@@ -353,13 +356,14 @@ Section Dlit.
           -- rewrite <- Hpop. apply (IH h1 Hpick).
         * rewrite <- Hpop. apply (IH h1 Hpick).
   Qed.
+  #[global] Arguments pick_some {v h h' fuel l}.
 End Dlit.
 
 (* The bounds the C code needs to stay within its arrays and ints, for n atoms: activities
    from 0 below act_lim, the bump from 1 below act_lim / 2, heap entries and positions
    below n, at most n atoms in the heap, and literals to decide on of atoms below n.
    Nothing more about the heap is needed: it is a hint. *)
-Record HeurOk (n: nat) (h: Heur): Prop := {
+Record HeurOk {n: nat} {h: Heur}: Prop := {
   ho_act: forall (a: nat), a < n -> (0 <= tget (act h) a < act_lim)%Z;
   ho_inc: (1 <= inc h < act_lim / 2)%Z;
   ho_heap: forall (i: nat), i < n -> tget (heap h) i < n;
@@ -367,6 +371,7 @@ Record HeurOk (n: nat) (h: Heur): Prop := {
   ho_hsize: hsize h <= n;
   ho_dlit: forall (a: nat) (l: Lit), a < n -> tget (dlit h) a = Some l -> extract l < n
 }.
+Arguments HeurOk : clear implicits.
 
 Section Setters.
   (* One field of the heuristic at a time, as the stores of the C code change it. *)
@@ -473,3 +478,57 @@ Section Setters.
       + apply (Hdlit a' l Ha' Hl).
   Qed.
 End Setters.
+
+(* The child heap_down looks at is a position of the heap. *)
+Lemma child_lt: forall (h: Heur) (n i: nat), (S (2 * i) < n)%nat ->
+  (child h n i < n)%nat.
+Proof.
+  intros h n i Hi. unfold child.
+  destruct (Nat.ltb_spec (S (S (2 * i))) n).
+  - destruct (_ <? _)%Z.
+    + assumption.
+    + assumption.
+  - assumption.
+Qed.
+
+(* The atom heap_pop takes out is the one at the top. *)
+Lemma heap_pop_snd: forall (h: Heur), snd (heap_pop h) = tget (heap h) 0.
+Proof.
+  intros h. unfold heap_pop. destruct (0 <? hsize h - 1)%nat.
+  - reflexivity.
+  - reflexivity.
+Qed.
+
+(* Reinserting from q > j on is inserting the atom at q - 1 and reinserting from q - 1
+   on. *)
+Lemma reinsert_last: forall (h: Heur) (tr: Table Lit) (n j q: nat), (j < q)%nat ->
+  reinsert (heap_insert h n (extract (tget tr (q - 1)))) tr n j (q - 1) (q - 1 - j)
+  = reinsert h tr n j q (q - j).
+Proof.
+  intros h tr n j q Hjq. replace (q - j)%nat with (S (q - 1 - j)) by lia.
+  reflexivity.
+Qed.
+
+(* The bump below act_lim / 2 is also below act_lim. *)
+Lemma half_lim: (act_lim / 2 < act_lim)%Z.
+Proof. reflexivity. Qed.
+
+(* shift_acts from a0 on leaves the activities below a0 alone. *)
+Lemma shift_acts_below: forall (k: nat) (t: Table Z) (a0 a: nat), (a < a0)%nat ->
+  tget (shift_acts t a0 k) a = tget t a.
+Proof.
+  intros k. induction k as [|k IH]; intros t a0 a Ha; cbn [shift_acts].
+  - reflexivity.
+  - rewrite IH by lia. apply tget_tset_other. lia.
+Qed.
+
+(* shift_acts divides the activities of the k atoms from a0 on by act_shift. *)
+Lemma shift_acts_in: forall (k: nat) (t: Table Z) (a0 a: nat), (a0 <= a < a0 + k)%nat ->
+  tget (shift_acts t a0 k) a = (tget t a / act_shift)%Z.
+Proof.
+  intros k. induction k as [|k IH]; intros t a0 a Ha; cbn [shift_acts].
+  - lia.
+  - destruct (Nat.eq_dec a0 a) as [<- | Hne].
+    + rewrite shift_acts_below by lia. apply tget_tset_same.
+    + rewrite IH by lia. rewrite tget_tset_other by assumption. reflexivity.
+Qed.

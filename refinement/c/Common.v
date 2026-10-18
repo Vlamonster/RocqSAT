@@ -8,9 +8,10 @@ From RocqSAT.refinement Require Import Table Lookup Watches.
 From RocqSAT.refinement.c Require Import Logic Arrays.
 Import ListNotations.
 
-(* Literals as keys, and values of atoms. *)
+(* A literal as C keeps it, its key: 2p for Pos p and 2p + 1 for Neg p. *)
 Definition key (l: Lit): Z := Z.of_nat (lit_key l).
 
+(* A value as C keeps it: 1 for true, -1 for false and 0 for none. *)
 Definition enc_value (b: option bool): Z :=
 match b with
 | Some true  => 1
@@ -22,6 +23,7 @@ end.
 Definition lit_of (z: Z): Lit :=
   let k := Z.to_nat z in if Nat.even k then Pos (Nat.div2 k) else Neg (Nat.div2 k).
 
+(* The key of the literal with key z is z. *)
 Lemma key_lit_of: forall (z: Z), 0 <= z -> key (lit_of z) = z.
 Proof.
   intros z Hz. unfold key, lit_of.
@@ -32,6 +34,7 @@ Proof.
   - lia.
 Qed.
 
+(* The literal with the key of l is l. *)
 Lemma lit_of_key: forall (l: Lit), lit_of (key l) = l.
 Proof.
   intros l. apply lit_key_inj. assert (Hk: key (lit_of (key l)) = key l).
@@ -41,11 +44,11 @@ Qed.
 
 (* The atom of a literal key is the key shifted right by one, and its lowest bit tells
    its sign. *)
-Lemma shr_key: forall (l: Lit), 0 <= key l < 1073741824 ->
+Lemma shr_key: forall (l: Lit), 0 <= key l < small_bound ->
   Int.shr (Int.repr (key l)) (Int.repr 1) = Int.repr (Z.of_nat (extract l)).
 Proof.
   intros l Hl. assert (Hint: Int.max_signed = 2147483647) by reflexivity.
-  assert (Hmin: Int.min_signed = -2147483648) by reflexivity.
+  assert (Hmin: Int.min_signed = - int_bound) by reflexivity.
   unfold key in *. unfold Int.shr. rewrite Int.signed_repr by lia.
   rewrite Int.unsigned_repr by (unfold Int.max_unsigned; simpl; lia).
   rewrite Z.shiftr_div_pow2, Z.pow_1_r by lia. f_equal.
@@ -54,6 +57,7 @@ Proof.
   - symmetry. apply Z.div_unique with 1; lia.
 Qed.
 
+(* The lowest bit of a key: 0 for a positive literal, 1 for a negative one. *)
 Lemma land_key: forall (l: Lit), Z.land (key l) 1 = if is_pos l then 0 else 1.
 Proof.
   intros l. unfold key. change 1 with (Z.ones 1) at 1. rewrite Z.land_ones by lia.
@@ -62,7 +66,8 @@ Proof.
   - symmetry. apply Z.mod_unique with (Z.of_nat p); lia.
 Qed.
 
-Lemma and_key: forall (l: Lit), 0 <= key l < 1073741824 ->
+(* The same, as C computes it: key & 1. *)
+Lemma and_key: forall (l: Lit), 0 <= key l < small_bound ->
   Int.and (Int.repr (key l)) (Int.repr 1) = Int.repr (if is_pos l then 0 else 1).
 Proof.
   intros l Hl. unfold Int.and.
@@ -88,7 +93,7 @@ Qed.
 (* The position of a in the list l, syntactically. *)
 Ltac index a l := lazymatch l with
   | a :: _ => constr:(0%nat)
-  | _ :: ?l' => let n := index a l' in constr:(Datatypes.S n)
+  | _ :: ?l' => let n := index a l' in constr:(S n)
   end.
 
 (* Blocks of a list without duplicates are distinct: found by their positions, so it
@@ -123,23 +128,40 @@ Ltac key_index := repeat match goal with
   change (Ptrofs.of_ints (Int.repr (key l)))
     with (Ptrofs.of_ints (Int.repr (Z.of_nat (lit_key l)))) end.
 
-(* The offset of an array entry, as computed by C. *)
+(* The offset of an array entry, as computed by C, is 4 times its index. *)
 Ltac ofs := change (sizeof _ Ctypesdefs.tint) with 4; cbn [ptrofs_of_int cast_int_int];
-  ints; key_index; rewrite index_ofs by (unfold key in *; lia).
+  ints; key_index; rewrite index_ofs by (unfold key in *; lia); reflexivity.
 
 (* Facts about the memory before the store Hst hold after it in other blocks and at
    other offsets. *)
 Ltac carry Hst Hnodup := match type of Hst with Mem.store _ ?m _ _ _ = Some ?m' =>
   repeat match goal with
   | H: Arr m ?b ?n ?t |- _ => let H' := fresh H in
+    (* the array stored to keeps no fact: arr_store gives its new one *)
+    lazymatch type of Hst with Mem.store _ _ ?b' _ _ = _ =>
+      tryif constr_eq b b' then fail else idtac end;
     assert (H': Arr m' b n t)
-      by (apply (arr_store_other _ _ _ _ _ _ _ _ _ H Hst); neq Hnodup);
+      by (apply (arr_store_other H Hst); neq Hnodup);
+    clear H; rename H' into H
+  | H: exists (t: nat -> Z), Arr m ?b ?n t /\ @?P t |- _ => let H' := fresh H in
+    (* a table that only a property describes, as several of the representation *)
+    lazymatch type of Hst with Mem.store _ _ ?b' _ _ = _ =>
+      tryif constr_eq b b' then fail else idtac end;
+    let T := eval cbv beta in (exists (t: nat -> Z), Arr m' b n t /\ P t) in
+    assert (H': T) by (apply (arr_ex_store_other H Hst); neq Hnodup);
     clear H; rename H' into H
   | H: Fld m ?b ?o ?c ?v |- _ => let H' := fresh H in
     assert (H': Fld m' b o c v)
-      by (apply (fld_store_other _ _ _ _ _ _ _ _ _ _ H Hst);
-          first [ left; neq Hnodup
-                | right; unfold Mptr; cbv [Archi.ptr64]; cbn [size_chunk]; lia ]);
+      by (apply (fld_store_other H Hst);
+          (* the same block: the offsets are apart; another block: it is distinct *)
+          lazymatch type of Hst with Mem.store _ _ ?b' _ _ = _ =>
+            tryif constr_eq b b'
+            then (right; unfold Mptr; cbv [Archi.ptr64]; cbn [size_chunk];
+                  first [ left; apply Z.leb_le; reflexivity
+                        | right; apply Z.leb_le; reflexivity
+                        | lia ])
+            else (left; neq Hnodup)
+          end);
     clear H; rename H' into H
   end end.
 
@@ -154,7 +176,7 @@ Ltac ld := lazymatch goal with
     lazymatch goal with
     | |- context [Ptrofs.of_ints (Int.repr (Z.of_nat _))] =>
       match goal with A: Arr _ b _ _ |- _ =>
-        eapply (arr_loadv _ _ _ _ _ A); unfold key in *; lia end
+        eapply (arr_loadv A); unfold key in *; lia end
     | |- _ =>
       fail "the index is not of the form Int.repr (Z.of_nat k): add an equation for ints"
     end
@@ -212,39 +234,6 @@ Ltac run := repeat match goal with
   | |- Exec _ _ _ Sskip _ => apply exec_skip; try normal
   end.
 
-(* The offset of a struct field. *)
-Ltac fofs := match goal with |- context [Ptrofs.add Ptrofs.zero (Ptrofs.repr ?d)] =>
-    let d' := eval vm_compute in d in change d with d' end;
-  rewrite Ptrofs.add_zero_l, Ptrofs.unsigned_repr
-    by (assert (Ptrofs.max_unsigned = 18446744073709551615) by reflexivity; lia).
-
-(* The bound of a store within a block: pointer offsets are below 2^64. *)
-Ltac bound := cbn [size_chunk];
-  assert (Ptrofs.modulus = 18446744073709551616) by reflexivity; lia.
-
-(* Store an array entry or a field, given its fact A, and carry the other facts over the
-   store. *)
-Ltac store_arr A Hnodup := cbn [cast_int_int];
-  match goal with
-  |- exists m',
-       Mem.store Mint32 ?m ?b (4 * Z.of_nat ?k) (Vint (Int.repr ?z)) = Some m' /\ _ =>
-    let m1 := fresh "m" in let Hm1 := fresh "Hst" in let Hk := fresh "Hk" in
-    lazymatch type of A with Arr _ _ ?n _ => assert (Hk: (k < n)%nat) by lia end;
-    destruct (arr_storable m b _ k _ z A Hk) as [m1 Hm1]; exists m1;
-    split; [apply Hm1 | normal];
-    let A' := fresh A in pose proof (arr_store _ _ _ _ _ _ _ A Hk Hm1) as A';
-    clear A Hk; rename A' into A; carry Hm1 Hnodup
-  end.
-
-Ltac store_fld F Hnodup := cbn [cast_int_int];
-  match goal with |- exists m', Mem.store ?c ?m ?b ?o ?v = Some m' /\ _ =>
-    let m1 := fresh "m" in let Hm1 := fresh "Hst" in
-    destruct (fld_storable m b o c _ v F) as [m1 Hm1]; exists m1;
-    split; [apply Hm1 | normal];
-    let F' := fresh F in pose proof (fld_store _ _ _ _ _ _ _ F Hm1) as F';
-    clear F; rename F' into F; carry Hm1 Hnodup
-  end.
-
 (* An array that a store updated holds the updated table. *)
 Ltac arr_tset := eapply arr_ext; [eassumption | ];
   let j := fresh "j" in let Hj := fresh "Hj" in intros j Hj; rewrite tget_tset;
@@ -252,24 +241,11 @@ Ltac arr_tset := eapply arr_ext; [eassumption | ];
     destruct (Nat.eq_dec a j), (Nat.eqb_spec a j) end;
   (reflexivity || congruence).
 
-(* Branching on the sign bit of a key. *)
-Lemma sign_bit: forall (b: bool),
-  negb (Int.eq (Int.repr (if b then 0 else 1)) Int.zero) = negb b.
-Proof. intros b. now destruct b. Qed.
-
 (* Evaluate the arguments of a call. *)
 Ltac evs := first [apply eval_Enil | eapply eval_Econs; [ev | reflexivity | evs]].
 
-(* Call a global function, given the lemma that finds it: what remains is the Call of
-   its definition. *)
-Ltac call Hfun :=
-  let b := fresh "b" in let Hsym := fresh "Hsym" in let Hptr := fresh "Hptr" in
-  destruct Hfun as (b & Hsym & Hptr);
-  eapply exec_call; [reflexivity | apply Hsym | apply Hptr | reflexivity | evs | ];
-  clear Hsym Hptr; cbn [set_opttemp].
-
 (* The negation of a literal flips the lowest bit of its key. *)
-Lemma xor_key: forall (l: Lit), 0 <= key l < 1073741824 ->
+Lemma xor_key: forall (l: Lit), 0 <= key l < small_bound ->
   Int.xor (Int.repr (key l)) (Int.repr 1) = Int.repr (key (Neg.neg l)).
 Proof.
   intros l Hl. unfold Int.xor.
@@ -283,17 +259,6 @@ Proof.
       Z.lxor_nilpotent.
     apply Z.lxor_0_r.
 Qed.
-
-(* Store to an array entry or a field, finding its fact by the block (and offset) of the
-   store. *)
-Ltac store := cbn [cast_int_int];
-  match goal with |- exists m', Mem.store _ _ ?b _ _ = Some m' /\ _ =>
-    match goal with Hnodup: NoDup _ |- _ =>
-      first
-        [ match goal with A: Arr _ b _ _ |- _ => store_arr A Hnodup end
-        | match goal with F: Fld _ b _ _ _ |- _ => store_fld F Hnodup end ]
-    end
-  end.
 
 (* Unpack the arrays given by some table, so that stores carry them, and pack them
    again. *)

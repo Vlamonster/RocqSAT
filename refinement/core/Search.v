@@ -22,7 +22,8 @@ Qed.
 (* The literals of each clause of f, which are its clauses up to set equality. *)
 Definition clause_lists (f: CNF): list (list Lit) := map Clause.elements (CNF.elements f).
 
-Lemma in_clause_lists: forall (f: CNF) (ls: list Lit),
+(* Every list of clause_lists f holds the literals of a clause of f. *)
+Lemma clause_lists_sound: forall (f: CNF) (ls: list Lit),
   In ls (clause_lists f) -> exists (c: Clause), ls = Clause.elements c /\ c ∈ f.
 Proof.
   intros f ls Hin. apply in_map_iff in Hin as [c [<- Hin]]. exists c. split.
@@ -32,8 +33,8 @@ Proof.
     + assumption.
 Qed.
 
-(* Every clause of f has the literals of a clause equal to it. *)
-Lemma clause_lists_in: forall (f: CNF) (c: Clause),
+(* Every clause of f is equal to a clause whose literals are in clause_lists f. *)
+Lemma clause_lists_complete: forall (f: CNF) (c: Clause),
   c ∈ f -> exists (c': Clause), Clause.Equal c c' /\ In (Clause.elements c') (clause_lists f).
 Proof.
   intros f c Hc_in_f. apply CNF.elements_spec1, InA_alt in Hc_in_f as [c' [Heq Hin]]. exists c'. split.
@@ -44,9 +45,10 @@ Qed.
 (* ls has exactly the literals of a clause of f. *)
 Definition ClauseOf (f: CNF) (ls: list Lit): Prop := exists (c: Clause), c ∈ f /\ forall (l: Lit), In l ls <-> l ∈ c.
 
+(* Every list of clause_lists f is ClauseOf f. *)
 Lemma clause_lists_clause_of: forall (f: CNF) (ls: list Lit), In ls (clause_lists f) -> ClauseOf f ls.
 Proof.
-  intros f ls Hin. apply in_clause_lists in Hin as [c [-> Hc_in_f]]. exists c. split.
+  intros f ls Hin. apply clause_lists_sound in Hin as [c [-> Hc_in_f]]. exists c. split.
   - assumption.
   - apply clause_elements_iff.
 Qed.
@@ -54,6 +56,7 @@ Qed.
 (* The literals of f, without duplicates. *)
 Definition formula_lits (f: CNF): Clause := CNF.fold Clause.union f Clause.empty.
 
+(* The literals of formula_lits f are those of f. *)
 Lemma formula_lits_spec: forall (f: CNF) (l: Lit), l ∈ formula_lits f <-> l ∈ f.
 Proof.
   intros f l. unfold formula_lits.
@@ -94,7 +97,7 @@ Proof.
   - now rewrite lookup_neg, Hl.
 Qed.
 
-(* The phase of l is a literal of f if l is. *)
+(* If l is a literal of f, its phase or the negation of it is one. *)
 Lemma phase_in: forall (ph: Values) (f: CNF) (l: Lit), l ∈ f -> phase ph l ∈ f \/ ¬(phase ph l) ∈ f.
 Proof.
   intros ph f l Hl_in_f. destruct (phase_cases ph l) as [->| ->].

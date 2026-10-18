@@ -65,10 +65,11 @@ Section Literals.
         * reflexivity.
   Qed.
 
-  (* After adding the value of l, l is true and every literal other than l and ¬l keeps its value. *)
+  (* After adding the value of l, l is true. *)
   Lemma lookup_add_self: forall (v: Values) (l: Lit), lookup (set_value v l) l = Some true.
   Proof. intros v l. rewrite lookup_add. unfold l_eval_step. now rewrite Lit.eqb_refl. Qed.
 
+  (* Every literal other than l and ¬l keeps its value. *)
   Lemma lookup_add_other: forall (v: Values) (l l': Lit),
     l' <> l -> l' <> ¬l -> lookup (set_value v l) l' = lookup v l'.
   Proof.
@@ -86,6 +87,7 @@ Section Literals.
   (* Every value of v' is a value of v: v' are the values of an earlier trail. *)
   Definition Incl (v' v: Values): Prop := forall (l: Lit) (b: bool), lookup v' l = Some b -> lookup v l = Some b.
 
+  (* Incl is reflexive and transitive. *)
   Lemma incl_refl: forall (v: Values), Incl v v.
   Proof. now intros v l b Hl. Qed.
 
@@ -104,6 +106,7 @@ Section Literals.
   (* v with the value of the atom of l removed. *)
   Definition unset_value (v: Values) (l: Lit): Values := tset v (extract l) None.
 
+  (* Unsetting the atom of l makes l and ¬l unassigned and keeps the others. *)
   Lemma lookup_unset: forall (v: Values) (l l': Lit),
     lookup (unset_value v l) l' = if Nat.eq_dec (extract l) (extract l') then None else lookup v l'.
   Proof.
@@ -122,15 +125,16 @@ Section Literals.
   | ⟨m; l⟩ => Fresh m /\ l_eval m l = None
   end.
 
-  (* Unsetting the most recently assigned literal l, which was unassigned in m, gives the values of m. *)
+  (* Unsetting the newest literal l of ⟨m, l⟩, unassigned in m, gives the values of m. *)
   Lemma values_of_unset: forall (v: Values) (m: PA) (l: Lit),
-    (forall (y: Lit), lookup v y = l_eval_step y l (l_eval m y)) -> l_eval m l = None -> ValuesOf (unset_value v l) m.
+    ValuesOf v ⟨m, l⟩ -> l_eval m l = None -> ValuesOf (unset_value v l) m.
   Proof.
-    intros v m l Hv Hl y. rewrite lookup_unset. destruct (Nat.eq_dec (extract l) (extract y)) as [Heq|Hneq].
+    intros v m l Hv Hl y. rewrite lookup_unset.
+    destruct (Nat.eq_dec (extract l) (extract y)) as [Heq|Hneq].
     - symmetry in Heq. apply Neg.extract_eq in Heq as [-> | ->].
       + now symmetry.
       + symmetry. now apply l_eval_neg_none_iff in Hl.
-    - rewrite Hv. unfold l_eval_step. destruct (y =? l) eqn:Hyl.
+    - rewrite Hv. simpl. unfold l_eval_step. destruct (y =? l) eqn:Hyl.
       + apply Lit.eqb_eq in Hyl as ->. contradiction.
       + destruct (y =? ¬l) eqn:Hynegl.
         * apply Lit.eqb_eq in Hynegl as ->. exfalso. apply Hneq. apply Neg.extract_eq. right. now rewrite Neg.involutive.
@@ -171,7 +175,7 @@ Section Literals.
     - simpl. now rewrite lookup_add, IH.
   Qed.
 
-  (* The older part of a fresh trail is fresh, and the literals after it were unassigned in it. *)
+  (* The older part of a fresh trail is fresh. *)
   Lemma fresh_app: forall (m n: PA), Fresh ⟨m ++ n⟩ -> Fresh m.
   Proof.
     intros m n. induction n as [|n IH x|n IH x]; simpl.
@@ -180,6 +184,7 @@ Section Literals.
     - intros [Hfresh _]. now apply IH.
   Qed.
 
+  (* The literals after the older part of a fresh trail were unassigned in it. *)
   Lemma fresh_app_undef: forall (m n: PA) (l: Lit), Fresh ⟨m ++ n⟩ -> l ∈ n -> l_eval m l = None.
   Proof.
     intros m n l. induction n as [|n IH x|n IH x]; simpl.
@@ -221,6 +226,7 @@ Section Literals.
   | ⟨n; x⟩ => unassign_segment (unset_value v x) d n
   end.
 
+  (* Unassigning the segment gives the values of the trail before its decision. *)
   Lemma unassign_segment_spec: forall (v: Values) (mt n: PA) (d: Lit),
     ValuesOf v ⟨mt; d ++ n⟩ -> Fresh ⟨mt; d ++ n⟩ -> ValuesOf (unassign_segment v d n) mt.
   Proof.

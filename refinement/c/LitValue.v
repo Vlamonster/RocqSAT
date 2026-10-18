@@ -9,20 +9,20 @@ From RocqSAT.refinement.c Require Import Logic Arrays Common Rep.
 Import ListNotations.
 
 (* lit_value reads the value of l, kept per literal (key_value_lookup). It stores
-   nothing, so the memory stays m; it runs also during an analysis (any lower literals
-   lt):
+   nothing, so the memory stays m. It needs RepL only, so it also runs during an
+   analysis:
 
-     {{ RepL m S N lss x lims lt /\ extract l < N }}
+     {{ RepL m sh N lss x /\ extract l < N }}
        return s->vals[l];
      {{ result = key_value (vals x) (lit_key l) = enc_value (lookup (vals x) l) }}    *)
-Lemma lit_value_correct {lt: list Lit}: forall (S: Shape) (N: nat)
-  (lss: list (list Lit)) (x: Ctx) (lims: list nat) (l: Lit),
-  {{ m | RepL m S N lss x lims lt /\ (extract l < N)%nat }}
-    f_lit_value(sptr S, vint (key l))
+Lemma lit_value_correct: forall (sh: Shape) (N: nat)
+  (lss: list (list Lit)) (x: Ctx) (l: Lit),
+  {{ m | RepL m sh N lss x /\ (extract l < N)%nat }}
+    f_lit_value(sptr sh, vint (key l))
   {{ m', v | m' = m /\ v = vint (enc_value (lookup (vals x) l)) }}.
 Proof.
-  intros S N lss x lims l m [HRep Hl].
-  pose proof (key_small l N Hl (r_n _ _ _ _ _ _ _ HRep)) as Hkey.
+  intros sh N lss x l m [HRep Hl].
+  pose proof (key_small l N Hl (r_n HRep)) as Hkey.
   pose proof (lit_key_lt l N Hl) as Hlt.
   eapply call_simple.
   - reflexivity.
@@ -38,7 +38,5 @@ Proof.
         -- now rewrite key_value_lookup.
 Qed.
 
-Lemma lit_value_fun: exists (b: block),
-  Genv.find_symbol ge _lit_value = Some b /\
-  Genv.find_funct_ptr ge b = Some (Internal f_lit_value).
+Lemma lit_value_fun: FunAt _lit_value f_lit_value.
 Proof. apply find_fun. reflexivity. Qed.

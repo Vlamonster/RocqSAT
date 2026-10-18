@@ -10,28 +10,21 @@ From RocqSAT.refinement.c Require Import Logic Arrays Common Rep RepHeur HeapPop
   LitValue.
 Import ListNotations.
 
-(* The atom heap_pop takes out is the one at the top. *)
-Lemma heap_pop_snd: forall (h: Heur), snd (heap_pop h) = tget (heap h) 0.
-Proof.
-  intros h. unfold heap_pop. destruct (0 <? hsize h - 1)%nat.
-  - reflexivity.
-  - reflexivity.
-Qed.
-
 (* The invariant of the loop of pick at fuel f, for the memory m of the call and the
    result res of the model: the temporaries hold s and f, f is at most N, the memory
    represents x with a heuristic h for which pick with fuel f gives res, and only the
    heuristic is written. *)
-Record PickInv {lt: list Lit} (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
-  (x: Ctx) (lims: list nat) (res: Heur * option Lit) (f: nat) (le: temp_env)
-  (m1: mem): Prop := {
-  pi_s: le ! _s = Some (sptr S);
-  pi_fuel: le ! _fuel = Some (vint (Z.of_nat f));
+Record PickInv {m: mem} {sh: Shape} {N: nat} {lss: list (list Lit)}
+  {x: Ctx} {res: Heur * option Lit} {f: nat} {le: temp_env}
+  {m1: mem}: Prop := {
+  pi_s: le ! _s = Some (sptr sh);
+  pi_fuel: le ! _fuel = Some (vnat f);
   pi_le: (f <= N)%nat;
   pi_heur: exists (h: Heur), pick (vals x) h f = res /\
-    RepL m1 S N lss (with_heur x h) lims lt;
-  pi_frame: Mem.unchanged_on (HeurFrame S) m m1;
+    RepL m1 sh N lss (x <| hr := h |>);
+  pi_frame: Mem.unchanged_on (HeurFrame sh) m m1;
 }.
+Arguments PickInv : clear implicits.
 
 (* The last statement of the loop of pick: fuel--. *)
 Definition pick_dec: statement :=
@@ -40,18 +33,18 @@ Definition pick_dec: statement :=
 (* fuel--, once the atom taken out did not give a literal: the loop goes on with fuel f
    for the heuristic h, from which pick with fuel f gives res. Q is what the loop
    promises when it ends. *)
-Lemma pick_dec_correct {lt: list Lit}: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (x: Ctx) (lims: list nat) (res: Heur * option Lit) (h: Heur) (f: nat)
+Lemma pick_dec_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
+  (x: Ctx) (res: Heur * option Lit) (h: Heur) (f: nat)
   (Q: temp_env -> mem -> outcome -> Prop) (le: temp_env) (m m1: mem),
-  le ! _s = Some (sptr S) -> le ! _fuel = Some (vint (Z.of_nat (Datatypes.S f))) ->
-  (Datatypes.S f <= N)%nat -> pick (vals x) h f = res ->
-  RepL m1 S N lss (with_heur x h) lims lt -> Mem.unchanged_on (HeurFrame S) m m1 ->
+  le ! _s = Some (sptr sh) -> le ! _fuel = Some (vnat (S f)) ->
+  (S f <= N)%nat -> pick (vals x) h f = res ->
+  RepL m1 sh N lss (x <| hr := h |>) -> Mem.unchanged_on (HeurFrame sh) m m1 ->
   Exec ge le m1 pick_dec
-    (LoopK Peano.lt (@PickInv lt m S N lss x lims res) Q (Datatypes.S f)).
+    (LoopK Peano.lt (PickInv m sh N lss x res) Q (S f)).
 Proof.
-  intros S N lss x lims res h f Q le m m1 Hs Hfuel Hf Hres HRep1 Hframe.
-  pose proof (r_n _ _ _ _ _ _ _ HRep1) as HN.
-  assert (Hsub: Int.sub (Int.repr (Z.of_nat (Datatypes.S f))) (Int.repr 1)
+  intros sh N lss x res h f Q le m m1 Hs Hfuel Hf Hres HRep1 Hframe.
+  pose proof (r_n HRep1) as HN.
+  assert (Hsub: Int.sub (Int.repr (Z.of_nat (S f))) (Int.repr 1)
                 = Int.repr (Z.of_nat f)).
   { rewrite sub_repr. f_equal. lia. }
   unfold pick_dec, f_pick. cbn [fn_body drop_stmts first_stmt loop_body Swhile].
@@ -68,23 +61,30 @@ Proof.
     + assumption.
 Qed.
 
-(* What pick promises for the result res of the model, in the memory m' with the result
-   v, from the memory m of the call (its postcondition). *)
-Definition PickPost {lt: list Lit} (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
-  (x: Ctx) (lims: list nat) (res: Heur * option Lit) (m': mem) (v: val): Prop :=
+(* What pick promises for the result res = (h, ol) of the model, from the memory m of
+   the call: the heuristic h is in memory, and the result encodes ol. *)
+Definition PickPost (m: mem) (sh: Shape) (N: nat) (lss: list (list Lit))
+  (x: Ctx) (res: Heur * option Lit) (m': mem) (v: val): Prop :=
   match res with
-  | (h, ol) => RepL m' S N lss (with_heur x h) lims lt /\ v = vint (enc_lit ol) /\
-               Mem.unchanged_on (HeurFrame S) m m'
+  | (h, ol) => HeurPost sh N lss x m h m' /\ v = vint (enc_lit ol)
   end.
 
 (* The statement after the loop of pick, return -1, and what follows the loop: it and
    the end of pick with PickPost. *)
 Definition pick_ret: statement := drop_stmts 2 (fn_body f_pick).
 
-Definition PickExit {lt: list Lit} (m: mem) (S: Shape) (N: nat) (lss: list (list Lit))
-  (x: Ctx) (lims: list nat) (res: Heur * option Lit):
+Definition PickExit (m: mem) (sh: Shape) (N: nat) (lss: list (list Lit))
+  (x: Ctx) (res: Heur * option Lit):
   temp_env -> mem -> outcome -> Prop :=
-  SeqK ge pick_ret (Returns f_pick (@PickPost lt m S N lss x lims res)).
+  SeqK ge pick_ret (Returns f_pick (PickPost m sh N lss x res)).
+
+(* What pick gives after heap_pop took atom a out, leaving h1, with fuel f left: the
+   literal of a if it is unassigned in v, or else what the next atoms give. *)
+Definition pick_next (v: Values) (h1: Heur) (a f: nat): Heur * option Lit :=
+  match tget (dlit h1) a with
+  | Some l => if lookup_undef v l then (h1, Some l) else pick v h1 f
+  | None   => pick v h1 f
+  end.
 
 (* The statements of the loop of pick after heap_pop. *)
 Definition pick_rest: statement :=
@@ -93,7 +93,7 @@ Definition pick_rest: statement :=
 (* The loop of pick after heap_pop took atom a out, leaving the heuristic h1, with
    fuel f + 1, for which the model gives res:
 
-     {{ RepL m2 S N lss (with_heur x h1) lims lt /\ a < N }}
+     {{ RepL m2 sh N lss (x <| hr := h1 |>) /\ a < N }}
        int l = s->dlit[a];
        if (l >= 0) {
      {{ dlit h1 a = Some l' /\ l = key l' }}
@@ -103,27 +103,25 @@ Definition pick_rest: statement :=
      {{ the model goes on: pick (vals x) h1 f = res }}
        fuel--;                                                       (pick_dec_correct)
      {{ PickInv res f }}                                                             *)
-Lemma pick_rest_correct {lt: list Lit}: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (x: Ctx) (lims: list nat) (res: Heur * option Lit) (h1: Heur) (a f: nat)
+Lemma pick_rest_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
+  (x: Ctx) (res: Heur * option Lit) (h1: Heur) (a f: nat)
   (le: temp_env) (m m2: mem),
-  RepL m2 S N lss (with_heur x h1) lims lt -> (a < N)%nat -> (Datatypes.S f <= N)%nat ->
-  match tget (dlit h1) a with
-  | Some l => if lookup_undef (vals x) l then (h1, Some l) else pick (vals x) h1 f
-  | None   => pick (vals x) h1 f
-  end = res ->
-  Mem.unchanged_on (HeurFrame S) m m2 ->
-  le ! _s = Some (sptr S) -> le ! _fuel = Some (vint (Z.of_nat (Datatypes.S f))) ->
-  le ! _b = Some (vint (Z.of_nat a)) ->
-  Exec ge le m2 pick_rest (LoopK Peano.lt (@PickInv lt m S N lss x lims res)
-    (@PickExit lt m S N lss x lims res) (Datatypes.S f)).
+  RepL m2 sh N lss (x <| hr := h1 |>) -> (a < N)%nat -> (S f <= N)%nat ->
+  pick_next (vals x) h1 a f = res ->
+  Mem.unchanged_on (HeurFrame sh) m m2 ->
+  le ! _s = Some (sptr sh) -> le ! _fuel = Some (vnat (S f)) ->
+  le ! _b = Some (vnat a) ->
+  Exec ge le m2 pick_rest (LoopK Peano.lt (PickInv m sh N lss x res)
+    (PickExit m sh N lss x res) (S f)).
 Proof.
-  intros S N lss x lims res h1 a f le m m2 HRep2 Ha Hf Hres Hframe2 Hs Hfuel Hb.
-  pose proof (r_n _ _ _ _ _ _ _ HRep2) as HN.
-  pose proof (r_nodup _ _ _ _ _ _ _ HRep2) as Hnd.
-  pose proof (r_dlit _ _ _ _ _ _ _ HRep2) as Fdlit.
-  pose proof (a_dlit _ _ _ _ _ _ _ HRep2) as Adlit.
-  pose proof (ho_dlit _ _ (r_heur _ _ _ _ _ _ _ HRep2) a) as Hdl.
-  cbn [with_heur hr] in Adlit, Hdl.
+  intros sh N lss x res h1 a f le m m2 HRep2 Ha Hf Hres Hframe2 Hs Hfuel Hb.
+  unfold pick_next in Hres.
+  pose proof (r_n HRep2) as HN.
+  pose proof (r_nodup HRep2) as Hnd.
+  pose proof (r_dlit HRep2) as Fdlit.
+  pose proof (a_dlit HRep2) as Adlit.
+  pose proof (ho_dlit (r_heur HRep2) a) as Hdl.
+  cbn [set_hr hr] in Adlit, Hdl.
   unfold pick_rest, f_pick. cbn [fn_body drop_stmts first_stmt loop_body Swhile].
   (* int l = s->dlit[a]; *)
   run. destruct (tget (dlit h1) a) as [l|] eqn:Hd.
@@ -131,59 +129,63 @@ Proof.
     assert (Hl: (extract l < N)%nat).
     { apply (Hdl l Ha). reflexivity. }
     pose proof (key_small l N Hl HN) as Hkey.
-    cbn [enc_lit]. eapply (exec_if_cmp _ _ _ Cge).
+    cbn [enc_lit]. eapply exec_if_ge.
     + ev.
     + ev.
     + reflexivity.
-    + reflexivity.
-    + unfold Small. lia.
-    + unfold Small. lia.
-    + replace (zcmp Cge (key l) 0) with true
-        by (symmetry; cbn [zcmp]; apply Z.leb_le; lia).
-      (* if (lit_value(s, l) == 0) return l; *)
-      cbv beta iota. run. call lit_value_fun. eapply call_weaken.
-      { apply (lit_value_correct (lt := lt) S N lss (with_heur x h1) lims l). split.
-        - apply HRep2.
-        - assumption. }
-      intros m3 v3 [-> ->]. normal. change (vals (with_heur x h1)) with (vals x).
-      eapply (exec_if_cmp _ _ _ Ceq).
-      * ev.
-      * ev.
+    + lia.
+    + (* if (lit_value(s, l) == 0) return l; *)
+      intros Hpos. run.
+      eapply (exec_call_triple lit_value_fun
+                (lit_value_correct sh N lss (x <| hr := h1 |>) l)).
       * reflexivity.
-      * reflexivity.
-      * apply enc_small.
-      * unfold Small. lia.
-      * cbn [zcmp]. rewrite enc_undef. destruct (lookup_undef (vals x) l) eqn:Hu.
+      * evs.
+      * split.
+        -- apply HRep2.
+        -- assumption.
+      * intros m3 v3 [-> ->]. normal. change (vals (x <| hr := h1 |>)) with (vals x).
+        eapply exec_if_eq.
+        -- ev.
+        -- ev.
+        -- reflexivity.
+        -- split.
+           ++ apply enc_small.
+           ++ lia.
         -- (* unassigned: return l, as the model does *)
-           cbv beta iota. eapply exec_return.
+           intros Hz. assert (Hu: lookup_undef (vals x) l = true).
+           { rewrite <- enc_undef. now apply Z.eqb_eq. }
+           rewrite Hu in Hres. eapply exec_return.
            ++ ev.
            ++ ret. exists (vint (key l)). split.
               ** apply result_int.
               ** unfold PickPost. rewrite <- Hres. split.
-                 --- apply HRep2.
                  --- split.
-                     +++ reflexivity.
+                     +++ apply HRep2.
                      +++ assumption.
+                 --- reflexivity.
         -- (* assigned: the loop goes on *)
-           cbv beta iota. apply exec_skip. normal.
-           apply (pick_dec_correct S N lss x lims res h1 f).
+           intros Hz. assert (Hu: lookup_undef (vals x) l = false).
+           { rewrite <- enc_undef. now apply Z.eqb_neq. }
+           rewrite Hu in Hres. apply exec_skip. normal.
+           apply (pick_dec_correct sh N lss x res h1 f).
            ++ tmp.
            ++ tmp.
            ++ assumption.
            ++ assumption.
            ++ apply HRep2.
            ++ assumption.
+    + (* a literal has a key of at least 0 *)
+      intros Hneg. lia.
   - (* no literal: the loop goes on *)
-    cbn [enc_lit]. eapply (exec_if_cmp _ _ _ Cge).
+    cbn [enc_lit]. eapply exec_if_ge.
     + ev.
     + ev.
     + reflexivity.
-    + reflexivity.
-    + unfold Small. lia.
-    + unfold Small. lia.
-    + replace (zcmp Cge (-1) 0) with false by reflexivity.
-      cbv beta iota. apply exec_skip. normal.
-      apply (pick_dec_correct S N lss x lims res h1 f).
+    + lia.
+    + (* -1 is not at least 0 *)
+      intros Hpos. lia.
+    + intros Hneg. apply exec_skip. normal.
+      apply (pick_dec_correct sh N lss x res h1 f).
       * tmp.
       * tmp.
       * assumption.
@@ -196,7 +198,7 @@ Qed.
    on that is unassigned, and returns it, or -1. Writing res for pick (vals x) (hr x) N
    and h for the heuristic of the invariant:
 
-     {{ RepL m S N lss x lims lt }}
+     {{ RepL m sh N lss x }}
        int fuel = s->nv;
      {{ PickInv res N }}
        while (fuel > 0) {
@@ -215,22 +217,18 @@ Qed.
        }
      {{ PickInv res 0: res is (h, None) }}
        return -1;
-     {{ RepL m' S N lss (with_heur x (fst res)) lims lt /\ result = enc_lit (snd res) }}
+     {{ RepL m' sh N lss (x <| hr := fst res |>) /\ result = enc_lit (snd res) }}
 
    The loop ends: fuel decreases. *)
-Lemma pick_correct {lt: list Lit}: forall (S: Shape) (N: nat) (lss: list (list Lit))
-  (x: Ctx) (lims: list nat),
-  {{ m | RepL m S N lss x lims lt }}
-    f_pick(sptr S)
-  {{ m', v | match pick (vals x) (hr x) N with
-             | (h, ol) => RepL m' S N lss (with_heur x h) lims lt /\
-                          v = vint (enc_lit ol) /\
-                          Mem.unchanged_on (HeurFrame S) m m'
-             end }}.
+Lemma pick_correct: forall (sh: Shape) (N: nat) (lss: list (list Lit))
+  (x: Ctx),
+  {{ m | RepL m sh N lss x }}
+    f_pick(sptr sh)
+  {{ m', v | PickPost m sh N lss x (pick (vals x) (hr x) N) m' v }}.
 Proof.
-  intros S N lss x lims m HRep.
-  pose proof (r_n _ _ _ _ _ _ _ HRep) as HN.
-  pose proof (r_nv _ _ _ _ _ _ _ HRep) as Fnv.
+  intros sh N lss x m HRep.
+  pose proof (r_n HRep) as HN.
+  pose proof (r_nv HRep) as Fnv.
   set (res := pick (vals x) (hr x) N).
   eapply call_simple.
   - reflexivity.
@@ -238,90 +236,71 @@ Proof.
   - unfold f_pick. cbn [fn_body fn_return].
     (* int fuel = s->nv; *)
     run. clear Fnv.
-    change (SeqK ge _ _) with (@PickExit lt m S N lss x lims res). unfold Swhile.
-    apply exec_loop with (R := Peano.lt) (I := @PickInv lt m S N lss x lims res)
+    change (SeqK ge _ _) with (PickExit m sh N lss x res). unfold Swhile.
+    apply exec_loop with (R := Peano.lt) (I := PickInv m sh N lss x res)
       (a := N).
     + apply lt_wf.
     + intros f le1 m1 HI. destruct HI as [Hs Hfuel Hf (h & Hres & HRep1) Hframe].
-      pose proof (r_nodup _ _ _ _ _ _ _ HRep1) as Hnd.
-      pose proof (r_heur _ _ _ _ _ _ _ HRep1) as Hok. cbn [with_heur hr] in Hok.
+      pose proof (r_nodup HRep1) as Hnd.
+      pose proof (r_heur HRep1) as Hok. cbn [set_hr hr] in Hok.
       apply exec_seq.
       (* if (fuel > 0) ... else break; *)
-      eapply (exec_if_cmp _ _ _ Cgt).
+      eapply exec_if_gt.
       * ev.
       * ev.
       * reflexivity.
-      * reflexivity.
-      * unfold Small. lia.
-      * unfold Small. lia.
-      * destruct f as [|f].
-        -- (* fuel = 0: break; return -1, as the model gives (h, None) *)
-           replace (zcmp Cgt (Z.of_nat 0) 0) with false by reflexivity.
-           cbv beta iota. apply exec_break. abrupt. apply loopk_break.
-           unfold PickExit. normal. unfold pick_ret, f_pick. cbn [fn_body drop_stmts].
-           eapply exec_return.
-           ++ ev.
-           ++ exists (vint (-1)). split.
-              ** apply result_int.
-              ** unfold PickPost. cbn [pick] in Hres. rewrite <- Hres. split.
-                 --- apply HRep1.
-                 --- split.
-                     +++ reflexivity.
-                     +++ assumption.
-        -- replace (zcmp Cgt (Z.of_nat (Datatypes.S f)) 0) with true
-             by (symmetry; cbn [zcmp]; apply Z.ltb_lt; lia).
-           cbn [pick] in Hres.
-           pose proof (r_hsize _ _ _ _ _ _ _ HRep1) as Fhsize.
-           cbn [with_heur hr] in Fhsize.
-           pose proof (ho_hsize _ _ Hok) as Hhs.
+      * lia.
+      * intros Hpos. destruct f as [|f].
+        -- (* fuel 0 is not positive *)
+           lia.
+        -- cbn [pick] in Hres.
+           pose proof (r_hsize HRep1) as Fhsize.
+           cbn [set_hr hr] in Fhsize.
+           pose proof (ho_hsize Hok) as Hhs.
            (* if (s->hsize <= 0) return -1; *)
-           cbv beta iota. run. eapply (exec_if_cmp _ _ _ Cle).
+           run. eapply exec_if_le.
            ++ ev.
            ++ ev.
            ++ reflexivity.
-           ++ reflexivity.
-           ++ unfold Small. lia.
-           ++ unfold Small. lia.
-           ++ destruct (Nat.eq_dec (hsize h) 0) as [Hempty | Hsize].
-              ** (* the heap is empty: return -1, as the model gives (h, None) *)
-                 replace (zcmp Cle (Z.of_nat (hsize h)) 0) with true
-                   by (symmetry; cbn [zcmp]; apply Z.leb_le; lia).
-                 replace (hsize h <=? 0)%nat with true in Hres
-                   by (symmetry; apply Nat.leb_le; lia).
-                 cbv beta iota. eapply exec_return.
-                 --- ev.
-                 --- ret. exists (vint (-1)). split.
-                     +++ apply result_int.
-                     +++ unfold PickPost. rewrite <- Hres. split.
+           ++ lia.
+           ++ (* the heap is empty: return -1, as the model gives (h, None) *)
+              intros Hempty. replace (hsize h <=? 0)%nat with true in Hres
+                by (symmetry; apply Nat.leb_le; lia).
+              eapply exec_return.
+              ** ev.
+              ** ret. exists (vint (-1)). split.
+                 --- apply result_int.
+                 --- unfold PickPost. rewrite <- Hres. split.
+                     +++ split.
                          *** apply HRep1.
-                         *** split.
-                             ---- reflexivity.
-                             ---- assumption.
-              ** (* int b = heap_pop(s); *)
-                 replace (zcmp Cle (Z.of_nat (hsize h)) 0) with false
-                   by (symmetry; cbn [zcmp]; apply Z.leb_gt; lia).
-                 replace (hsize h <=? 0)%nat with false in Hres
-                   by (symmetry; apply Nat.leb_gt; lia).
-                 assert (Hb: (snd (heap_pop h) < N)%nat).
-                 { rewrite heap_pop_snd. apply (ho_heap _ _ Hok). lia. }
-                 cbv beta iota. run. call heap_pop_fun. eapply call_weaken.
-                 { apply (heap_pop_correct (lt := lt) S N lss (with_heur x h) lims).
-                   split.
-                   - assumption.
-                   - cbn [with_heur hr]. lia. }
-                 intros m2 v2 (HRep2 & -> & Hun2). normal. keep_mem m2.
-                 change (hr (with_heur x h)) with h in HRep2 |- *.
+                         *** assumption.
+                     +++ reflexivity.
+           ++ (* int b = heap_pop(s); *)
+              intros Hsize. replace (hsize h <=? 0)%nat with false in Hres
+                by (symmetry; apply Nat.leb_gt; lia).
+              assert (Hb: (snd (heap_pop h) < N)%nat).
+              { rewrite heap_pop_snd. apply (ho_heap Hok). lia. }
+              run.
+              eapply (exec_call_triple heap_pop_fun
+                        (heap_pop_correct sh N lss (x <| hr := h |>))).
+              ** reflexivity.
+              ** evs.
+              ** split.
+                 --- apply HRep1.
+                 --- cbn [set_hr hr]. lia.
+              ** intros m2 v2 ((HRep2 & Hun2) & ->). normal. keep_mem m2.
+                 change (hr (x <| hr := h |>)) with h in HRep2 |- *.
                  destruct (heap_pop h) as [h1 a] eqn:Hpop.
                  cbn [fst snd] in HRep2, Hb |- *.
                  cbv beta iota in Hres.
-                 assert (Hframe2: Mem.unchanged_on (HeurFrame S) m m2).
+                 assert (Hframe2: Mem.unchanged_on (HeurFrame sh) m m2).
                  { apply (Mem.unchanged_on_trans _ m m1 m2).
-                   - assumption.
-                   - assumption. }
+                   + assumption.
+                   + assumption. }
                  eapply exec_set.
                  --- ev.
                  --- (* the rest of the loop (pick_rest_correct) *)
-                     normal. apply (pick_rest_correct S N lss x lims res h1 a f).
+                     normal. apply (pick_rest_correct sh N lss x res h1 a f).
                      +++ apply HRep2.
                      +++ assumption.
                      +++ assumption.
@@ -330,6 +309,19 @@ Proof.
                      +++ tmp.
                      +++ tmp.
                      +++ tmp.
+      * (* fuel = 0: break; return -1, as the model gives (h, None) *)
+        intros Hle. assert (Hf0: f = 0%nat) by lia. subst f.
+        apply exec_break. abrupt. apply loopk_break.
+        unfold PickExit. normal. unfold pick_ret, f_pick. cbn [fn_body drop_stmts].
+        eapply exec_return.
+        -- ev.
+        -- exists (vint (-1)). split.
+           ++ apply result_int.
+           ++ unfold PickPost. cbn [pick] in Hres. rewrite <- Hres. split.
+              ** split.
+                 --- apply HRep1.
+                 --- assumption.
+              ** reflexivity.
     + (* The invariant holds at N. *)
       constructor.
       * tmp.
@@ -341,7 +333,5 @@ Proof.
       * apply Mem.unchanged_on_refl.
 Qed.
 
-Lemma pick_fun: exists (b: block),
-  Genv.find_symbol ge _pick = Some b /\
-  Genv.find_funct_ptr ge b = Some (Internal f_pick).
+Lemma pick_fun: FunAt _pick f_pick.
 Proof. apply find_fun. reflexivity. Qed.
